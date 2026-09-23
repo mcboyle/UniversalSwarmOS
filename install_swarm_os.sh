@@ -125,27 +125,287 @@ log_info "Swarm User:   $SWARM_USER ($SWARM_HOME)"
 # ------------------------------------------------------------------------------
 # Environment & Secrets Initialization
 # ------------------------------------------------------------------------------
+verify_sudo() {
+    local pass="$1"
+    log_info "Verifying sudo access..."
+    if command -v sudo &>/dev/null; then
+        if sudo -n true 2>/dev/null; then
+            log_ok "Sudo access verified (passwordless)."
+            return 0
+        else
+            log_info "Sudo access requires authentication."
+            if [ -n "$pass" ]; then
+                if echo "$pass" | sudo -S -v 2>/dev/null; then
+                    log_ok "Sudo access verified using provided password."
+                    return 0
+                fi
+            fi
+            return 1
+        fi
+    else
+        log_warn "sudo command not found."
+        return 1
+    fi
+}
+
+check_ssh_keys() {
+    local has_ssh="no"
+    if [ -f "$SWARM_HOME/.ssh/id_rsa" ] || [ -f "$SWARM_HOME/.ssh/id_ed25519" ]; then
+        has_ssh="yes"
+    fi
+    echo "$has_ssh"
+}
+
+stage_gpu_ollama() {
+    log_info "=== STAGE: GPU & OLLAMA (AI Acceleration) ==="
+    
+    local gpu_detected="no"
+    local nvidia_needs_driver="no"
+
+    if command -v lspci >/dev/null 2>&1; then
+        local pci_raw
+        pci_raw="$(lspci -nn 2>/dev/null | grep -iE 'vga|3d|display' || true)"
+        if echo "$pci_raw" | grep -iqE '10de|nvidia'; then
+            gpu_detected="nvidia"
+            if ! command -v nvidia-smi >/dev/null 2>&1; then
+                nvidia_needs_driver="yes"
+            else
+                if nvidia-smi 2>&1 | grep -q "No devices were found"; then
+                    nvidia_needs_driver="yes"
+                fi
+            fi
+        elif echo "$pci_raw" | grep -iqE '1002|amd/ati|advanced micro devices'; then
+            gpu_detected="amd"
+        elif echo "$pci_raw" | grep -iqE '8086|intel.*(graphics|arc|iris|xe |hd graphics)'; then
+            gpu_detected="intel"
+        fi
+    fi
+
+    if [ "$gpu_detected" = "nvidia" ] && [ "$nvidia_needs_driver" = "yes" ]; then
+        log_info "NVIDIA GPU detected but no driver loaded/found."
+        if [ -t 0 ]; then
+            read -r -p "Do you want to install the NVIDIA proprietary drivers? [y/N]: " DRV_ANS
+            case "${DRV_ANS:-N}" in
+                y|Y|yes|YES)
+                    if command -v ubuntu-drivers >/dev/null 2>&1; then
+                        log_info "Running ubuntu-drivers autoinstall..."
+                        run_cmd ubuntu-drivers autoinstall
+                    else
+                        log_info "ubuntu-drivers not found. Searching apt for latest nvidia-driver..."
+                        run_cmd apt-get update -qq || true
+                        local candidate
+                        candidate="$(apt-cache pkgnames nvidia-driver- 2>/dev/null | grep -E '^nvidia-driver-[0-9]+-server$' | sort -t- -k3 -n | tail -1)"
+                        if [ -z "$candidate" ]; then
+                            candidate="$(apt-cache pkgnames nvidia-driver- 2>/dev/null | grep -E '^nvidia-driver-[0-9]+$' | sort -t- -k3 -n | tail -1)"
+                        fi
+                        if [ -n "$candidate" ]; then
+                            log_info "Installing $candidate..."
+                            run_cmd apt-get install -y "$candidate"
+                        else
+                            log_warn "Could not determine nvidia driver package name."
+                        fi
+                    fi
+                    log_warn "NVIDIA driver installed. A reboot is usually required to activate the driver."
+                    ;;
+                *)
+                    log_info "Skipping NVIDIA driver install."
+                    ;;
+            esac
+        fi
+    elif [ "$gpu_detected" = "nvidia" ]; then
+        log_ok "NVIDIA GPU detected and driver appears to be loaded."
+    elif [ "$gpu_detected" != "no" ]; then
+        log_ok "$gpu_detected GPU detected (non-NVIDIA). Not installing proprietary drivers automatically."
+    else
+        log_info "No supported GPU detected."
+    fi
+
+    log_info "Checking Ollama runtime..."
+    if ! command -v ollama >/dev/null 2>&1; then
+        if [ -t 0 ]; then
+            read -r -p "Do you want to install Ollama and default AI models? [Y/n]: " OLL_ANS
+        else
+            OLL_ANS="Y"
+        fi
+        
+        case "${OLL_ANS:-Y}" in
+            y|Y|yes|YES)
+                log_info "Installing Ollama..."
+                curl -fsSL https://ollama.com/install.sh | sh || true
+                
+                if command -v ollama >/dev/null 2>&1; then
+                    if command -v systemctl >/dev/null 2>&1; then
+                        if ! systemctl cat ollama.service >/dev/null 2>&1; then
+                            log_info "Creating ollama.service unit..."
+                            if ! id ollama >/dev/null 2>&1; then
+                                run_cmd useradd -r -g ollama -d /usr/share/ollama -s /usr/sbin/nologin ollama 2>/dev/null || run_cmd useradd -r -d /usr/share/ollama -s /usr/sbin/nologin ollama 2>/dev/null || true
+                            fi
+                            run_cmd mkdir -p /usr/share/ollama
+                            run_cmd chown -R ollama:ollama /usr/share/ollama 2>/dev/null || true
+                            local ollama_bin
+                            ollama_bin="$(command -v ollama || echo /usr/local/bin/ollama)"
+                            run_cmd bash -c "cat <<UNIT > /etc/systemd/system/ollama.service
+[Unit]
+Description=Ollama Service
+After=network-online.target
+
+[Service]
+ExecStart=${ollama_bin} serve
+User=ollama
+Group=ollama
+Restart=always
+RestartSec=3
+Environment=\"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\"
+
+[Install]
+WantedBy=multi-user.target
+UNIT"
+                            run_cmd systemctl daemon-reload
+                        fi
+                        run_cmd systemctl enable ollama || true
+                        run_cmd systemctl start ollama || true
+                    fi
+                    
+                    log_info "Waiting for Ollama API to respond..."
+                    local up=""
+                    for _ in {1..30}; do
+                        if curl -fsS "http://localhost:11434/api/tags" >/dev/null 2>&1; then
+                            up="yes"; break
+                        fi
+                        sleep 1
+                    done
+                    
+                    if [ -n "$up" ]; then
+                        log_info "Ollama API is responding. Pulling default models (this may take a while)..."
+                        log_info "Pulling qwen2.5vl:7b (Vision)..."
+                        ollama pull qwen2.5vl:7b || true
+                        log_info "Pulling qwen2.5:7b (Text)..."
+                        ollama pull qwen2.5:7b || true
+                        log_ok "Ollama and models installed."
+                    else
+                        log_warn "Ollama API did not respond in time. Skipping model pulls."
+                    fi
+                else
+                    log_warn "Ollama installation failed."
+                fi
+                ;;
+            *)
+                log_info "Skipping Ollama install."
+                ;;
+        esac
+    else
+        log_ok "Ollama is already installed."
+    fi
+}
+
 init_env() {
     log_info "Checking environment configuration..."
     local env_file="$SWARM_ROOT/swarm.env"
+
+    if [ ! -f "$env_file" ]; then
+        log_warn "$env_file not found."
+        if [ -t 0 ]; then
+            read -r -p "Enter Target IP Address: " IP_INPUT || true
+            read -r -s -p "Enter Password (for the IP/user): " PASSWORD_INPUT || true
+            echo ""
+            read -r -p "Enter Anthropic API Key (Claude Code) [or press Enter to skip]: " ANTHROPIC_KEY_INPUT || true
+            read -r -p "Enter OpenAI API Key (Codex) [or press Enter to skip]: " OPENAI_KEY_INPUT || true
+            read -r -p "Enter Target Git Repo URL [or press Enter to skip]: " REPO_KEY_INPUT || true
+        else
+            IP_INPUT="${TARGET_IP:-}"
+            PASSWORD_INPUT="${TARGET_PASSWORD:-}"
+            ANTHROPIC_KEY_INPUT="${ANTHROPIC_API_KEY:-}"
+            OPENAI_KEY_INPUT="${OPENAI_API_KEY:-}"
+            REPO_KEY_INPUT="${TARGET_REPO_URL:-}"
+        fi
+    else
+        log_info "Loaded existing configuration from $env_file"
+        source "$env_file"
+        IP_INPUT="${TARGET_IP:-}"
+        PASSWORD_INPUT="${TARGET_PASSWORD:-}"
+        ANTHROPIC_KEY_INPUT="${ANTHROPIC_API_KEY:-}"
+        OPENAI_KEY_INPUT="${OPENAI_API_KEY:-}"
+        REPO_KEY_INPUT="${TARGET_REPO_URL:-}"
+    fi
+
+    local has_sudo="no"
+    if verify_sudo "$PASSWORD_INPUT"; then
+        has_sudo="yes"
+    fi
+    local has_ssh
+    has_ssh="$(check_ssh_keys)"
+
+    if [ "$has_ssh" = "no" ] && [ "$has_sudo" = "no" ]; then
+        log_warn "VM is missing both SSH keys and automatic sudo access."
+        if [ -t 0 ]; then
+            read -r -p "Do you want to grant permission to generate an SSH key and continue automatically? [Y/n]: " PERM_ANS
+            case "${PERM_ANS:-Y}" in
+                y|Y|yes|YES)
+                    mkdir -p "$SWARM_HOME/.ssh"
+                    chmod 700 "$SWARM_HOME/.ssh"
+                    ssh-keygen -t ed25519 -f "$SWARM_HOME/.ssh/id_ed25519" -N "" -q
+                    log_ok "Generated new ed25519 SSH key. Continuing automatically."
+                    ;;
+                *)
+                    log_err "Permission denied. Exiting."
+                    exit 1
+                    ;;
+            esac
+        else
+            log_warn "Non-interactive mode. Cannot prompt for permissions."
+        fi
+    else
+        if [ "$has_ssh" = "no" ]; then
+            if [ -t 0 ]; then
+                read -r -p "Do you want to generate an SSH key now? [Y/n]: " SSH_ANS
+                case "${SSH_ANS:-Y}" in
+                    y|Y|yes|YES)
+                        mkdir -p "$SWARM_HOME/.ssh"
+                        chmod 700 "$SWARM_HOME/.ssh"
+                        ssh-keygen -t ed25519 -f "$SWARM_HOME/.ssh/id_ed25519" -N "" -q
+                        log_ok "Generated new ed25519 SSH key."
+                        ;;
+                    *)
+                        log_info "Skipping SSH key generation."
+                        ;;
+                esac
+            fi
+        else
+            log_ok "SSH key found."
+        fi
+        
+        if [ "$has_sudo" = "no" ]; then
+            if [ -t 0 ]; then
+                log_warn "Failed to authenticate sudo automatically."
+                if sudo -v; then
+                    log_ok "Sudo access verified."
+                else
+                    log_warn "Failed to authenticate sudo."
+                    read -r -p "Continue anyway without sudo? [y/N]: " S_ANS
+                    case "${S_ANS:-N}" in
+                        y|Y|yes|YES) log_warn "Continuing without sudo." ;;
+                        *) log_err "Sudo required. Exiting."; exit 1 ;;
+                    esac
+                fi
+            else
+                log_warn "Non-interactive mode and sudo requires password."
+            fi
+        fi
+    fi
+
+    if [ "$EUID" -eq 0 ] && [ -n "${SUDO_USER:-}" ]; then
+        chown -R "$SWARM_USER:$SWARM_USER" "$SWARM_HOME/.ssh" 2>/dev/null || true
+    fi
+
     if [ ! -d "$SWARM_ROOT" ]; then
         run_cmd mkdir -p "$SWARM_ROOT"
         run_cmd chown -R "$SWARM_USER:$SWARM_USER" "$SWARM_ROOT" 2>/dev/null || true
     fi
 
     if [ ! -f "$env_file" ]; then
-        log_warn "$env_file not found."
-        if [ -t 0 ]; then
-            read -r -p "Enter Anthropic API Key (Claude Code) [or press Enter to skip]: " ANTHROPIC_KEY_INPUT || true
-            read -r -p "Enter OpenAI API Key (Codex) [or press Enter to skip]: " OPENAI_KEY_INPUT || true
-            read -r -p "Enter Target Git Repo URL [or press Enter to skip]: " REPO_KEY_INPUT || true
-        else
-            ANTHROPIC_KEY_INPUT="${ANTHROPIC_API_KEY:-}"
-            OPENAI_KEY_INPUT="${OPENAI_API_KEY:-}"
-            REPO_KEY_INPUT="${TARGET_REPO_URL:-}"
-        fi
-
         cat <<EOF > "$env_file"
+TARGET_IP=${IP_INPUT}
+TARGET_PASSWORD=${PASSWORD_INPUT}
 ANTHROPIC_API_KEY=${ANTHROPIC_KEY_INPUT}
 OPENAI_API_KEY=${OPENAI_KEY_INPUT}
 TARGET_REPO_URL=${REPO_KEY_INPUT}
@@ -155,9 +415,9 @@ ENABLE_VMWARE=${ENABLE_VMWARE}
 EOF
         chmod 600 "$env_file"
         log_ok "Wrote environment configuration to $env_file"
-    else
-        log_info "Loaded existing configuration from $env_file"
     fi
+    
+    stage_gpu_ollama
 }
 
 # ------------------------------------------------------------------------------
