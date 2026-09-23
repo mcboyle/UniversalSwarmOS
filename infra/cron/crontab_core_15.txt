@@ -1,0 +1,15 @@
+*/5 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-prose-enforce.lock bash /home/mboyle/bd-persist/harness/bd-prose-enforce.sh >> /home/mboyle/bd-persist/logs/prose-enforce.cron.log 2>&1
+*/10 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-batch-release.lock bash /home/mboyle/bd-persist/harness/bd-batch-release.sh >> /home/mboyle/bd-persist/logs/batch-release.cron.log 2>&1
+*/5 * * * * bash /home/mboyle/bd-persist/harness/bd-agy-unblock.sh >/dev/null 2>&1
+*/2 * * * * bash /home/mboyle/bd-persist/harness/bd-autoland.sh >> /home/mboyle/bd-persist/logs/autoland.cron.log 2>&1
+*/5 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-roadmap-refresh.lock bash /home/mboyle/bd-persist/harness/bd-roadmap-refresh.sh >>/home/mboyle/bd-persist/logs/roadmap-refresh.log 2>&1
+15 6 * * 1 BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-underived.lock bash /home/mboyle/bd-persist/harness/bd-underived-census.sh >> /home/mboyle/bd-persist/logs/underived-census.log 2>&1
+*/2 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-fleet-quota-probe.lock bash /home/mboyle/bin/bd-fleet-quota-probe.sh >> /home/mboyle/bd-persist/logs/quota-probe.cron.log 2>&1
+0 * * * * bash /home/mboyle/bin/bd-log-rotate.sh >> /home/mboyle/bd-persist/logs/log-rotate.cron.log 2>&1
+*/5 * * * * bash /home/mboyle/bd-persist/harness/bd-usage-monitor.sh
+0 * * * * /home/mboyle/bd-persist/harness/ghost-worktree-sweeper.sh
+*/2 * * * * /home/mboyle/bd-persist/harness/bd-telemetry-guard.py >> /home/mboyle/bd-persist/logs/telemetry-guard.log 2>&1
+*/15 * * * * ssh 10.0.70.82 'python3 /home/mboyle/teamwork_projects/fleet_audit/index_all.py' >> /home/mboyle/bd-persist/logs/rag-index-cron.log 2>&1
+0 */4 * * * /usr/bin/python3 /home/mboyle/teamwork_projects/fleet_audit/fleet_scan.py > /tmp/fleet_scan.log 2>&1
+*/3 * * * * flock -n /tmp/bd-auto-merge.lock bash /home/mboyle/bd-auto-merge.sh >> /home/mboyle/bd-persist/logs/auto-merge.cron.log 2>&1
+*/10 * * * * flock -n /tmp/bd-regen-main.lock bash /home/mboyle/bd-persist/harness/bd-regen-main.sh >> /home/mboyle/bd-persist/logs/regen-main.cron.log 2>&1

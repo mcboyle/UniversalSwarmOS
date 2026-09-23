@@ -1,0 +1,12 @@
+[Unit]
+Description=BD archive capture and verify every 30 minutes
+[Timer]
+# SEE bd-checkpoint.timer. THIS UNIT WAS NOT DEAD -- it was one late start away from it,
+# sharing the identical relative-anchor design. Fixed at the same time, on purpose:
+# fixing only the instance that happened to trip leaves the class live.
+OnBootSec=5min
+OnCalendar=*:0/30
+AccuracySec=60s
+Persistent=true
+[Install]
+WantedBy=timers.target

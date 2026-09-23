@@ -1,0 +1,39 @@
+127.0.0.1 localhost
+127.0.1.1 hub-mesh01.mesh.local hub-mesh01
+
+# The following lines are desirable for IPv6 capable hosts
+::1     ip6-localhost ip6-loopback
+fe00::0 ip6-localnet
+ff00::0 ip6-mcastprefix
+ff02::1 ip6-allnodes
+ff02::2 ip6-allrouters
+# BEGIN MESH.LOCAL CLUSTER HOSTS
+10.0.70.164     hub-mesh01.mesh.local hub-mesh01 test5 ollama.mesh.local search.mesh.local devdocs.mesh.local
+10.0.70.25      ops-mcp01.mesh.local ops-mcp01 infra-mcp
+10.0.70.162     ops-cicd01.mesh.local ops-cicd01 cicd
+10.0.70.107     ops-test01.mesh.local ops-test01 infra-test
+10.0.70.182     stg-cache01.mesh.local stg-cache01 cache
+10.0.70.224     stg-cache02.mesh.local stg-cache02 infra-cache
+10.0.70.72      ai-srv01.mesh.local ai-srv01 infra-ai
+10.0.70.81      ai-dev01.mesh.local ai-dev01 infra-aidev
+10.0.70.125     ai-infer01.mesh.local ai-infer01 aiinference
+10.0.70.228     ai-ollama01.mesh.local ai-ollama01 ollama
+10.0.70.50      wrk-bd01.mesh.local wrk-bd01 bd
+10.0.70.51      wrk-bd02.mesh.local wrk-bd02 bd1
+10.0.70.52      wrk-bd03.mesh.local wrk-bd03 bd2
+10.0.70.53      wrk-bd04.mesh.local wrk-bd04 bd3
+10.0.70.54      wrk-bd05.mesh.local wrk-bd05 bd4
+10.0.70.83      wrk-test01.mesh.local wrk-test01 test
+10.0.70.95      wrk-test02.mesh.local wrk-test02 test2
+10.0.70.80      wrk-test03.mesh.local wrk-test03 test3
+10.0.70.82      wrk-test04.mesh.local wrk-test04 test3big
+10.0.70.85      wrk-test05.mesh.local wrk-test05 test4
+10.0.70.249     wrk-test06.mesh.local wrk-test06 test6
+10.0.70.84      wrk-test07.mesh.local wrk-test07 test7
+10.0.70.120     spr-pool01.mesh.local spr-pool01 spare7
+10.0.70.183     spr-pool02.mesh.local spr-pool02 spare12
+10.0.70.184     spr-pool03.mesh.local spr-pool03 node3
+10.0.70.185 spr-pool04.mesh.local spr-pool04 node4
+10.0.70.149     spr-pool05.mesh.local spr-pool05 fresh149
+# END MESH.LOCAL CLUSTER HOSTS
+

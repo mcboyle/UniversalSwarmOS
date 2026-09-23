@@ -1,0 +1,97 @@
+{
+  "mcpServers": {
+    "bd": {
+      "type": "http",
+      "url": "http://10.0.70.164:8100/mcp"
+    },
+    "serena": {
+      "type": "stdio",
+      "command": "/home/mboyle/.local/bin/uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/oraios/serena",
+        "serena",
+        "start-mcp-server",
+        "--context",
+        "ide-assistant",
+        "--transport",
+        "stdio"
+      ]
+    },
+    "caveman": {
+      "type": "stdio",
+      "command": "/home/mboyle/.caveman/bin/caveman-mcp",
+      "args": [],
+      "env": {}
+    },
+    "context-mode": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "context-mode"
+      ]
+    },
+    "pg-local": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-postgres",
+        "postgresql://postgres:postgres@127.0.0.1:5432/ai_mesh"
+      ]
+    },
+    "vmware-clones": {
+      "type": "stdio",
+      "command": "python3",
+      "args": [
+        "-m",
+        "mcp_server_vmware",
+        "--host",
+        "10.0.70.1"
+      ]
+    },
+    "python-linter": {
+      "type": "stdio",
+      "command": "python3",
+      "args": [
+        "-m",
+        "mcp_server_ruff"
+      ]
+    },
+    "type-enforcer": {
+      "type": "stdio",
+      "command": "python3",
+      "args": [
+        "-m",
+        "mcp_server_mypy"
+      ]
+    },
+    "bd-fleet": {
+      "command": "/home/mboyle/bd-persist/harness/bd-mcp/venv/bin/python",
+      "args": [
+        "/home/mboyle/bd-persist/plugins/bd-fleet-mcp/server.py"
+      ]
+    },
+    "ratf": {
+      "command": "python3",
+      "args": [
+        "-m",
+        "mcp_server_ratf"
+      ]
+    },
+    "bd-bus": {
+      "command": "python3",
+      "args": [
+        "-m",
+        "bd_bus_mcp"
+      ]
+    },
+    "fleet-sync": {
+      "command": "python3",
+      "args": [
+        "/home/mboyle/teamwork_projects/fleet_sync_tool/fleet_sync_mcp.py"
+      ]
+    }
+  }
+}

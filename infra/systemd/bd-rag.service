@@ -1,0 +1,11 @@
+[Unit]
+Description=bd-rag query endpoint (port 8099)
+After=network.target
+[Service]
+User=mboyle
+WorkingDirectory=/home/mboyle/bd-persist/harness/bd-rag
+ExecStart=/home/mboyle/bd-persist/harness/bd-rag/venv/bin/python /home/mboyle/bd-persist/harness/bd-rag/server2.py
+Restart=always
+RestartSec=3
+[Install]
+WantedBy=multi-user.target

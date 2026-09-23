@@ -1,0 +1,13 @@
+[Unit]
+Description=BulkDownloader virtual display (Xvfb on :99)
+After=network.target
+
+[Service]
+Type=simple
+User=mboyle
+ExecStart=/usr/bin/Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp -ac
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

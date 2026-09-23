@@ -1,0 +1,15 @@
+[Unit]
+Description=Batched Relay Daemon for O586 prevention
+After=network.target
+
+[Service]
+Type=simple
+Environment=PYTHONPATH=/home/mboyle/teamwork_projects/lifecycle_optimizer
+ExecStart=/home/mboyle/bin/bd-batch-relay start --batch-size 10 --flush-interval 300
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/mboyle/bd-persist/relay.log
+StandardError=append:/home/mboyle/bd-persist/relay.log
+
+[Install]
+WantedBy=default.target

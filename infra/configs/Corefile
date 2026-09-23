@@ -1,0 +1,18 @@
+.:53 {
+    hosts {
+        10.0.70.164 hub-mesh01.mesh.local test5.mesh.local
+        10.0.70.50 bd.mesh.local
+        10.0.70.95 test2.mesh.local
+        10.0.70.72 ai-srv01.mesh.local
+        10.0.70.125 ai-infer01.mesh.local
+        10.0.70.228 ai-ollama01.mesh.local
+        10.0.70.162 ops-cicd01.mesh.local
+        10.0.70.107 ops-test01.mesh.local
+        10.0.70.25 ops-mcp01.mesh.local
+        fallthrough
+    }
+    forward . 127.0.0.53
+    log
+    errors
+    cache 30
+}

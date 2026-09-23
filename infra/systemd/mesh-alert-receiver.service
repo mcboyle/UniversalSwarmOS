@@ -1,0 +1,14 @@
+[Unit]
+Description=Cluster Mesh Alertmanager Webhook Receiver
+After=network.target
+
+[Service]
+Type=simple
+User=mboyle
+WorkingDirectory=/home/mboyle/infra/support-layer
+ExecStart=/usr/bin/python3 /home/mboyle/infra/support-layer/alert_receiver.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

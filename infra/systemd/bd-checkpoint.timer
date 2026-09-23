@@ -1,0 +1,17 @@
+[Unit]
+Description=BD continuity checkpoint every 10 minutes
+[Timer]
+# ABSOLUTE ANCHOR. OnUnitActiveSec WAS REMOVED 2026-09-07 AND THIS IS WHY:
+# with OnBootSec + OnUnitActiveSec ONLY, every anchor is RELATIVE. This unit started
+# ~40 min into a boot, so OnBootSec=2min was already spent on arrival and there was no
+# activation to hang OnUnitActiveSec on. Result: NEXT="-", no elapse ever scheduled --
+# while `systemctl is-active` answered "active" and the last run exited 0.
+# DEAD SINCE 2026-09-04 18:00:04Z AND EVERY STATUS FIELD READ GREEN THE WHOLE TIME.
+# OnCalendar cannot be spent and needs no prior activation, so a late start cannot
+# silence it. Persistent=true catches up one missed run after downtime.
+OnBootSec=2min
+OnCalendar=*:0/10
+AccuracySec=30s
+Persistent=true
+[Install]
+WantedBy=timers.target

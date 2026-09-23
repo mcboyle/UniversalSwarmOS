@@ -1,0 +1,13 @@
+[Unit]
+Description=Mesh Telemetry and GPU Exporter
+After=network.target
+
+[Service]
+Type=simple
+User=mboyle
+ExecStart=/usr/bin/python3 /home/mboyle/infra/scripts/mesh_exporter.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

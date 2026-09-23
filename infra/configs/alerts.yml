@@ -1,0 +1,72 @@
+groups:
+  - name: cluster_mesh_alerts
+    rules:
+      - alert: NodeDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+          tier: mesh-infrastructure
+        annotations:
+          summary: "Target {{ $labels.instance }} (job {{ $labels.job }}) is down"
+          description: "Scrape target {{ $labels.instance }} has been unreachable for more than 2 minutes."
+
+      - alert: GpuTemperatureCritical
+        expr: gpu_temperature_celsius > 75
+        for: 1m
+        labels:
+          severity: critical
+          tier: gpu-acceleration
+        annotations:
+          summary: "GPU core temperature critical on {{ $labels.instance }}"
+          description: "Tesla T4 GPU on {{ $labels.instance }} ({{ $labels.ip }}) has reached {{ $value }}°C (threshold: > 75°C)."
+
+      - alert: GpuTemperatureWarning
+        expr: gpu_temperature_celsius > 70
+        for: 2m
+        labels:
+          severity: warning
+          tier: gpu-acceleration
+        annotations:
+          summary: "GPU core temperature elevated on {{ $labels.instance }}"
+          description: "Tesla T4 GPU on {{ $labels.instance }} ({{ $labels.ip }}) is at {{ $value }}°C (threshold: > 70°C)."
+
+      - alert: GpuMemorySaturation
+        expr: (gpu_memory_used_bytes{service!="ollama"} / gpu_memory_total_bytes{service!="ollama"}) > 0.95
+        for: 2m
+        labels:
+          severity: critical
+          tier: gpu-acceleration
+        annotations:
+          summary: "Dedicated inference VRAM saturation on {{ $labels.instance }}"
+          description: "VRAM utilization on dedicated worker {{ $labels.instance }} ({{ $labels.service }}) is sustained at {{ $value | humanizePercentage }} (> 95%)."
+
+      - alert: HostDiskSaturation
+        expr: ((node_filesystem_size_bytes - node_filesystem_free_bytes) / node_filesystem_size_bytes) > 0.85
+        for: 2m
+        labels:
+          severity: critical
+          tier: storage-capacity
+        annotations:
+          summary: "Disk space critically low on {{ $labels.instance }}"
+          description: "Mountpoint {{ $labels.mountpoint }} on {{ $labels.instance }} is {{ $value | humanizePercentage }} full (> 85%)."
+
+      - alert: HostDiskWarning
+        expr: ((node_filesystem_size_bytes - node_filesystem_free_bytes) / node_filesystem_size_bytes) > 0.80
+        for: 5m
+        labels:
+          severity: warning
+          tier: storage-capacity
+        annotations:
+          summary: "Disk space warning on {{ $labels.instance }}"
+          description: "Mountpoint {{ $labels.mountpoint }} on {{ $labels.instance }} is {{ $value | humanizePercentage }} full (> 80%)."
+
+      - alert: FabricMtuJumboDrop
+        expr: fabric_jumbo_ping_loss_ratio > 0
+        for: 1m
+        labels:
+          severity: critical
+          tier: network-fabric
+        annotations:
+          summary: "Jumbo frame packet loss detected to {{ $labels.target }}"
+          description: "MTU 9000 (8972-byte payload) probe from {{ $labels.source }} to {{ $labels.target }} ({{ $labels.ip }}) reports {{ $value | humanizePercentage }} packet loss."

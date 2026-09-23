@@ -1,0 +1,350 @@
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "http://127.0.0.1:8787/w/claude",
+    "_CLAUDE_CODE_ASSUME_FIRST_PARTY_BASE_URL": "1",
+    "ENABLE_TOOL_SEARCH": "true"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(git fetch *)",
+      "Bash(venv/bin/python toolchain/bin/bd-band-derive *)",
+      "Bash(venv/bin/python toolchain/bin/bd-freshcheck *)",
+      "Bash(venv/bin/python toolchain/bin/bd-footguns --check *)",
+      "Bash(venv/bin/python toolchain/bin/bd-footguns --explain *)",
+      "Bash(venv/bin/python toolchain/bin/bd-guardcheck*)",
+      "Bash(curl -s http://127.0.0.1:5555/api/health*)",
+      "Bash(systemctl is-active *)"
+    ],
+    "defaultMode": "bypassPermissions"
+  },
+  "model": "claude-opus-4-6",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/mboyle/bd-persist/harness/bd-lawsum-sessionstart.sh"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/mboyle/bd-persist/harness/bd-rolestate-sessionstart.sh"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/home/mboyle/.caveman/bin/caveman-proxy' native-hook claude --adapter '/usr/lib/node_modules/@caveman-ai/cli/dist/native-hook-fast.js'",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/mboyle/bd-persist/plugins/bd-context-guard/hooks/session-start-role-slice.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /home/mboyle/bd-persist/harness/bd-handoff-snapshot.sh"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/home/mboyle/.caveman/bin/caveman-proxy' native-hook claude --adapter '/usr/lib/node_modules/@caveman-ai/cli/dist/native-hook-fast.js'",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/mboyle/bd-persist/plugins/bd-context-guard/hooks/session-start-role-slice.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/mboyle/bd-persist/harness/bd-toolpin-hook.py"
+          },
+          {
+            "type": "command",
+            "command": "python3 /home/mboyle/bd-persist/harness/bd-tripwire-hook.py"
+          },
+          {
+            "type": "command",
+            "command": "python3 /home/mboyle/bd-persist/harness/bd-battery-hook.py"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/home/mboyle/.caveman/bin/caveman-proxy' native-hook claude --adapter '/usr/lib/node_modules/@caveman-ai/cli/dist/native-hook-fast.js'",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/usr/bin/caveman' shrink-hook",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /home/mboyle/bd-persist/harness/bd-tripwire-any.py",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "^(Bash|run_command|exec_command|say|mcp__bd__say)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/mboyle/bd-persist/plugins/bd-fleet-mcp/hooks/pre-tool-use-say.sh",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "^(Bash|run_command|exec_command)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/mboyle/bd-persist/plugins/bd-cut-hygiene/hooks/pre-tool-use-test-filter.sh",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "^(Bash|run_command|exec_command)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/mboyle/bd-persist/plugins/bd-dispatch-ops/hooks/pre-dispatch-rule21.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/mboyle/bd-persist/harness/bd-persist-index-hook.sh"
+          },
+          {
+            "type": "command",
+            "command": "/home/mboyle/bd-verdict-write-hook.sh"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/home/mboyle/.caveman/bin/caveman-proxy' native-hook claude --adapter '/usr/lib/node_modules/@caveman-ai/cli/dist/native-hook-fast.js'",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "^(Write|Edit|MultiEdit|write_to_file|replace_file_content|apply_patch)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/mboyle/bd-persist/plugins/bd-cut-hygiene/hooks/post-verdict-write-release.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/home/mboyle/.caveman/bin/caveman-proxy' native-hook claude --adapter '/usr/lib/node_modules/@caveman-ai/cli/dist/native-hook-fast.js'",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /home/mboyle/bd-persist/harness/bd-touch-typed.sh"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/mboyle/bd-persist/plugins/bd-context-guard/hooks/turn-budget-guard.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/home/mboyle/.caveman/bin/caveman-proxy' native-hook claude --adapter '/usr/lib/node_modules/@caveman-ai/cli/dist/native-hook-fast.js'",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/home/mboyle/.caveman/bin/caveman-proxy' native-hook claude --adapter '/usr/lib/node_modules/@caveman-ai/cli/dist/native-hook-fast.js'",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/home/mboyle/.caveman/bin/caveman-proxy' native-hook claude --adapter '/usr/lib/node_modules/@caveman-ai/cli/dist/native-hook-fast.js'",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/home/mboyle/.caveman/bin/caveman-proxy' native-hook claude --adapter '/usr/lib/node_modules/@caveman-ai/cli/dist/native-hook-fast.js'",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/mboyle/bd-persist/harness/bd-turn-hook.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/mboyle/bd-persist/harness/bd-narrative-guard.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/mboyle/bd-persist/plugins/bd-context-guard/hooks/stop-narration-meter.py",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/home/mboyle/.caveman/bin/caveman-proxy' native-hook claude --adapter '/usr/lib/node_modules/@caveman-ai/cli/dist/native-hook-fast.js'",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  },
+  "worktree": {
+    "baseRef": "fresh"
+  },
+  "enabledPlugins": {
+    "superpowers@claude-plugins-official": false,
+    "code-review@claude-plugins-official": true,
+    "github@claude-plugins-official": true,
+    "compound-engineering@compound-engineering-plugin": false,
+    "skill-creator@claude-plugins-official": true,
+    "frontend-design@claude-plugins-official": false
+  },
+  "extraKnownMarketplaces": {
+    "compound-engineering-plugin": {
+      "source": {
+        "source": "github",
+        "repo": "EveryInc/compound-engineering-plugin"
+      }
+    }
+  },
+  "outputStyle": "Concise",
+  "effortLevel": "high",
+  "modelSettings": {
+    "claude-opus-5": {
+      "effortLevel": "high"
+    },
+    "claude-fable-5-1": {
+      "effortLevel": "high"
+    }
+  },
+  "autoCompactWindow": 500000,
+  "skipDangerousModePermissionPrompt": true,
+  "theme": "dark",
+  "verbose": false,
+  "autoCompactEnabled": true,
+  "switchModelsOnFlag": false,
+  "autoContinueAtUsageLimit": true,
+  "remoteControlAtStartup": true,
+  "crossSessionInbound": "accept",
+  "inputNeededNotifEnabled": true,
+  "agentPushNotifEnabled": true,
+  "useAutoModeDuringPlan": true
+}

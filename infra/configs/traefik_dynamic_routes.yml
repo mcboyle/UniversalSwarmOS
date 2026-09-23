@@ -1,0 +1,13 @@
+http:
+  routers:
+    ollama-route:
+      rule: "Host(`ollama.mesh.local`)"
+      service: ollama-service
+      entryPoints:
+        - web
+
+  services:
+    ollama-service:
+      loadBalancer:
+        servers:
+          - url: "http://10.0.70.228:11434"

@@ -1,0 +1,12 @@
+[Unit]
+Description=Ephemeral Lens Lifecycle Manager Canary
+
+[Service]
+Type=simple
+Environment=ELLM_EXACT_EQUALITY=1
+ExecStart=/home/mboyle/bin/bd-ellm-canary.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

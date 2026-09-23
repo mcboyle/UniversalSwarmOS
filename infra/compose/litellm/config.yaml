@@ -1,0 +1,35 @@
+# LiteLLM proxy config -- fleet-local models only (Ollama on 10.0.70.228, 10.0.70.125, 10.0.70.72).
+# Container: see run.sh beside this file. Health: GET /health (per-model), /health/liveliness, /v1/models.
+model_list:
+  - model_name: qwen2.5-coder-14b
+    litellm_params: {model: ollama/qwen2.5-coder:14b, api_base: http://10.0.70.228:11434}
+  - model_name: qwen2.5-coder-14b
+    litellm_params: {model: ollama/qwen2.5-coder:14b, api_base: http://10.0.70.125:11434}
+  - model_name: qwen2.5-coder-7b
+    litellm_params: {model: ollama/qwen2.5-coder:7b, api_base: http://10.0.70.228:11434}
+  - model_name: qwen3-8b
+    litellm_params: {model: ollama/qwen3:8b, api_base: http://10.0.70.125:11434}
+  - model_name: llama-guard3-8b
+    litellm_params: {model: ollama/llama-guard3:8b, api_base: http://10.0.70.125:11434}
+  - model_name: nomic-embed-text
+    litellm_params: {model: ollama/nomic-embed-text, api_base: http://10.0.70.228:11434}
+    model_info: {mode: embedding}
+  - model_name: bge-m3
+    litellm_params: {model: ollama/bge-m3:latest, api_base: http://10.0.70.72:11434}
+    model_info: {mode: embedding}
+  - model_name: trivial
+    litellm_params: {model: ollama/qwen2.5-coder:7b, api_base: http://10.0.70.228:11434}
+  - model_name: trivial
+    litellm_params: {model: ollama/qwen3:8b, api_base: http://10.0.70.125:11434}
+  - model_name: trivial
+    litellm_params: {model: ollama/qwen2.5:7b, api_base: http://10.0.70.72:11434}
+router_settings:
+  routing_strategy: simple-shuffle
+  num_retries: 1
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+litellm_settings:
+  drop_params: true
+  request_timeout: 120
+  health_check_timeout: 300
+  success_callbacks: ["langfuse"]

@@ -1,0 +1,72 @@
+#O892-disabled * * * * * [ "$(grep -vc '^#' /home/mboyle/bd-persist/brief-queue.txt)" -gt 0 ] && bash /home/mboyle/bd-persist/harness/bd-load-gate.sh >> /home/mboyle/bd-persist/load-gate.log 2>&1 && BD_DISPATCH_MAX_ACTIVE=100 flock -n /home/mboyle/bd-persist/assign-idle.lock /home/mboyle/bd-assign-idle.sh >> /home/mboyle/bd-persist/assign-idle.cron.log 2>&1
+*/10 * * * * /home/mboyle/bd-worker-poll.sh >> /home/mboyle/bd-persist/worker-poll.cron.log 2>&1
+* * * * * /home/mboyle/bd-status.sh
+*/3 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /home/mboyle/bd-persist/autobounce.lock /home/mboyle/bd-autobounce-scan.sh 15 >> /home/mboyle/bd-persist/autobounce.cron.log 2>&1
+*/3 * * * * bash /home/mboyle/bd-persist/harness/bd-load-gate.sh >> /home/mboyle/bd-persist/load-gate.log 2>&1 && BD_DISPATCH_MAX_ACTIVE=100 flock -n /home/mboyle/bd-persist/codex-lens-driver.lock /home/mboyle/bd-codex-lens.sh driver >> /home/mboyle/bd-persist/harness-work/codex-lens/driver.cron.log 2>&1
+*/5 * * * * BD_GATE_T_TESTS=450 BD_GATE_T_PRECUT=600 BD_DISPATCH_MAX_ACTIVE=100 flock -n -E 75 /tmp/bd-collect-sweep.lock bash /home/mboyle/bd-persist/harness/bd-collect-sweep.sh >> /home/mboyle/bd-persist/collect-sweep.cron.log 2>&1; [ $? = 75 ] && echo "$(date -u +\%FT\%TZ) TICK-SKIPPED sweep" >> /home/mboyle/bd-persist/collect-sweep.cron.log
+* * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-limit-reset.lock bash /home/mboyle/bd-persist/harness/bd-limit-reset-watch.sh >> /home/mboyle/bd-persist/limit-reset-watch.cron.log 2>&1
+*/5 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /home/mboyle/bd-persist/limit-watch.lock bash -c "bash /home/mboyle/bd-persist/harness/test-bd-limit-watch-h85-residuals.sh >> /home/mboyle/bd-persist/harness-work/three-pool/limit-watch.cron.log 2>&1 && BD_LIMIT_CADENCE_SECONDS=7200 /home/mboyle/bd-limit-watch.sh >> /home/mboyle/bd-persist/harness-work/three-pool/limit-watch.cron.log 2>&1"
+*/15 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-triage.lock bash /home/mboyle/bd-persist/harness/bd-triage.sh --sweep >> /home/mboyle/bd-persist/triage.cron.log 2>&1
+*/2 * * * * BD_REVIEW_SELFMUT_BUDGET=300 BD_REVIEW_LOG=/home/mboyle/bd-persist/review.log BD_DISPATCH_MAX_ACTIVE=100 flock -n -E 75 /home/mboyle/bd-persist/prep-rescan.lock bash /home/mboyle/bd-prep-rescan.sh >> /home/mboyle/bd-persist/prep-rescan.cron.log 2>&1; [ $? = 75 ] && echo "$(date -u +\%FT\%TZ) TICK-SKIPPED prep-rescan" >> /home/mboyle/bd-persist/prep-rescan.cron.log
+1 */2 * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /home/mboyle/bd-persist/usage-probe.lock bash /home/mboyle/bd-persist/harness/bd-usage-probe.sh >> /home/mboyle/bd-persist/usage-probe.cron.log 2>&1
+3-59/10 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-flow.lock bash /home/mboyle/bd-persist/harness/bd-flow-consume.sh --check >> /home/mboyle/bd-persist/flow.cron.log 2>&1
+*/20 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-lawsum.lock bash /home/mboyle/bd-persist/harness/bd-lawsum.sh --quiet >> /home/mboyle/bd-persist/lawsum.cron.log 2>&1
+5,25,45 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-ciguard.lock /home/mboyle/bd-persist/harness/bd-ciguard.sh >> /home/mboyle/bd-persist/ciguard.cron.log 2>&1
+*/5 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-staleness.lock bash /home/mboyle/bd-persist/harness/bd-staleness-cron.sh >> /home/mboyle/bd-persist/logs/staleness-heartbeat.log 2>&1
+* * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-working.lock /home/mboyle/bd-working.sh >/dev/null 2>&1
+17 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-promptcore.lock /home/mboyle/bd-prompt-core-check.sh >> /home/mboyle/bd-persist/prompt-core.cron.log 2>&1
+5-59/10 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /home/mboyle/bd-persist/return-path.lock /home/mboyle/bd-return-path-check.sh --since 15 --quiet >> /home/mboyle/bd-persist/return-path-check.log 2>&1
+5 */4 * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-night-digest.lock bash /home/mboyle/bd-persist/harness/bd-night-digest.sh >> /home/mboyle/bd-persist/night-digest.cron.log 2>&1
+7,37 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-pm-heartbeat.lock bash /home/mboyle/bd-persist/harness/bd-pm-heartbeat.sh >> /home/mboyle/bd-persist/pm-heartbeat.cron.log 2>&1
+*/2 * * * * /home/mboyle/bd-persist/harness/bd-review-claims-guard.sh >> /home/mboyle/bd-persist/logs/claims-guard.log 2>&1
+#O932-retired */3 * * * * /home/mboyle/bd-persist/harness/bd-codex-unfreeze-on-ready.sh >> /home/mboyle/bd-persist/logs/unfreeze.log 2>&1
+#O932-retired */4 * * * * /home/mboyle/bd-persist/harness/bd-collect-local.sh >> /home/mboyle/bd-persist/logs/collect-local.log 2>&1
+* * * * * /usr/bin/python3 /home/mboyle/bd-persist/harness/bd-cut-accounting tick > /home/mboyle/bd-persist/accounting/tick.log 2>&1 # bd-cut-accounting measurement-only
+#O932-retired 2-59/10 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-local-nurse.lock /home/mboyle/bd-persist/harness/bd-local-sweep.sh nurse >> /home/mboyle/bd-persist/logs/local-sweep.cron.log 2>&1
+#O932-retired 4-59/10 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-local-codexwatch.lock /home/mboyle/bd-persist/harness/bd-local-sweep.sh codexwatch >> /home/mboyle/bd-persist/logs/local-sweep.cron.log 2>&1
+*/5 * * * * BD_IDLE_MIN=20 BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-idle-reaper.lock bash /home/mboyle/bd-persist/harness/bd-idle-reaper.sh --dry-run >> /home/mboyle/bd-persist/logs/idle-reaper.cron.log 2>&1
+6-59/10 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-landed-cron.lock bash /home/mboyle/bd-persist/harness/bd-landed-cron.sh >> /home/mboyle/bd-persist/logs/landed-cron.log 2>&1
+8 * * * * cd /home/mboyle/bd-persist/harness/bd-rag && sh -c "timeout 3300 venv/bin/python index2.py && rsync -q --temp-dir=/srv/bd-rag /home/mboyle/bd-persist/rag/store.sqlite mboyle@10.0.70.182:/srv/bd-rag/store.sqlite" >> /home/mboyle/bd-persist/rag/index.log 2>&1  # bd-rag v2 (O330): rebuild + ship to cache .182
+40 3 * * * for f in /home/mboyle/bd-persist/*.cron.log /home/mboyle/bd-persist/*.log /home/mboyle/bd-persist/logs/*.log /home/mboyle/bd-persist/harness-work/three-pool/*.cron.log /home/mboyle/bd-persist/rag/index.log; do [ -f "$f" ] && [ $(wc -l < "$f") -gt 3000 ] && tail -n 3000 "$f" > "$f.tmp" && cat "$f.tmp" > "$f" && rm -f "$f.tmp"; done # bd-cron-logbound
+17 4 * * * /usr/bin/python3 /home/mboyle/bd-persist/harness/bd-memory-verify.py >> /home/mboyle/bd-persist/logs/memory-verify.log 2>&1  # W6c memory reliability (O326)
+17 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-persist-backup.lock bash /home/mboyle/bd-persist/harness/bd-persist-backup.sh >> /home/mboyle/bd-persist/backups/backup.log 2>&1  # O354/H317
+*/10 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-deploy-trio.lock bash /home/mboyle/bd-persist/harness/bd-deploy-trio.sh deploy >> /home/mboyle/bd-persist/logs/deploy-trio.cron.log 2>&1  # O372: live site follows main, health+rollback
+4,14,24,34,44,54 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-ollama-guard.lock bash /home/mboyle/bd-persist/harness/bd-ollama-guard.sh >> /home/mboyle/bd-persist/logs/ollama-guard.cron.log 2>&1 # H330
+6-59/10 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-dispatch-check.lock bash /home/mboyle/bd-persist/harness/bd-dispatch-check.sh >> /home/mboyle/bd-persist/logs/dispatch-check.cron.log 2>&1 # H334
+*/5 * * * * BD_OFFER_MAX_PREP=6 BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-offer-sweep-v2.lock bash /home/mboyle/bd-persist/harness/bd-offer-sweep.sh >> /home/mboyle/bd-persist/logs/offer-sweep.cron.log 2>&1   # H338 lens-jam closer (bd-pm-B 2026-09-14)
+*/2 * * * * /home/mboyle/bd-persist/harness/bd-land-notify.sh >> /home/mboyle/bd-persist/logs/land-notify.log 2>&1
+3-59/5 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-host-watch.lock bash /home/mboyle/bd-persist/harness/bd-host-watch.sh >> /home/mboyle/bd-persist/logs/host-watch.cron.log 2>&1
+*/10 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-inbox-drain.lock bash /home/mboyle/bd-persist/harness/bd-inbox-drain.sh >> /home/mboyle/bd-persist/logs/inbox-drain.cron.log 2>&1   # H471 batch-seats drainer (bd-worker-A3-A 2026-09-14)
+#O837-off */3 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-codex-nudge.lock bash /home/mboyle/bd-persist/harness/bd-codex-nudge.sh >> /home/mboyle/bd-persist/logs/codex-nudge.cron.log 2>&1  # O644
+* * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /home/mboyle/bd-persist/assign-lens.cron.lock  /home/mboyle/bd-persist/harness/bd-assign-lens.sh >>/home/mboyle/bd-persist/logs/assign-lens.cron.log 2>&1 # H499
+#O837-off */5 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-scout-budget.lock bash /home/mboyle/bd-persist/harness/bd-scout-budget.sh  # O666
+17 3 * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-stale-gate-cron.lock bash /home/mboyle/bd-persist/harness/bd-stale-gate-cron.sh --nightly >> /home/mboyle/bd-persist/logs/stale-gate-cron.log 2>&1
+*/5 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-auto-away.lock bash /home/mboyle/bd-persist/harness/bd-auto-away.sh >> /home/mboyle/bd-persist/logs/auto-away.log 2>&1
+0 4 * * * /home/mboyle/infra/scripts/fleet-maintenance.sh
+3 */2 * * * /bin/bash /home/mboyle/bd-persist/harness/bd-agy-usage.sh >> /home/mboyle/bd-persist/logs/agy-usage.cron.log 2>&1
+*/5 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-turn-watch.lock bash /home/mboyle/bd-persist/harness/bd-turn-watch.sh >> /home/mboyle/bd-persist/turns/turn-watch.cron.log 2>&1
+*/10 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-bounce-watch.lock bash /home/mboyle/bd-persist/harness/bd-bounce-watch.sh >> /home/mboyle/bd-persist/turns/bounce-watch.cron.log 2>&1
+0 22 20 9 * /home/mboyle/bd-say.sh $(head -1 /home/mboyle/bd-persist/PM-SEAT) 'limit: POOL B RESET NOW (O869b) -> bd-restart.sh with BD_RESTART_POOLS="A B"' >> /home/mboyle/bd-persist/logs/bd-poolb-return.log 2>&1 # bd-poolb-return O869b
+45 4 * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-twin-drift.lock bash /home/mboyle/bd-persist/harness/bd-twin-drift-check.sh >> /home/mboyle/bd-persist/logs/twin-drift.log 2>&1
+*/30 * * * * BD_CHECKIN_SAY=1 bash /home/mboyle/bd-persist/harness/bd-checkin.sh > /tmp/bd-checkin.out 2>&1 # bd-checkin O872 O939 delta-only
+*/2 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-main-guard.lock bash /home/mboyle/bd-persist/harness/bd-main-guard.sh >> /home/mboyle/bd-persist/logs/main-guard.cron.log 2>&1 # O886 main-checkout guard
+0 3 * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-harness-git-commit.lock bash /home/mboyle/bd-persist/harness/bd-harness-cron-commit.sh >> /home/mboyle/bd-persist/logs/harness-git-commit.log 2>&1 # O870d daily harness git commit
+*/3 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-tmux-dispatch.lock bash /home/mboyle/bd-persist/harness/bd-tmux-dispatch.sh >> /home/mboyle/bd-persist/logs/tmux-dispatch.cron.log 2>&1 # O889 tmux builders from brief-queue
+* * * * * /home/mboyle/bd-relay.sh >/dev/null 2>&1
+*/5 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-codex-poll.lock bash /home/mboyle/bd-persist/harness/bd-codex-poll.sh >> /home/mboyle/bd-persist/logs/codex-poll.cron.log 2>&1 # O905 codex seat poll
+# O1118 2026-09-21T02:29Z: 6 lines restored from crontab.pre-O1072 (found missing 02:2xZ; autoland absent -> PR937 unmerged)
+*/5 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-prose-enforce.lock bash /home/mboyle/bd-persist/harness/bd-prose-enforce.sh >> /home/mboyle/bd-persist/logs/prose-enforce.cron.log 2>&1   # O966 prose/efficiency enforcement
+*/10 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-batch-release.lock bash /home/mboyle/bd-persist/harness/bd-batch-release.sh >> /home/mboyle/bd-persist/logs/batch-release.cron.log 2>&1   # O976 batch lanes U(6)/R(8)
+*/5 * * * * bash /home/mboyle/bd-persist/harness/bd-agy-unblock.sh >/dev/null 2>&1   # O984 AGY survey-prompt unblock
+*/2 * * * * bash /home/mboyle/bd-persist/harness/bd-autoland.sh >> /home/mboyle/bd-persist/logs/autoland.cron.log 2>&1   # O1014 auto-land train PRs on CI green
+*/5 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-roadmap-refresh.lock bash /home/mboyle/bd-persist/harness/bd-roadmap-refresh.sh >>/home/mboyle/bd-persist/logs/roadmap-refresh.log 2>&1  # O1044
+15 6 * * 1 BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-underived.lock bash /home/mboyle/bd-persist/harness/bd-underived-census.sh >> /home/mboyle/bd-persist/logs/underived-census.log 2>&1  # O1057 weekly underived census, integrator-owned
+*/2 * * * * BD_DISPATCH_MAX_ACTIVE=100 flock -n /tmp/bd-fleet-quota-probe.lock bash /home/mboyle/bin/bd-fleet-quota-probe.sh >> /home/mboyle/bd-persist/logs/quota-probe.cron.log 2>&1
+0 * * * * bash /home/mboyle/bin/bd-log-rotate.sh >> /home/mboyle/bd-persist/logs/log-rotate.cron.log 2>&1
+*/5 * * * * bash /home/mboyle/bd-persist/harness/bd-usage-monitor.sh
+0 * * * * /home/mboyle/bd-persist/harness/ghost-worktree-sweeper.sh
+*/2 * * * * /home/mboyle/bd-persist/harness/bd-telemetry-guard.py >> /home/mboyle/bd-persist/logs/telemetry-guard.log 2>&1
+*/15 * * * * ssh 10.0.70.82 'python3 /home/mboyle/teamwork_projects/fleet_audit/index_all.py' >> /home/mboyle/bd-persist/logs/rag-index-cron.log 2>&1
+0 */4 * * * /usr/bin/python3 /home/mboyle/teamwork_projects/fleet_audit/fleet_scan.py > /tmp/fleet_scan.log 2>&1
+*/3 * * * * flock -n /tmp/bd-auto-merge.lock bash /home/mboyle/bd-auto-merge.sh >> /home/mboyle/bd-persist/logs/auto-merge.cron.log 2>&1
+*/10 * * * * flock -n /tmp/bd-regen-main.lock bash /home/mboyle/bd-persist/harness/bd-regen-main.sh >> /home/mboyle/bd-persist/logs/regen-main.cron.log 2>&1  # H702 (O1265h) regen indexes on main

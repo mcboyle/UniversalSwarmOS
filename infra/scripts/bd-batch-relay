@@ -1,0 +1,378 @@
+#!/usr/bin/env python3
+"""bd-batch-relay: Batched Relay Daemon CLI (Milestone 2).
+
+Intercepts WAKE/READY pings destined for high-volume seats, queues them in
+durable SQLite storage (WAL mode), and flushes consolidated batch payloads
+(BATCH-<timestamp>.md) to target seats based on volume and time triggers.
+Urgent escalation alerts bypass queueing immediately.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import signal
+import sys
+import time
+from pathlib import Path
+
+# Ensure lib directory is importable
+repo_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(repo_root))
+
+from lib.relay_daemon import RelayDaemon  # type: ignore[import-not-found]
+
+DEFAULT_PID_FILE = "/tmp/bd-batch-relay.pid"
+
+
+def get_daemon_instance(args: argparse.Namespace) -> RelayDaemon:
+    """Instantiate RelayDaemon from parsed CLI args."""
+    batch_size = getattr(args, "batch_size", None)
+    flush_interval = getattr(args, "flush_interval", None)
+    return RelayDaemon(
+        db_path=getattr(args, "db", None),
+        inbox_dir=getattr(args, "inbox_dir", None),
+        batch_size=batch_size if batch_size is not None else 5,
+        flush_interval=flush_interval if flush_interval is not None else 120.0,
+        delivery_cmd=getattr(args, "delivery_cmd", None),
+    )
+
+
+def is_pid_alive(pid: int) -> bool:
+    """Check if process with PID is currently alive."""
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def cmd_enqueue(args: argparse.Namespace) -> int:
+
+    pid_file = Path(getattr(args, "pidfile", DEFAULT_PID_FILE))
+    if not pid_file.exists():
+        print("Daemon dead (no pidfile)", file=sys.stderr)
+        return 1
+    try:
+        pid = int(pid_file.read_text().strip())
+        if not is_pid_alive(pid):
+            print("Daemon dead (process missing)", file=sys.stderr)
+            return 1
+    except ValueError:
+        print("Daemon dead (invalid pidfile)", file=sys.stderr)
+        return 1
+
+    pid_file = Path(getattr(args, "pidfile", DEFAULT_PID_FILE))
+    if not pid_file.exists():
+        print("Daemon dead (no pidfile)", file=sys.stderr)
+        return 1
+    try:
+        pid = int(pid_file.read_text().strip())
+        if not is_pid_alive(pid):
+            print("Daemon dead (process missing)", file=sys.stderr)
+            return 1
+    except ValueError:
+        print("Daemon dead (invalid pidfile)", file=sys.stderr)
+        return 1
+    """Handle 'enqueue' subcommand."""
+    daemon = get_daemon_instance(args)
+    res = daemon.enqueue(
+        target=args.target,
+        message=args.message,
+        sender=args.sender or os.environ.get("BD_SEAT", "unknown"),
+        priority=args.priority,
+        auto_flush=not args.no_auto_flush,
+    )
+
+    if getattr(args, "json", False):
+        print(json.dumps(res, indent=2))
+    else:
+        status = res["status"]
+        if status == "escalation_bypass":
+            print(f"[BYPASS] Immediate escalation delivered to {res['target']}: {res['reason']}")
+        elif status == "flushed":
+            batch = res["batch"]
+            print(
+                f"[FLUSHED] Batch threshold reached. Delivered to {res['target']}: "
+                f"{batch['terse_notification']}"
+            )
+        else:
+            print(
+                f"[QUEUED] Buffered for {res['target']} (pending: {res['pending_count']}, "
+                f"id: {res['message_id']})"
+            )
+    return 0
+
+
+def cmd_flush(args: argparse.Namespace) -> int:
+    """Handle 'flush' subcommand."""
+    daemon = get_daemon_instance(args)
+    results = daemon.flush(target=getattr(args, "target", None))
+
+    if getattr(args, "json", False):
+        print(json.dumps(results, indent=2))
+    else:
+        if not results:
+            target_str = f" for {args.target}" if args.target else ""
+            print(f"[FLUSH] No pending messages to flush{target_str}.")
+        else:
+            for b in results:
+                print(f"[FLUSHED] {b['target']}: {b['terse_notification']}")
+    return 0
+
+
+def cmd_start(args: argparse.Namespace) -> int:
+    """Handle 'start' subcommand."""
+    pidfile = Path(getattr(args, "pidfile", None) or DEFAULT_PID_FILE).resolve()
+
+    if pidfile.exists():
+        try:
+            old_pid = int(pidfile.read_text().strip())
+            if is_pid_alive(old_pid):
+                print(f"[ERROR] Relay daemon already running with PID {old_pid}")
+                return 1
+        except (ValueError, OSError):
+            pass
+
+    daemon = get_daemon_instance(args)
+    pidfile.parent.mkdir(parents=True, exist_ok=True)
+
+    is_daemon = getattr(args, "daemon", False)
+    if is_daemon:
+        sys.stdout.flush()
+        sys.stderr.flush()
+        pid = os.fork()
+        if pid > 0:
+            pidfile.write_text(str(pid))
+            print(f"[START] Started batched relay daemon in background (PID: {pid})")
+            return 0
+        os.setsid()
+        devnull = os.open(os.devnull, os.O_RDWR)
+        os.dup2(devnull, sys.stdin.fileno())
+        os.dup2(devnull, sys.stdout.fileno())
+        os.dup2(devnull, sys.stderr.fileno())
+        os.close(devnull)
+    else:
+        pidfile.write_text(str(os.getpid()))
+
+    def sig_handler(signum, frame):
+        pidfile.unlink(missing_ok=True)
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, sig_handler)
+    signal.signal(signal.SIGINT, sig_handler)
+
+    try:
+        if not is_daemon:
+            print(
+                f"[START] Running batched relay daemon (PID: {os.getpid()}, "
+                f"batch_size={daemon.batch_size}, interval={daemon.flush_interval}s)"
+            )
+        daemon.run_daemon_loop(poll_interval=getattr(args, "poll_interval", 1.0))
+    finally:
+        pidfile.unlink(missing_ok=True)
+    return 0
+
+
+def cmd_stop(args: argparse.Namespace) -> int:
+    """Handle 'stop' subcommand."""
+    pidfile = Path(getattr(args, "pidfile", None) or DEFAULT_PID_FILE).resolve()
+    if not pidfile.exists():
+        print(f"[STOP] No running daemon found (pidfile {pidfile} does not exist)")
+        return 0
+
+    try:
+        pid = int(pidfile.read_text().strip())
+    except (ValueError, OSError) as e:
+        print(f"[ERROR] Invalid pidfile content: {e}")
+        return 1
+
+    if not is_pid_alive(pid):
+        print(f"[STOP] Stale pidfile found (PID {pid} is not running). Cleaning up.")
+        pidfile.unlink(missing_ok=True)
+        return 0
+
+    print(f"[STOP] Sending SIGTERM to relay daemon (PID: {pid})...")
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except OSError as e:
+        print(f"[ERROR] Failed to send SIGTERM to PID {pid}: {e}")
+        return 1
+
+    for _ in range(30):
+        if not is_pid_alive(pid):
+            break
+        time.sleep(0.1)
+
+    if is_pid_alive(pid):
+        print("[WARN] Daemon did not stop after 3s. Escalating to SIGKILL...")
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
+
+    pidfile.unlink(missing_ok=True)
+    print("[STOP] Relay daemon stopped.")
+    return 0
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    """Handle 'status' subcommand."""
+    daemon = get_daemon_instance(args)
+    status_data = daemon.get_status(target=getattr(args, "target", None))
+
+    pidfile = Path(getattr(args, "pidfile", None) or DEFAULT_PID_FILE).resolve()
+    daemon_running = False
+    daemon_pid: int | None = None
+    if pidfile.exists():
+        try:
+            pid = int(pidfile.read_text().strip())
+            if is_pid_alive(pid):
+                daemon_running = True
+                daemon_pid = pid
+        except (ValueError, OSError):
+            pass
+
+    status_data["daemon_running"] = daemon_running
+    status_data["daemon_pid"] = daemon_pid
+
+    if getattr(args, "json", False):
+        print(json.dumps(status_data, indent=2))
+    else:
+        print("=== Batched Relay Daemon Status ===")
+        print(f"Daemon Running : {'YES (PID ' + str(daemon_pid) + ')' if daemon_running else 'NO'}")
+        print(f"Database Path  : {status_data['db_path']}")
+        print(f"Batch Size (N) : {status_data['batch_size']}")
+        print(f"Flush Time (T) : {status_data['flush_interval']}s")
+
+        target = getattr(args, "target", None)
+        if target:
+            print(f"Target         : {status_data['target']}")
+            print(f"Pending Msgs   : {status_data['pending_count']}")
+            print(f"Flushed Msgs   : {status_data['flushed_count']}")
+            print(f"Oldest Pending : {status_data['oldest_pending'] or 'None'}")
+        else:
+            print(f"Total Pending  : {status_data['total_pending']}")
+            print(f"Total Flushed  : {status_data['total_flushed']}")
+            if status_data.get("targets_pending"):
+                print("Targets with Pending Messages:")
+                for tgt, info in status_data["targets_pending"].items():
+                    print(f"  - {tgt}: {info['count']} messages (oldest: {info['oldest']})")
+            else:
+                print("Targets with Pending Messages: None")
+    return 0
+
+
+def cmd_inspect(args: argparse.Namespace) -> int:
+    """Handle 'inspect' subcommand."""
+    daemon = get_daemon_instance(args)
+    messages = daemon.inspect_messages(
+        target=getattr(args, "target", None),
+        status=getattr(args, "status", "pending"),
+        limit=getattr(args, "limit", 20),
+    )
+
+    if getattr(args, "json", False):
+        print(json.dumps(messages, indent=2))
+    else:
+        print(f"=== Messages ({len(messages)} items, status={args.status}) ===")
+        for m in messages:
+            print(
+                f"[{m['id']}] {m['queued_at']} -> {m['target']} "
+                f"(from: {m['sender']}, prio: {m['priority']}, status: {m['status']})"
+            )
+            print(f"    Payload: {m['payload']}")
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Construct command-line arguments parser."""
+    base_opts = argparse.ArgumentParser(add_help=False)
+    base_opts.add_argument("--db", type=str, default=argparse.SUPPRESS, help="SQLite queue database path")
+    base_opts.add_argument("--inbox-dir", type=str, default=argparse.SUPPRESS, help="Inbox directory path")
+    base_opts.add_argument(
+        "--batch-size", type=int, default=argparse.SUPPRESS, help="Batch volume threshold N (default: 5)"
+    )
+    base_opts.add_argument(
+        "--flush-interval", type=float, default=argparse.SUPPRESS, help="Batch time window T in seconds"
+    )
+    base_opts.add_argument(
+        "--delivery-cmd", type=str, default=argparse.SUPPRESS, help="Delivery shell command template"
+    )
+    base_opts.add_argument(
+        "--pidfile", type=str, default=argparse.SUPPRESS, help="Daemon PID file path"
+    )
+    base_opts.add_argument(
+        "--json", action="store_true", default=argparse.SUPPRESS, help="Format output as JSON"
+    )
+
+    parser = argparse.ArgumentParser(
+        prog="bd-batch-relay",
+        description="Batched Relay Daemon for O586 context burn prevention.",
+        parents=[base_opts],
+    )
+
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # enqueue
+    p_enq = subparsers.add_parser("enqueue", parents=[base_opts], help="Enqueue or immediately route a message")
+    p_enq.add_argument("--target", required=True, help="Target seat (e.g. bd-pm, bd-integrator)")
+    p_enq.add_argument("--message", required=True, help="Message payload text")
+    p_enq.add_argument("--sender", help="Sender identifier")
+    p_enq.add_argument("--priority", default="normal", help="Priority level (urgent/normal)")
+    p_enq.add_argument(
+        "--no-auto-flush",
+        action="store_true",
+        help="Do not trigger immediate flush even if batch size is reached",
+    )
+
+    # flush
+    p_flush = subparsers.add_parser("flush", parents=[base_opts], help="Force flush pending messages")
+    p_flush.add_argument("--target", help="Target seat to flush (default: all)")
+
+    # start
+    p_start = subparsers.add_parser("start", parents=[base_opts], help="Start the relay daemon loop")
+    p_start.add_argument("--daemon", "-d", action="store_true", help="Fork daemon to background")
+    p_start.add_argument("--poll-interval", type=float, default=1.0, help="Loop poll interval in seconds")
+
+    # stop
+    subparsers.add_parser("stop", parents=[base_opts], help="Stop the running relay daemon")
+
+    # status
+    p_stat = subparsers.add_parser("status", parents=[base_opts], help="Show daemon and queue status")
+    p_stat.add_argument("--target", help="Filter status by target seat")
+
+    # inspect
+    p_insp = subparsers.add_parser("inspect", parents=[base_opts], help="Inspect queued messages")
+    p_insp.add_argument("--target", help="Filter by target seat")
+    p_insp.add_argument("--status", default="pending", choices=["pending", "flushed", "all"])
+    p_insp.add_argument("--limit", type=int, default=20)
+
+    return parser
+
+
+def main() -> int:
+    parser = build_parser()
+    args = parser.parse_args()
+
+    dispatch_map = {
+        "enqueue": cmd_enqueue,
+        "flush": cmd_flush,
+        "start": cmd_start,
+        "stop": cmd_stop,
+        "status": cmd_status,
+        "inspect": cmd_inspect,
+    }
+
+    handler = dispatch_map.get(args.command)
+    if not handler:
+        parser.print_help()
+        return 1
+    return handler(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,14 @@
+use_default_settings: true
+general:
+  debug: false
+  instance_name: "Local Dev Search"
+server:
+  port: 8080
+  bind_address: "0.0.0.0"
+  secret_key: "antigravity_local_dev_searxng_secret_key_fleet"
+  limiter: false
+search:
+  safe_search: 0
+  formats:
+    - html
+    - json

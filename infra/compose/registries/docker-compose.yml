@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  apt-cacher-ng:
+    image: sameersbn/apt-cacher-ng:latest
+    container_name: apt-cacher-ng
+    restart: unless-stopped
+    ports:
+      - "3142:3142"
+    volumes:
+      - apt-cacher-data:/var/cache/apt-cacher-ng
+
+  devpi:
+    image: jonasal/devpi-server:latest
+    container_name: devpi-server
+    restart: unless-stopped
+    ports:
+      - "3141:3141"
+    environment:
+      - DEVPISERVER_SERVERDIR=/data/server
+      - DEVPI_PASSWORD=devpi
+      - DEVPISERVER_REQUEST_TIMEOUT=60   # O990 2026-09-20: pypi /simple/ project-list refresh exceeded the 5 s default -> "project does not exist" for every uncached name
+    volumes:
+      - devpi-data:/data
+
+  verdaccio:
+    image: verdaccio/verdaccio:latest
+    container_name: verdaccio
+    restart: unless-stopped
+    ports:
+      - "4873:4873"
+    volumes:
+      - verdaccio-storage:/verdaccio/storage
+      - verdaccio-plugins:/verdaccio/plugins
+
+  docker-mirror:
+    image: registry:2
+    container_name: docker-mirror
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      REGISTRY_PROXY_REMOTEURL: https://registry-1.docker.io
+      REGISTRY_STORAGE_DELETE_ENABLED: "true"
+    volumes:
+      - docker-mirror-data:/var/lib/registry
+
+  squid:
+    image: ubuntu/squid:latest
+    container_name: squid-cache
+    restart: unless-stopped
+    ports:
+      - "3128:3128"
+    volumes:
+      - squid-cache-data:/var/spool/squid
+
+volumes:
+  apt-cacher-data:
+  devpi-data:
+  verdaccio-storage:
+  verdaccio-plugins:
+  docker-mirror-data:
+  squid-cache-data:

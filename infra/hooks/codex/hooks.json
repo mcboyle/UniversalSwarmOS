@@ -1,0 +1,145 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 /home/mboyle/bd-persist/efficiency-hook/hook.py",
+            "timeout": 2,
+            "statusMessage": "Checking repeated validation"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'/usr/bin/caveman' shrink-hook"
+          }
+        ]
+      },
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 /home/mboyle/bd-persist/harness/bd-tripwire-hook.py",
+            "timeout": 5,
+            "statusMessage": "bd-tripwire"
+          }
+        ]
+      },
+      {
+        "matcher": "^(Bash|Edit|Write|MultiEdit|NotebookEdit)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 /home/mboyle/bd-persist/harness/bd-tripwire-any.py",
+            "timeout": 5,
+            "statusMessage": "bd-tripwire"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/mboyle/bd-persist/plugins/bd-cut-hygiene/hooks/pre-tool-use-test-filter.sh",
+            "timeout": 30
+          }
+        ],
+        "matcher": "^(Bash|run_command|exec_command)$"
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/mboyle/bd-persist/plugins/bd-fleet-mcp/hooks/pre-tool-use-say.sh",
+            "timeout": 30
+          }
+        ],
+        "matcher": "^(Bash|run_command|exec_command|say|mcp__bd__say)$"
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/mboyle/bd-persist/plugins/bd-dispatch-ops/hooks/pre-dispatch-rule21.sh",
+            "timeout": 30
+          }
+        ],
+        "matcher": "^(Bash|run_command|exec_command)$"
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 /home/mboyle/bd-persist/efficiency-hook/hook.py",
+            "timeout": 2,
+            "statusMessage": "Restoring task pointers"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/mboyle/bd-persist/plugins/bd-context-guard/hooks/session-start-role-slice.sh",
+            "timeout": 30
+          }
+        ],
+        "matcher": "startup|resume|clear|compact"
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/mboyle/bd-persist/plugins/bd-cut-hygiene/hooks/post-verdict-write-release.sh",
+            "timeout": 30
+          }
+        ],
+        "matcher": "^(Write|Edit|MultiEdit|write_to_file|replace_file_content|apply_patch)$"
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/mboyle/bd-persist/plugins/bd-context-guard/hooks/session-start-role-slice.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/mboyle/bd-persist/plugins/bd-context-guard/hooks/turn-budget-guard.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/mboyle/bd-persist/plugins/bd-context-guard/hooks/stop-narration-meter.py",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}
