@@ -37,8 +37,14 @@ DEFAULT_RECENT_RESERVE = 30_000
 DEFAULT_MIN_TURN_PRESERVE = 15
 DEFAULT_MIN_SIZE_BYTE_FLOOR = 300_000
 DEFAULT_MAX_AGE_HOURS = 24.0
+DEFAULT_REVISIT_SECONDS = 900.0
+SYSTEM_PROMPT_TOMBSTONE = ["[AMNESIA ARCHIVE: System prompt snapshot truncated]"]
 CHARS_PER_TOKEN = 3.6
-MIN_TOMBSTONE_CHARS = 200
+MIN_TOMBSTONE_CHARS = 1000
+TOMBSTONE_TAG = "[AMNESIA ARCHIVE:"
+PROTECTED_DIRECTIVES_RE = re.compile(
+    r"\b(HOLD|ORDER|REFUSAL|STAND DOWN|VERDICT|GATE VERDICT|REVERT|ABORT)\b", re.IGNORECASE
+)
 DEFAULT_PROJECT_ROOT = "/home/mboyle"
 DEFAULT_ARCHIVE_DIR = "/home/mboyle/bd-persist/amnesia-archive"
 PINNED_CONTEXT_MODE_BUNDLE = (
@@ -73,6 +79,7 @@ class SessionCacheEntry:
     st_ino: int
     last_tokens: int
     last_checked_ts: float
+    skip_until: float = 0.0
 
 
 def discover_context_mode_bundle(explicit_cli: str | None = None) -> str | None:
@@ -121,6 +128,11 @@ def detect_dialect(records: list[dict[str, Any]]) -> TranscriptDialect:
         ):
             return TranscriptDialect.CODEX_STREAM
     return TranscriptDialect.UNKNOWN
+
+
+def dump_record(rec: Any) -> str:
+    """Serialize like the transcript writers: compact separators, raw unicode."""
+    return json.dumps(rec, separators=(",", ":"), ensure_ascii=False) + "\n"
 
 
 def estimate_tokens_from_chars(text_len: int) -> int:
@@ -334,7 +346,7 @@ class ContextModeIndexer:
             "--source",
             source_label,
             "--project",
-            self.project_root,
+            str(self.archive_dir.resolve()),
             "--no-gitignore",
         ]
 
@@ -381,7 +393,7 @@ class ContextModeIndexer:
             "--source",
             source_label,
             "--project",
-            self.project_root,
+            str(self.archive_dir.resolve()),
             "--no-gitignore",
         ]
 
@@ -497,8 +509,20 @@ class SemanticTombstoner:
                     for blk_idx, blk in enumerate(content):
                         if isinstance(blk, dict) and blk.get("type") == "tool_result":
                             res = blk.get("content")
-                            res_str = res if isinstance(res, str) else json.dumps(res)
-                            if len(res_str) > MIN_TOMBSTONE_CHARS:
+                            if isinstance(res, list):
+                                res_str = "\n".join(
+                                    str(b.get("text", "")) for b in res if isinstance(b, dict)
+                                )
+                            elif isinstance(res, str):
+                                res_str = res
+                            else:
+                                res_str = json.dumps(res, ensure_ascii=False)
+
+                            if (
+                                len(res_str) > MIN_TOMBSTONE_CHARS
+                                and TOMBSTONE_TAG not in res_str
+                                and not PROTECTED_DIRECTIVES_RE.search(res_str)
+                            ):
                                 tid = blk.get("tool_use_id", "unknown")
                                 tname, tcmd = tool_commands.get(tid, ("Tool", ""))
                                 candidates.append({
@@ -519,7 +543,7 @@ class SemanticTombstoner:
                     for blk_idx, blk in enumerate(content):
                         if isinstance(blk, dict) and blk.get("type") == "thinking":
                             th = blk.get("thinking", "")
-                            if len(th) > 500:
+                            if len(th) > 500 and TOMBSTONE_TAG not in th and not PROTECTED_DIRECTIVES_RE.search(th):
                                 candidates.append({
                                     "type": "thinking",
                                     "node": node,
@@ -532,12 +556,12 @@ class SemanticTombstoner:
             elif t == "attachment":
                 att = d.get("attachment", {})
                 att_type = att.get("type")
-                if att_type == "prompt_snapshot":
+                if att_type == "prompt_snapshot" and att.get("systemPrompt") != SYSTEM_PROMPT_TOMBSTONE:
                     candidates.append({
                         "type": "prompt_snapshot",
                         "node": node,
                         "turn_id": str(turn_num),
-                        "size": len(json.dumps(att)),
+                        "size": len(json.dumps(att.get("systemPrompt"), ensure_ascii=False)),
                     })
                 elif att_type in (
                     "total_tokens_reminder",
@@ -560,6 +584,7 @@ class SemanticTombstoner:
         current_tokens = init_tokens
         archived_count = 0
         staged_items: list[tuple[Path, str]] = []
+        modified_nodes: set[int] = set()
 
         for cand in candidates:
             if current_tokens <= self.target_tokens:
@@ -576,6 +601,13 @@ class SemanticTombstoner:
                 tname = cand["tool_name"]
                 tcmd = cand["command"]
                 source_label = f"amnesia:{self.session_id}"
+                tombstone_msg = (
+                    f"[AMNESIA ARCHIVE: Tool output truncated ({len(raw_text)} chars). "
+                    f"Indexed in context-mode source '{source_label}'. "
+                    f"Retrieve via ctx_search(queries=['...'], source='{source_label}').]"
+                )
+                if len(tombstone_msg) >= cand["size"]:
+                    continue
 
                 # Stage to cold markdown archive
                 stage_file = self.indexer.stage_markdown(
@@ -590,13 +622,6 @@ class SemanticTombstoner:
                     content=raw_text,
                 )
                 staged_items.append((stage_file, source_label))
-
-                # Replace content with structured tombstone notice
-                tombstone_msg = (
-                    f"[AMNESIA ARCHIVE: Tool output truncated ({len(raw_text)} chars). "
-                    f"Indexed in context-mode source '{source_label}'. "
-                    f"Retrieve via ctx_search(queries=['...'], source='{source_label}').]"
-                )
 
                 content_target = d["message"]["content"][blk_idx]
                 if isinstance(content_target.get("content"), list):
@@ -620,7 +645,7 @@ class SemanticTombstoner:
                 saved_chars = th_len - 50
 
             elif cand["type"] == "prompt_snapshot":
-                d["attachment"]["systemPrompt"] = ["[AMNESIA ARCHIVE: System prompt snapshot truncated]"]
+                d["attachment"]["systemPrompt"] = list(SYSTEM_PROMPT_TOMBSTONE)
                 saved_chars = cand["size"] - 60
 
             elif cand["type"] == "ephemeral_attachment":
@@ -631,19 +656,29 @@ class SemanticTombstoner:
             current_tokens -= tokens_saved
             node.token_estimate = max(10, node.token_estimate - tokens_saved)
             archived_count += 1
+            modified_nodes.add(id(node))
 
         # Index staged files to context-mode vector store (single batch call)
         if staged_items:
             sess_dir = self.indexer.archive_dir / self.session_id
             if len(staged_items) == 1:
-                self.indexer.index_file(staged_items[0][0], staged_items[0][1])
+                indexed = self.indexer.index_file(staged_items[0][0], staged_items[0][1])
             else:
-                self.indexer.index_directory(sess_dir, f"amnesia:{self.session_id}")
+                indexed = self.indexer.index_directory(sess_dir, f"amnesia:{self.session_id}")
+            if not indexed:
+                # A tombstone must point at searchable text; keep the transcript as it was.
+                logger.warning(
+                    f"Index failed for session {self.session_id}; prune abandoned, "
+                    f"cold copies kept in {sess_dir}"
+                )
+                return list(self.parser.raw_lines), init_tokens, init_tokens, 0
 
         # 4. Reconstruct lines in exact order
+        # Rewrite only the records that were tombstoned; every other line stays byte-identical.
         output_lines = list(self.parser.raw_lines)
         for node in self.active_branch:
-            output_lines[node.line_index] = json.dumps(node.data) + "\n"
+            if id(node) in modified_nodes:
+                output_lines[node.line_index] = dump_record(node.data)
 
         return output_lines, init_tokens, current_tokens, archived_count
 
@@ -706,7 +741,17 @@ class CodexStreamTombstoner:
             if t == "response_item":
                 if p_type in ("custom_tool_call_output", "function_call_output"):
                     output = payload.get("output", "")
-                    if isinstance(output, str) and len(output) > MIN_TOMBSTONE_CHARS:
+                    if isinstance(output, list):
+                        output = "\n".join(
+                            str(part.get("text", "")) for part in output if isinstance(part, dict)
+                        )
+                    elif not isinstance(output, str):
+                        output = json.dumps(output, ensure_ascii=False)
+                    if (
+                        len(output) > MIN_TOMBSTONE_CHARS
+                        and TOMBSTONE_TAG not in output
+                        and not PROTECTED_DIRECTIVES_RE.search(output)
+                    ):
                         candidates.append({
                             "type": "tool_output",
                             "line_idx": line_idx,
@@ -717,7 +762,12 @@ class CodexStreamTombstoner:
                         })
                 elif p_type == "reasoning":
                     content = payload.get("content", "")
-                    if isinstance(content, str) and len(content) > 500:
+                    if (
+                        isinstance(content, str)
+                        and len(content) > 500
+                        and TOMBSTONE_TAG not in content
+                        and not PROTECTED_DIRECTIVES_RE.search(content)
+                    ):
                         candidates.append({
                             "type": "reasoning",
                             "line_idx": line_idx,
@@ -731,6 +781,7 @@ class CodexStreamTombstoner:
         archived_count = 0
         staged_items: list[tuple[Path, str]] = []
 
+        modified_lines: set[int] = set()
         for cand in candidates:
             if current_tokens <= self.target_tokens:
                 break
@@ -742,6 +793,13 @@ class CodexStreamTombstoner:
                 cid = cand["call_id"]
                 raw_text = cand["raw_text"]
                 source_label = f"amnesia:{self.session_id}"
+                tombstone_msg = (
+                    f"[AMNESIA ARCHIVE: Tool output truncated ({len(raw_text)} chars). "
+                    f"Indexed in context-mode source '{source_label}'. "
+                    f"Retrieve via ctx_search(queries=['...'], source='{source_label}').]"
+                )
+                if len(tombstone_msg) >= cand["size"]:
+                    continue
 
                 stage_file = self.indexer.stage_markdown(
                     session_id=self.session_id,
@@ -755,13 +813,10 @@ class CodexStreamTombstoner:
                     content=raw_text,
                 )
                 staged_items.append((stage_file, source_label))
-
-                tombstone_msg = (
-                    f"[AMNESIA ARCHIVE: Tool output truncated ({len(raw_text)} chars). "
-                    f"Indexed in context-mode source '{source_label}'. "
-                    f"Retrieve via ctx_search(queries=['...'], source='{source_label}').]"
-                )
-                payload["output"] = tombstone_msg
+                if isinstance(payload.get("output"), list):
+                    payload["output"] = [{"type": "input_text", "text": tombstone_msg}]
+                else:
+                    payload["output"] = tombstone_msg
                 saved_chars = cand["size"] - len(tombstone_msg)
 
             elif cand["type"] == "reasoning":
@@ -771,18 +826,28 @@ class CodexStreamTombstoner:
             tokens_saved = estimate_tokens_from_chars(saved_chars)
             current_tokens -= tokens_saved
             archived_count += 1
+            modified_lines.add(cand["line_idx"])
 
         # Index staged files to context-mode vector store (single batch call)
         if staged_items:
             sess_dir = self.indexer.archive_dir / self.session_id
             if len(staged_items) == 1:
-                self.indexer.index_file(staged_items[0][0], staged_items[0][1])
+                indexed = self.indexer.index_file(staged_items[0][0], staged_items[0][1])
             else:
-                self.indexer.index_directory(sess_dir, f"amnesia:{self.session_id}")
+                indexed = self.indexer.index_directory(sess_dir, f"amnesia:{self.session_id}")
+            if not indexed:
+                # A tombstone must point at searchable text; keep the transcript as it was.
+                logger.warning(
+                    f"Index failed for session {self.session_id}; prune abandoned, "
+                    f"cold copies kept in {sess_dir}"
+                )
+                return list(self.raw_lines), init_tokens, init_tokens, 0
 
+        # Rewrite only the records that were tombstoned; every other line stays byte-identical.
         output_lines = list(self.raw_lines)
         for line_idx, rec in self.records:
-            output_lines[line_idx] = json.dumps(rec) + "\n"
+            if line_idx in modified_lines:
+                output_lines[line_idx] = dump_record(rec)
 
         return output_lines, init_tokens, current_tokens, archived_count
 
@@ -802,6 +867,7 @@ class AmnesiaDaemon:
         self.min_turn_preserve = args.min_turn_preserve
         self.recent_reserve = args.recent_reserve
         self.max_age_hours = args.max_age
+        self.revisit_interval = args.revisit_interval
         self.min_size_byte_floor = 0 if args.file else args.min_size_floor
         self.dry_run = args.dry_run
         self.project_root = args.project
@@ -888,6 +954,8 @@ class AmnesiaDaemon:
 
             # Cache verification
             cached = self.cache.get(file_path)
+            if cached and time.time() < cached.skip_until:
+                return False
             if (
                 cached
                 and cached.st_mtime_ns == st_init.st_mtime_ns
@@ -993,9 +1061,11 @@ class AmnesiaDaemon:
             else:
                 new_lines, init_toks, final_toks, count = codex_tombstoner.plan_and_execute()
 
-            if count == 0:
-                logger.info(f"No eligible items pruned for {file_path.name}")
+            if count == 0 or new_lines == raw_lines:
+                logger.info(f"No bytes to prune for {file_path.name}; revisit in {self.revisit_interval:.0f}s")
+                self.cache[file_path].skip_until = time.time() + self.revisit_interval
                 return False
+            chars_saved = sum(len(l) for l in raw_lines) - sum(len(l) for l in new_lines)
 
             # Layer 3: Stage to sibling temporary file (.tmp.<pid>)
             staging_path = file_path.parent / f"{file_path.name}.tmp.{os.getpid()}"
@@ -1046,7 +1116,7 @@ class AmnesiaDaemon:
 
                 # Re-stat and update cache
                 st_final = file_path.stat()
-                tokens_saved = init_toks - final_toks
+                tokens_saved = estimate_tokens_from_chars(max(0, chars_saved))
                 self.total_tokens_freed += tokens_saved
                 self.prune_count += 1
 
@@ -1057,11 +1127,12 @@ class AmnesiaDaemon:
                     st_ino=st_final.st_ino,
                     last_tokens=final_toks,
                     last_checked_ts=time.time(),
+                    skip_until=time.time() + self.revisit_interval,
                 )
 
                 logger.info(
                     f"AMNESIA PRUNE COMPLETE: {file_path.name} | "
-                    f"Tokens: {init_toks} -> {final_toks} (-{tokens_saved}) | "
+                    f"Tokens freed (measured bytes): {tokens_saved} | Planned: {init_toks} -> {final_toks} | "
                     f"Items: {count} archived | "
                     f"Size: {st_init.st_size / 1024:.1f}KB -> {st_final.st_size / 1024:.1f}KB"
                 )
@@ -1173,6 +1244,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=float,
         default=DEFAULT_MAX_AGE_HOURS,
         help=f"Max file age in hours for discovery (default: {DEFAULT_MAX_AGE_HOURS})",
+    )
+    parser.add_argument(
+        "--revisit-interval",
+        type=float,
+        default=DEFAULT_REVISIT_SECONDS,
+        help=f"Seconds to leave a file alone after a no-op, failed index or prune (default: {DEFAULT_REVISIT_SECONDS})",
     )
     parser.add_argument(
         "--dry-run",
