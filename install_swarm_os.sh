@@ -45,9 +45,20 @@ else
     source $ENV_FILE
 fi
 
-# 3. System Dependencies (Git & Docker)
+# 3. System Dependencies (Git, Node, Python, Docker)
 echo "[*] Installing native dependencies..."
-sudo apt-get update && sudo apt-get install -y git curl tmux jq build-essential sqlite3
+sudo apt-get update && sudo apt-get install -y git curl tmux jq build-essential sqlite3 python3-pip npm
+
+echo "[*] Installing Global NPM Fleet Dependencies..."
+sudo npm install -g @caveman-ai/cli codeburn firecrawl-cli
+
+echo "[*] Installing Local Python Execution Layer & AST Tooling..."
+pip install --user --upgrade pydantic httpx ruamel.yaml peewee mcp
+pip install --user ruff semgrep glom py-spy
+
+# Install high-performance AST tools
+curl -LsSf https://ast-grep.github.io/install.sh | bash
+curl -Ls https://github.com/aquasecurity/trivy/releases/download/v0.55.0/trivy_0.55.0_Linux-64bit.tar.gz | tar -xz -C /usr/local/bin trivy
 
 if ! command -v docker &> /dev/null; then
     echo "[*] Installing Docker Engine..."
