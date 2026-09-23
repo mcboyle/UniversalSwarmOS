@@ -1,0 +1,453 @@
+#!/usr/bin/env python3
+"""swarm-run -- run a command, keep EVERYTHING on disk, print only the verdict.
+
+WHY THIS EXISTS. Twice in one session a long pytest run was piped straight
+through `grep`, and both times the tracebacks were gone by the time the result
+turned out to be surprising -- twelve minutes each to get them back. "Do not put
+it in my context" and "do not capture it" are different instructions, and
+conflating them destroys the evidence exactly when you need it. Disk is free
+here; only the summary costs anything.
+
+WHAT IT REFUSES TO DO, which is the part worth reading:
+
+  * It never derives its exit code from a match count. `grep -c` prints 0 and
+    exits 1 when nothing matches, and a bring-up script built on that reported
+    failure on a run where every step succeeded. swarm-run's exit code is the
+    child's exit code and nothing else.
+  * It never reports a pass it did not see. A run with no recognisable summary
+    line prints SUMMARY UNKNOWN and says the log is the only authority --
+    unknown is a third state, and it does not round down to OK.
+  * It never truncates silently. If more failures were found than printed, the
+    line says so with both numbers.
+"""
+import argparse
+import os
+import pathlib
+import re
+import subprocess
+import sys
+import tempfile
+import time
+
+DEFAULT_DIR = os.environ.get("SWARM_RUN_DIR") or "/tmp/swarm-run"
+# 124 is coreutils `timeout`'s convention for "the command was killed
+# because it ran too long". Reusing it means an operator, a shell `||`
+# and any wrapper already know what it means, and it can never collide
+# with a pytest exit code (0-5).
+CAPPED_RC = 124
+
+DEFAULT_KEEP = 50
+DEFAULT_SHOW = 40
+
+# `12 failed, 300 passed, 4 warnings in 61.2s` and every shorter variant.
+_SUMMARY = re.compile(r"^=*\s*\d+ (?:failed|passed|error|skipped|xfailed)\b.*$",
+                      re.M)
+_FAILLINE = re.compile(r"^(?:FAILED|ERROR) .*$", re.M)
+
+# COLOUR IS IN THE DENOMINATOR OF EVERY LINE-ANCHORED MATCH. Measured at
+# v3.66.1044 on this tool's first real band: pytest wrote its summary as
+# "\x1b[32m\x1b[1m2061 passed\x1b[0m ...", so a `^\d+ passed` anchor could not
+# see it and the run reported SUMMARY UNKNOWN over a clean 2061-test pass. The
+# harmless direction. The other direction is the reason this is a fix and not a
+# cosmetic one: the same anchors carry the FAILED lines, so a coloured log with
+# failures in it would have been summarised as having none.
+_ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def strip_ansi(text):
+    return _ANSI.sub("", text)
+
+
+_CAP_ERASABLE = (("HUP", 0x1), ("INT", 0x2), ("QUIT", 0x4))
+
+
+def _sigign_mask() -> str:
+    """This process's SigIgn mask as /proc reports it, or UNKNOWN."""
+    try:
+        with open("/proc/self/status", "r", encoding="ascii",
+                  errors="replace") as handle:
+            for line in handle:
+                if line.startswith("SigIgn:"):
+                    return "0x" + line.split()[1]
+    except OSError:
+        pass
+    return "UNKNOWN"
+
+
+def _erased_by_cap(mask: str):
+    """Which of HUP/INT/QUIT the cap will reset for the subject.
+
+    UNKNOWN is not "none": an unreadable mask cannot say the subject is
+    unaffected, so it reports the whole erasable set rather than an empty one.
+    """
+    if not mask.startswith("0x"):
+        return [name for name, _ in _CAP_ERASABLE]
+    try:
+        value = int(mask, 16)
+    except ValueError:
+        return [name for name, _ in _CAP_ERASABLE]
+    return [name for name, bit in _CAP_ERASABLE if value & bit]
+
+
+def plain_env(base=None):
+    """A child environment that will not colourise. Stripping alone is not
+    enough: this box exports FORCE_COLOR=3, so the log on disk -- the artifact
+    somebody reads later with grep -- is full of escapes either way."""
+    env = dict(base if base is not None else os.environ)
+    env.pop("FORCE_COLOR", None)
+    env.pop("PY_COLORS", None)
+    env["NO_COLOR"] = "1"
+    return env
+
+
+def run_id():
+    """A token unique to this invocation.
+
+    Wall-clock alone is not enough -- two runs can start inside one second --
+    so the pid joins it. The pid alone is not enough either, since the kernel
+    recycles them, which is the same trap swarm-jobs records about its registry.
+    """
+    return "%s-%d" % (time.strftime("%Y%m%dT%H%M%S"), os.getpid())
+
+
+def _real_logs(directory):
+    """THE ONE DEFINITION OF "a log". Real files only; aliases are pointers.
+
+    prune and the selftest that asserts prune's bound each decided this
+    separately, and they disagreed: prune excluded symlinks, the assertion
+    counted them. Measured at v3.66.1134 on a six-host capture round, that
+    disagreement failed CORRECT work on 2 of 6 hosts (~40%) whenever eight
+    writes landed in one filesystem tick, because prune's newest-two could then
+    be run logs whose `<label>.log` aliases legitimately survived. A gate that
+    fires on correct work gets switched off, so over-sensitivity is a soundness
+    bug (CLAUDE.md section 0), and two definitions of one predicate is how it
+    got there. One function, both callers.
+    """
+    return [q for q in pathlib.Path(directory).glob("*.log")
+            if q.is_file() and not q.is_symlink()]
+
+
+def prune(directory, keep):
+    """Bound the retention. Creating a path is a promise to remove it.
+
+    REAL FILES ONLY. The `<label>.log` alias is a pointer, not an artifact, and
+    counting it as one would let a directory holding N runs plus N aliases keep
+    only N/2 actual logs while reporting that it kept N.
+    """
+    logs = sorted(_real_logs(directory),
+                  key=lambda p: p.stat().st_mtime, reverse=True)
+    for stale in logs[keep:]:
+        try:
+            stale.unlink()
+        except OSError:
+            pass
+    # A pointer that outlives its target is worse than no pointer: it reads to
+    # the next reader as a MISSING run rather than a pruned one. Collect any
+    # alias whose target the prune just removed.
+    for alias in pathlib.Path(directory).glob("*.log"):
+        if alias.is_symlink() and not alias.exists():
+            try:
+                alias.unlink()
+            except OSError:
+                pass
+    return len(logs[keep:])
+
+
+def verdict(text, show=DEFAULT_SHOW):
+    """Render the verdict block for a log body. Pure, so it is testable."""
+    text = strip_ansi(text)
+    fails = _FAILLINE.findall(text)
+    out = []
+    for line in fails[:show]:
+        out.append(line.split(" - ")[0])
+    if len(fails) > show:
+        # STATE THE DENOMINATOR. A truncated list that does not say it is
+        # truncated reads as the whole set, and the reader acts on it.
+        out.append("... showing %d of %d failure lines -- the rest are in the log"
+                   % (show, len(fails)))
+    summaries = _SUMMARY.findall(text)
+    if summaries:
+        out.append(summaries[-1].strip())
+    else:
+        # NOT "0 failures". The run may have died before it could summarise, and
+        # a missing summary is the loudest signal there is that it did.
+        out.append("SUMMARY UNKNOWN -- no pytest summary line in the output. "
+                   "This is not a pass; read the log.")
+    return out
+
+
+def auto_workers(cores=None):
+    """The worker count to use when nobody chose one.
+
+    A THIRD OF THE CORES. Measured at v3.66.1044 on a 64-core box, one sample
+    per cell, running the same 158-file band:
+
+        -n 8   224s      -n 16  190s      -n 32  182s      -n 64  223s
+
+    Both ends are slower than the middle -- too few workers leaves the box idle,
+    too many makes them contend -- and cores//3 (21 here) sits in the flat fast
+    zone. WALL CLOCK ONLY: each cell also reported a failure count, and those
+    are single samples of a number that ranges 1..8 on an idle tree, so they are
+    not evidence of anything and are not used here.
+
+    The failure mode this replaces is specific: `-n 4` was typed on an 86-core
+    box and nothing anywhere said it was wrong.
+    """
+    c = cores if cores is not None else (os.cpu_count() or 2)
+    return max(2, c // 3)
+
+
+def inject_workers(parts, cores=None):
+    """Add `-n N` to a pytest command that has no worker count. (parts, note).
+
+    NEVER overrides an explicit choice, and says so when it declines: a wrapper
+    that silently rewrites the command you typed is worse than one that does
+    nothing, because the log then describes a run that did not happen.
+    """
+    if "pytest" not in " ".join(parts):
+        return parts, "not a pytest command -- left alone"
+    for i, tok in enumerate(parts):
+        if tok == "-n" or tok.startswith("-n") and len(tok) > 2:
+            return parts, "-n already given (%s) -- left alone" % tok
+        if tok.startswith("--numprocesses"):
+            return parts, "--numprocesses already given -- left alone"
+    n = auto_workers(cores)
+    return parts + ["-n", str(n)], ("added -n %d (a third of %d cores)"
+                                    % (n, cores if cores is not None
+                                       else (os.cpu_count() or 2)))
+
+
+def run(args):
+    parts = list(args.command or [])
+    if parts and parts[0] == "--":
+        parts = parts[1:]          # argparse.REMAINDER keeps the separator
+    if getattr(args, "auto_n", False) and parts:
+        parts, note = inject_workers(parts)
+        print("swarm-run: auto-n: %s" % note, flush=True)
+    if not parts:
+        print("swarm-run: REFUSED: no command given. Use: swarm-run --label L -- <cmd>",
+              file=sys.stderr)
+        return 2
+
+    d = pathlib.Path(args.dir)
+    d.mkdir(parents=True, exist_ok=True)
+    # KEYED BY RUN, NOT BY LABEL (@1060, backlog 5). `<label>.log` meant that
+    # two runs of the same label -- the normal case, since a label says WHAT is
+    # running and not WHEN -- silently destroyed the first one's output. The
+    # tool whose docstring opens "keep EVERYTHING on disk" kept only the most
+    # recent, and the A/B comparison it exists to support was the one thing it
+    # could not do. The loss was silent: the second run printed the same path.
+    log = d / ("%s-%s.log" % (args.label, run_id()))
+    # The bare `<label>.log` survives as a SYMLINK to the newest, because
+    # `tail -f <label>.log` and existing callers name it, and a fix that breaks
+    # them trades one defect for another. Created BEFORE the child starts, so
+    # the operator can tail from the first second -- the property the announced
+    # path exists for.
+    alias = d / ("%s.log" % args.label)
+    try:
+        if alias.is_symlink() or alias.exists():
+            alias.unlink()
+        alias.symlink_to(log.name)      # relative: survives a moved directory
+    except OSError:
+        pass                            # an alias is a convenience, not the artifact
+    # THE PATH FIRST, AND FLUSHED. A verdict-only tool prints nothing for the
+    # length of the run, so an operator watching a five-minute band cannot tell
+    # it from a hang. Naming the log up front makes `tail -f` possible from the
+    # first second, which is the whole reason the log exists.
+    print("swarm-run: %s -> %s" % (args.label, log), flush=True)
+    # THE CAP IS DELEGATED TO coreutils `timeout`, NOT IMPLEMENTED HERE, and
+    # that is a design choice rather than laziness. pytest-timeout is enforced
+    # INSIDE the worker process, so a run whose xdist worker DIED has nothing
+    # left to fire it -- measured three times on 2026-08-12 as "[gwN] node down"
+    # at ~99% followed by 44 minutes of load 0.00 with pytest still resident
+    # (backlog 90). A bound that shares a fate with the thing it bounds is not a
+    # bound, so the cap has to sit outside the process.
+    #
+    # It sits outside THIS process too. `timeout` already runs the command in
+    # its own process group and signals the GROUP, which is the half a naive
+    # parent-only kill gets wrong (backlog 88), and it exits 124 -- the
+    # convention this file reuses. Doing it by hand would mean swarm-run holding
+    # a process-signalling call, and
+    # test_only_bd_gc_and_bd_jobs_hold_a_destructive_verb exists
+    # to stop exactly that: these tools must be safe to run when you do not yet
+    # know what is wrong. Delegating keeps that promise intact and gets the
+    # better-tested implementation.
+    # THE CAP ERASES INHERITED SIGNAL DISPOSITIONS, AND THAT IS DECLARED RATHER
+    # THAN FIXED. coreutils `timeout` RESETS ignored signals to default before
+    # exec'ing its child, so a subject run under --max-seconds cannot observe an
+    # ignore its parent held. Measured 2026-08-24 on test5: a parent holding
+    # HUP/INT/QUIT ignored reports SigIgn=0x1001007, and the identical command
+    # through `timeout` reports 0x1001000 -- exactly bits 0,1,2 gone. `timeout
+    # --foreground` and `timeout -s TERM` were measured too and erase it the
+    # same way, so there is no mode of this tool that preserves it.
+    #
+    # WHY IT IS NOT FIXED HERE. The alternative is swarm-run owning the kill
+    # itself, and the comment above plus
+    # test_only_bd_gc_and_bd_jobs_hold_a_destructive_verb deliberately forbid
+    # that: these tools must stay safe to run when you do not yet know what is
+    # wrong. Trading a declared, visible limitation for a destructive verb in a
+    # diagnostic tool is the worse bargain, so the limitation is SAID OUT LOUD
+    # in the log this run owns -- the same idiom as CAPTURE-HEARTBEAT-UNARMED.
+    # swarm-sweep-run consumes this wrapper around pytest, so without this line a
+    # whole-fleet suite would silently produce weaker signal evidence than its
+    # own direct probes suggest (backlog row 227).
+    capped = False
+    if args.max_seconds:
+        parts = ["timeout", "--kill-after=10", str(args.max_seconds)] + parts
+    # SAID IN THE TOOL'S OWN VOICE, NOT WRITTEN INTO THE SUBJECT'S LOG. The
+    # first draft put this line at the top of the log file and CI caught what
+    # that costs: swarm-sweep-run's selftest builds a fixture for an EMPTY log with
+    # pytest exit 0, and an annotation at the top means the log is no longer the
+    # subject's output. That is the very defect this change exists to fix,
+    # reproduced one layer up -- a wrapper altering the artifact its consumers
+    # parse. The log stays pure; the declaration goes to swarm-run's stdout beside
+    # its other verdict lines, which is where a human reads it and where callers
+    # already capture this tool's narration.
+    if args.max_seconds:
+        inherited = _sigign_mask()
+        erased = _erased_by_cap(inherited)
+        print("BD-RUN-CAP-RESETS-SIGNALS: this run is bounded by coreutils "
+              "timeout, which resets inherited signal dispositions before exec. "
+              "parent SigIgn=%s%s. Do NOT read this run as evidence about "
+              "inherited signal handling."
+              % (inherited,
+                 "; ERASED FOR THE SUBJECT: " + ",".join(erased)
+                 if erased else "; nothing relevant was ignored"), flush=True)
+    with open(log, "wb") as fh:
+        proc = subprocess.Popen(parts, stdout=fh, stderr=subprocess.STDOUT,
+                                env=plain_env())
+        rc = proc.wait()
+    if args.max_seconds and rc == CAPPED_RC:
+        capped = True
+
+    body = log.read_text(encoding="utf-8", errors="replace")
+    if capped:
+        # A CAPPED RUN MUST NEVER READ AS A PASS. Section 10: the verdict line
+        # is the least-tested output and the only one anybody reads. Returning
+        # 0 here would turn an unbounded hang into a false green, which is
+        # worse than the hang -- the hang at least never claims to have
+        # finished.
+        print("=== %s CAPPED at %ss (exit=%d) ==="
+              % (args.label, args.max_seconds, rc))
+        print("  the command did not finish inside its cap and was killed. This "
+              "is NOT a pass and NOT a failure of the code under test -- it is "
+              "an unfinished run. The last lines of the log say where it stopped.")
+    else:
+        print("=== %s (exit=%d) ===" % (args.label, rc))
+    for line in verdict(body, args.show):
+        print(line)
+    removed = prune(d, args.keep)
+    print("--- full log: %s (%d lines)%s ---"
+          % (log, body.count("\n"),
+             "; pruned %d older" % removed if removed else ""))
+    # THE CHILD'S CODE, NEVER A DERIVED ONE.
+    return rc
+
+
+def selftest(_args):
+    failures = []
+    with tempfile.TemporaryDirectory() as td:
+        ns = argparse.Namespace(dir=td, keep=DEFAULT_KEEP, show=DEFAULT_SHOW,
+                                max_seconds=0)
+
+        # 1. A successful command with nothing to grep must still exit 0. This
+        # is the bring-up script's inverted verdict, mechanised.
+        ns.label, ns.command = "ok", ["true"]
+        if run(ns) != 0:
+            failures.append("a command that exited 0 was reported nonzero")
+
+        # 2. The child's failure code survives.
+        ns.label, ns.command = "bad", ["sh", "-c", "exit 7"]
+        if run(ns) != 7:
+            failures.append("the child's exit code was not passed through")
+
+        # 3. Nothing is filtered at capture time.
+        ns.label, ns.command = "keep", ["sh", "-c", "echo needle; echo FAILED x"]
+        run(ns)
+        if "needle" not in (pathlib.Path(td) / "keep.log").read_text():
+            failures.append("output was discarded instead of written to the log")
+
+        # 4a. A COLOURED log is read exactly like a plain one.
+        coloured = ("\x1b[32m\x1b[1m2061 passed\x1b[0m, \x1b[33m6 skipped"
+                    "\x1b[0m\x1b[32m in 175.10s\x1b[0m\n")
+        block = "\n".join(verdict(coloured))
+        if "2061 passed" not in block or "UNKNOWN" in block:
+            failures.append("a colourised pytest summary was not recognised -- "
+                            "the same anchors carry the FAILED lines")
+        block = "\n".join(verdict("\x1b[31mFAILED tests/a.py::x\x1b[0m - boom\n"
+                                  "1 failed in 1s\n"))
+        if "FAILED tests/a.py::x" not in block:
+            failures.append("a colourised FAILED line was invisible")
+
+        # 4. No summary line is UNKNOWN, not a pass.
+        block = "\n".join(verdict("some output with no pytest summary\n"))
+        if "SUMMARY UNKNOWN" not in block:
+            failures.append("a run with no summary line did not say UNKNOWN")
+
+        # 5. Truncation states both numbers.
+        many = "".join("FAILED tests/t%d.py::x - boom\n" % i for i in range(60))
+        block = "\n".join(verdict(many, show=10))
+        if "showing 10 of 60" not in block:
+            failures.append("a truncated failure list did not state its denominator")
+
+        # 6. Retention is bounded.
+        for i in range(5):
+            (pathlib.Path(td) / ("filler%d.log" % i)).write_text("x")
+        prune(td, 2)
+        if len(_real_logs(td)) > 2:
+            failures.append("prune left more logs than --keep allows")
+
+        # 7. An empty command is a refusal.
+        ns.label, ns.command = "empty", ["--"]
+        if run(ns) != 2:
+            failures.append("an empty command was not refused")
+
+        # 8. auto-n sizes from the box and never overrides a choice.
+        if auto_workers(86) != 28 or auto_workers(3) != 2:
+            failures.append("auto_workers did not scale with the core count")
+        got, _ = inject_workers(["python", "-m", "pytest", "tests/"], cores=90)
+        if got[-2:] != ["-n", "30"]:
+            failures.append("auto-n did not add a worker count: %s" % got)
+        got, note = inject_workers(["python", "-m", "pytest", "-n", "4"], cores=90)
+        if got[-2:] != ["-n", "4"] or "left alone" not in note:
+            failures.append("auto-n overrode an explicit -n")
+        got, note = inject_workers(["ls", "-l"], cores=90)
+        if got != ["ls", "-l"] or "not a pytest" not in note:
+            failures.append("auto-n rewrote a command that is not pytest")
+
+    for f in failures:
+        print("SELFTEST FAIL: %s" % f, file=sys.stderr)
+    if failures:
+        return 1
+    print("SELFTEST PASS: exit passthrough, full capture, unknown summary, "
+          "denominator, retention, refusal, auto-n")
+    return 0
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(
+        description="run a command, keep the full output on disk, print the verdict")
+    p.add_argument("--label", default="run", help="log basename (default: run)")
+    p.add_argument("--dir", default=DEFAULT_DIR,
+                   help="log directory (default: $SWARM_RUN_DIR or /tmp/swarm-run)")
+    p.add_argument("--keep", type=int, default=DEFAULT_KEEP,
+                   help="how many logs to retain (default: %d)" % DEFAULT_KEEP)
+    p.add_argument("--show", type=int, default=DEFAULT_SHOW,
+                   help="failure lines to print (default: %d)" % DEFAULT_SHOW)
+    p.add_argument("--auto-n", action="store_true", dest="auto_n",
+                   help="size -n from this box's core count if the command is "
+                        "pytest and does not already choose one")
+    p.add_argument("--max-seconds", type=int, default=0, dest="max_seconds",
+                   help="whole-run wall-clock cap. 0 (default) = no cap. "
+                        "A capped run exits %d and says CAPPED -- it is "
+                        "an UNFINISHED run, never a pass." % CAPPED_RC)
+    p.add_argument("--selftest", action="store_true")
+    p.add_argument("command", nargs=argparse.REMAINDER)
+    args = p.parse_args(argv)
+    if args.selftest:
+        return selftest(args)
+    return run(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

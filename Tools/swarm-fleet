@@ -1,0 +1,586 @@
+#!/usr/bin/env python3
+"""swarm-fleet -- one read-only answer to "what is the state of my three boxes".
+
+WHAT IT ANSWERS, per host, in one line: is it reachable, what commit and version
+is its tree on, is that tree clean, is the service up, what is the load, how
+many jobs are registered with swarm-jobs, and how many pytest runs are going that
+nothing registered. Those seven questions cost seven ssh round trips each when
+asked by hand, and the session that prompted this asked them repeatedly and
+still managed to deploy onto a host with a live suite on it.
+
+IT NEVER CHANGES ANYTHING. No deploy, no restart, no reap, no checkout. A tool
+you run to find out what is going on must be safe to run when you do not know
+what is going on, and `swarm-gc` and `swarm-jobs reap` are where the destructive
+verbs live.
+
+UNREACHABLE IS NOT OK. A host that does not answer is printed as UNREACHABLE and
+makes the exit code nonzero. The failure this guards is the one section 0 is
+about: a fleet report that quietly covers two hosts out of three, and reads as a
+clean bill of health for all three.
+"""
+import argparse
+import concurrent.futures
+import os
+import pathlib
+import shlex
+import subprocess
+import sys
+import tempfile
+
+DEFAULT_HOSTS = os.path.join(os.path.expanduser("~"), ".config", "bd", "hosts")
+
+# One shell, run once per host. Each line is `key=value`; a missing key reads as
+# unknown rather than as a default, which is the whole point.
+PROBE = r'''
+bd_fleet_repo_input=$HOME/${TARGET_REPO_PATH}
+bd_fleet_repo_ok=true
+
+# ROW 250 REUSES ROW 159'S PROVENANCE BOUNDARY. Name one checkout, remove every
+# inherited Git selector that can redirect it, resolve both the requested path
+# and Git's top level physically, and require them to be the same directory.
+# A failed Git read is not an empty successful read. The five repository-backed
+# fields are published as explicit UNKNOWN facts so the coordinator can refuse
+# the incomplete census without misclassifying the reachable host as unreachable.
+unset GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_CONFIG \
+  GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS GIT_DIR \
+  GIT_DISCOVERY_ACROSS_FILESYSTEM GIT_GRAFT_FILE GIT_IMPLICIT_WORK_TREE \
+  GIT_INDEX_FILE GIT_INTERNAL_SUPER_PREFIX GIT_NAMESPACE \
+  GIT_NO_REPLACE_OBJECTS GIT_OBJECT_DIRECTORY GIT_PREFIX \
+  GIT_REPLACE_REF_BASE GIT_SHALLOW_FILE GIT_WORK_TREE \
+  2>/dev/null || bd_fleet_repo_ok=false
+
+if $bd_fleet_repo_ok; then
+  bd_fleet_repo=$(cd -- "$bd_fleet_repo_input" 2>/dev/null && pwd -P) || bd_fleet_repo_ok=false
+fi
+if $bd_fleet_repo_ok && [ "$bd_fleet_repo" != "$bd_fleet_repo_input" ]; then
+  bd_fleet_repo_ok=false
+fi
+if $bd_fleet_repo_ok; then
+  bd_fleet_top=$(git -C "$bd_fleet_repo" rev-parse --show-toplevel 2>/dev/null) || bd_fleet_repo_ok=false
+fi
+if $bd_fleet_repo_ok; then
+  bd_fleet_top=$(cd -- "$bd_fleet_top" 2>/dev/null && pwd -P) || bd_fleet_repo_ok=false
+fi
+if $bd_fleet_repo_ok && [ "$bd_fleet_top" != "$bd_fleet_repo" ]; then
+  bd_fleet_repo_ok=false
+fi
+
+if $bd_fleet_repo_ok; then
+  echo "tree=present"
+
+  bd_fleet_head=$(git -C "$bd_fleet_repo" rev-parse --verify 'HEAD^{commit}' 2>/dev/null)
+  bd_fleet_head_rc=$?
+  if [ "$bd_fleet_head_rc" -eq 0 ] && [[ "$bd_fleet_head" =~ ^[0-9a-f]{40,64}$ ]]; then
+    echo "head=$bd_fleet_head"
+  else
+    echo "head=unknown"
+  fi
+
+  bd_fleet_version=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' "$bd_fleet_repo/bulk_downloader/__init__.py" 2>/dev/null)
+  bd_fleet_version_rc=$?
+  if [ "$bd_fleet_version_rc" -eq 0 ] && [[ "$bd_fleet_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.+_-][0-9A-Za-z.+_-]+)?$ ]]; then
+    echo "version=$bd_fleet_version"
+  else
+    echo "version=unknown"
+  fi
+
+# THE TREE AND THE SERVICE ARE DIFFERENT QUESTIONS, and `version` above answers
+# only the first. tools/deployed_version.txt is rewritten by ExecStartPre on
+# every start, so it reflects the PROCESS. Measured at v3.66.1072 on test5,
+# where the agent's working directory IS the deployed tree: the table read
+# 3.66.1072 across four hosts while test5's service was still serving
+# 3.66.1071, unrestarted. True of four trees and three processes.
+  bd_fleet_serving=$(head -1 "$bd_fleet_repo/tools/deployed_version.txt" 2>/dev/null)
+  bd_fleet_serving_rc=$?
+  if [ "$bd_fleet_serving_rc" -eq 0 ] && [[ "$bd_fleet_serving" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.+_-][0-9A-Za-z.+_-]+)?$ ]]; then
+    echo "serving=$bd_fleet_serving"
+  else
+    echo "serving=unknown"
+  fi
+
+  bd_fleet_branch=$(git -C "$bd_fleet_repo" rev-parse --abbrev-ref HEAD 2>/dev/null)
+  bd_fleet_branch_rc=$?
+  if [ "$bd_fleet_branch_rc" -eq 0 ] && [ -n "$bd_fleet_branch" ] && [ "$bd_fleet_branch" != unknown ]; then
+    echo "branch=$bd_fleet_branch"
+  else
+    echo "branch=unknown"
+  fi
+
+  bd_fleet_status=$(git -C "$bd_fleet_repo" status --porcelain=v1 --untracked-files=normal 2>/dev/null)
+  bd_fleet_status_rc=$?
+  if [ "$bd_fleet_status_rc" -ne 0 ]; then
+    echo "dirty=unknown"
+  elif [ -z "$bd_fleet_status" ]; then
+    echo "dirty=clean"
+  else
+    echo "dirty=dirty"
+  fi
+else
+  printf '%s\n' "tree=unknown" "head=unknown" "version=unknown" \
+    "serving=unknown" "branch=unknown" "dirty=unknown"
+fi
+
+bd_fleet_service=$(systemctl is-active bulkdownloader 2>/dev/null)
+bd_fleet_service_rc=$?
+case "$bd_fleet_service_rc:$bd_fleet_service" in
+  0:active|0:reloading|3:inactive|3:failed|3:activating|3:deactivating|3:maintenance)
+    echo "service=$bd_fleet_service" ;;
+  *) echo "service=unknown" ;;
+esac
+
+bd_fleet_load=$(cut -d' ' -f1-3 /proc/loadavg 2>/dev/null)
+bd_fleet_load_rc=$?
+if [ "$bd_fleet_load_rc" -eq 0 ] && [[ "$bd_fleet_load" =~ ^[0-9]+([.][0-9]+)?\ [0-9]+([.][0-9]+)?\ [0-9]+([.][0-9]+)?$ ]]; then
+  echo "load=$bd_fleet_load"
+else
+  echo "load=unknown"
+fi
+
+bd_fleet_cores=$(nproc 2>/dev/null)
+bd_fleet_cores_rc=$?
+if [ "$bd_fleet_cores_rc" -eq 0 ] && [[ "$bd_fleet_cores" =~ ^[1-9][0-9]*$ ]]; then
+  echo "cores=$bd_fleet_cores"
+else
+  echo "cores=unknown"
+fi
+# COUNTING PATHNAMES IS NOT COUNTING REGISTERED JOBS. `ls /tmp/swarm-jobs/*.json`
+# counted directory ENTRIES without reading one byte of them, so a malformed
+# final -- which swarm-jobs correctly RETAINS as the only evidence of what went
+# wrong, and correctly grades UNKNOWN -- was still reported to the operator as a
+# registered job. The denominator was semantically false in exactly the case an
+# operator most needs it to be true (backlog row 216).
+#
+# The validated reader already exists. `swarm-jobs list` separates valid rows from
+# malformed ones and publishes both counts, so this asks IT rather than the
+# filesystem. Anything it cannot say cleanly becomes UNKNOWN here; a census that
+# guesses is the defect being removed, not a smaller version of it.
+jobs_out=$("$bd_fleet_repo_input/toolchain/bin/swarm-jobs" list 2>/dev/null)
+jobs_rc=$?
+echo "$jobs_out" | awk -v rc="$jobs_rc" '
+  /^[0-9]+ live, [0-9]+ stale on / { summaries++; valid = $1 + $3 }
+  /^UNKNOWN: [0-9]+ of [0-9]+ registry file\(s\) unreadable$/ {
+      unknowns++; malformed = $2 }
+  END {
+    # STRICT, AND SILENT DRIFT FAILS CLOSED. Two tools now share a text
+    # protocol; if swarm-jobs rewords a line this parser stops recognising it,
+    # and the honest answer to "how many jobs" is then UNKNOWN, never a
+    # number arrived at by ignoring the part that did not parse.
+    if (rc == 0 && summaries == 1 && unknowns == 0) {
+      printf "jobs=%d\njobs_malformed=0\njobs_state=OK\n", valid
+    } else if (rc == 4 && summaries == 1 && unknowns == 1) {
+      printf "jobs=%d\njobs_malformed=%d\njobs_state=UNKNOWN\n", valid, malformed
+    } else {
+      printf "jobs=?\njobs_malformed=?\njobs_state=UNKNOWN\n"
+    }
+  }'
+
+# COUNTING PYTEST IS A SELF-MATCH TRAP, and this tool fell in it on its own
+# first live run: `pgrep -fc 'm pytest'` reported 4 on an idle host because the
+# probe shell's own command line contains the pattern it is searching for. The
+# same shape as section 5's `pkill -f`. Filter on comm= (the probe is bash, awk
+# is awk, only a real run is python) and split the literal so this line cannot
+# match itself.
+bd_fleet_ps=$(ps -eo pid=,comm=,args= 2>/dev/null)
+bd_fleet_ps_rc=$?
+if [ "$bd_fleet_ps_rc" -eq 0 ]; then
+  bd_fleet_pytest=$(printf '%s\n' "$bd_fleet_ps" | awk '$2 ~ /^python/ && $0 ~ /-m[ ]pytest/ { count++ } END { print count + 0 }')
+  bd_fleet_pytest_rc=$?
+else
+  bd_fleet_pytest_rc=$bd_fleet_ps_rc
+fi
+if [ "$bd_fleet_pytest_rc" -eq 0 ] && [[ "$bd_fleet_pytest" =~ ^[0-9]+$ ]]; then
+  echo "pytest=$bd_fleet_pytest"
+else
+  echo "pytest=unknown"
+fi
+# COUNT THE DIRECTORY, NOT TWO GLOBS. This read
+# `ls -d /tmp/swarm-* /tmp/pytest-of-*` until v3.66.1078 and reported 2918 on
+# test5 while /tmp held 15392 entries -- a 5.3x undercount that saw 346 of the
+# 2373 directories one capture actually adds. The largest leak family is bare
+# mkdtemp() output named `tmp*`, which matches neither glob, so the column
+# certified a denominator excluding most of its subject -- and it was the
+# number anyone sizing the leak would have read.
+#
+# This counts EVERYTHING under /tmp, including entries BD did not create.
+# Deliberate: the names cannot be attributed to an owner, and a proxy that
+# over-counts slightly beats one that misses 84%. `swarm-gc` decides what is safe
+# to remove.
+#
+# /tmp CHANGES WHILE IT IS WALKED. GNU find normally exits 1 if an entry returned
+# by readdir vanishes before find can stat or open it. That is not a failed
+# census: the marks already emitted remain a useful count, accurate to within
+# the raced entry. -ignore_readdir_race handles the stat race, but find 4.9 can
+# still diagnose a directory removed before it is opened, even at maxdepth 1.
+#
+# Keep stdout and stderr distinct in memory: M is one counted entry, E is a
+# diagnostic, and R is find's exit status. A nonzero exit is accepted only when
+# it is find's ordinary failure status and every diagnostic is ENOENT for a
+# child of /tmp. EACCES on /tmp itself, a missing find, a silent failure, and a
+# mixed diagnostic all remain UNKNOWN. No scratch file is created by this
+# read-only probe.
+bd_fleet_tmp_report=$(
+  {
+    LC_ALL=C find /tmp -ignore_readdir_race -mindepth 1 -maxdepth 1 \
+      -printf 'M\n' 2>&1 1>&3 |
+      while IFS= read -r bd_fleet_tmp_error || [ -n "$bd_fleet_tmp_error" ]; do
+        printf 'E%s\n' "$bd_fleet_tmp_error"
+      done
+    printf 'R%s\n' "${PIPESTATUS[0]}"
+  } 3>&1
+)
+bd_fleet_tmp_marks=
+bd_fleet_tmp_rc=
+bd_fleet_tmp_only_child_enoent=true
+bd_fleet_tmp_saw_child_enoent=false
+while IFS= read -r bd_fleet_tmp_item; do
+  case "$bd_fleet_tmp_item" in
+    M) bd_fleet_tmp_marks="${bd_fleet_tmp_marks}x" ;;
+    "Efind: '/tmp/"*"': No such file or directory")
+      bd_fleet_tmp_saw_child_enoent=true ;;
+    E*) bd_fleet_tmp_only_child_enoent=false ;;
+    R*)
+      bd_fleet_tmp_rc=${bd_fleet_tmp_item#R}
+      case "$bd_fleet_tmp_rc" in
+        ''|*[!0-9]*) bd_fleet_tmp_only_child_enoent=false ;;
+      esac
+      ;;
+    *) bd_fleet_tmp_only_child_enoent=false ;;
+  esac
+done <<< "$bd_fleet_tmp_report"
+
+if [ "$bd_fleet_tmp_rc" -eq 0 ] 2>/dev/null ||
+   { [ "$bd_fleet_tmp_rc" -eq 1 ] 2>/dev/null &&
+     $bd_fleet_tmp_only_child_enoent && $bd_fleet_tmp_saw_child_enoent; }; then
+  echo "tmp_bd=${#bd_fleet_tmp_marks}"
+else
+  echo "tmp_bd=unknown"
+fi
+'''
+
+MEASURED_FIELDS = (
+    "tree", "head", "version", "serving", "branch", "dirty", "service",
+    "load", "cores", "jobs", "jobs_malformed", "jobs_state", "pytest",
+    "tmp_bd",
+)
+
+
+def read_hosts(path):
+    """Parse the fleet file. Mirrors scripts/deploy_fleet.sh line for line.
+
+    Two parsers over one format is a seam, so the test suite feeds
+    docs/repo/hosts.example to both and requires the same answer.
+    """
+    out = []
+    for raw in pathlib.Path(path).read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        if len(parts) < 2:
+            raise ValueError('line for "%s" has no address' % parts[0])
+        out.append((parts[0], parts[1]))
+    return out
+
+
+def parse_probe(text):
+    d = {}
+    for line in text.splitlines():
+        if "=" in line:
+            k, _, v = line.partition("=")
+            d[k.strip()] = v.strip()
+    return d
+
+
+def unknown_measurements(d):
+    """Return every field whose requested fact was not successfully measured."""
+    unknown = []
+    for key in MEASURED_FIELDS:
+        value = d.get(key)
+        if value in (None, "", "?", "unknown"):
+            unknown.append(key)
+        elif key == "jobs_state" and value != "OK":
+            unknown.append(key)
+        elif key == "tree" and value != "present":
+            unknown.append(key)
+        elif key == "dirty" and value not in ("clean", "dirty"):
+            unknown.append(key)
+    return unknown
+
+
+def query(label, addr, me, timeout):
+    if label == me:
+        r = subprocess.run(["bash", "-c", PROBE], capture_output=True,
+                           text=True, timeout=timeout)
+    else:
+        r = subprocess.run(
+            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", addr,
+             "bash -c %s" % shlex.quote(PROBE)],
+            capture_output=True, text=True, timeout=timeout)
+    if r.returncode != 0:
+        return label, addr, None, (r.stderr.strip() or "exit %d" % r.returncode)
+    return label, addr, parse_probe(r.stdout), None
+
+
+def render(rows):
+    """Format the table. Pure, so the formatting is testable without ssh."""
+    lines = ["%-10s %-15s %-8s %-11s %-11s %-6s %-8s %-14s %-5s %-7s %-6s"
+             % ("host", "address", "head", "tree ver", "serving", "tree",
+                "service", "load(1/5/15)", "valid", "pytest", "litter")]
+    for label, addr, d, err in rows:
+        if d is None:
+            lines.append("%-10s %-15s UNREACHABLE  %s" % (label, addr, err))
+            continue
+        dirty = d.get("dirty", "unknown")
+        tree = dirty if dirty in ("clean", "dirty") else "unknown"
+        lines.append("%-10s %-15s %-8s %-11s %-11s %-6s %-8s %-14s %-5s %-7s %-6s"
+                     % (label, addr, d.get("head", "unknown"),
+                        d.get("version", "unknown"),
+                        d.get("serving", "unknown"),
+                        tree, d.get("service", "unknown"),
+                        d.get("load", "unknown"),
+                        d.get("jobs", "unknown"), d.get("pytest", "unknown"),
+                        d.get("tmp_bd", "unknown")))
+    return lines
+
+
+def divergences(rows):
+    """What DISAGREES across the fleet -- the reason anyone runs this."""
+    notes = []
+    live = [(l, d) for l, _a, d, e in rows if d]
+    for key, what in (("head", "commit"), ("version", "version")):
+        vals = {d.get(key, "unknown") for _l, d in live
+                if d.get(key) not in (None, "", "?", "unknown")}
+        if len(vals) > 1:
+            notes.append("%s DIVERGES across the fleet: %s"
+                         % (what, ", ".join("%s=%s" % (l, d.get(key, "?"))
+                                            for l, d in live
+                                            if d.get(key) in vals)))
+    for label, d in live:
+        # A HOST DISAGREEING WITH ITSELF, which fleet-wide comparison cannot
+        # see. An empty reading is UNKNOWN, not a mismatch: a host that never
+        # started under systemd has no deployed_version.txt, and reporting that
+        # as "serving the wrong version" would be the gate firing on its own
+        # blindness.
+        serving = (d.get("serving") or "unknown").strip()
+        if serving != "unknown" and serving != d.get("version"):
+            notes.append("%s has DEPLOYED but not RESTARTED: tree is %s, the "
+                         "service is still serving %s -- deploy that host "
+                         "before trusting a capture from it"
+                         % (label, d.get("version", "?"), serving))
+        if d.get("dirty") == "dirty":
+            notes.append("%s has an UNCOMMITTED tree" % label)
+        elif d.get("dirty") != "clean":
+            notes.append("%s tree cleanliness is UNKNOWN" % label)
+        if d.get("service") not in ("active", "unknown", None):
+            notes.append("%s service is %s" % (label, d.get("service")))
+        # REGISTRY STATE IS DECIDED BEFORE THE EMPTY-REGISTRY BRANCH. "Nothing
+        # is registered" and "we could not read what is registered" are opposite
+        # facts, and the second one used to be reported as the first.
+        if d.get("jobs_state") == "UNKNOWN":
+            notes.append(
+                "%s registry census is UNKNOWN (valid=%s, malformed=%s) -- run "
+                "`swarm-jobs list` there; the malformed finals are RETAINED and are "
+                "the only evidence of what went wrong"
+                % (label, d.get("jobs", "?"), d.get("jobs_malformed", "?")))
+        elif d.get("jobs_state") in (None, "OK"):
+            try:
+                if int(d.get("pytest", 0)) > 0 and int(d.get("jobs", 0)) == 0:
+                    notes.append(
+                        "%s is running pytest with NOTHING registered -- "
+                        "`swarm-jobs orphans` there before deploying" % label)
+            except ValueError:
+                pass
+        try:
+            if int(d.get("tmp_bd", 0)) >= 100:
+                notes.append("%s carries %s entries under /tmp (all of it, not just "
+                             "BD's -- the names cannot be attributed) -- "
+                             "`swarm-gc` reports what is safe to remove"
+                             % (label, d["tmp_bd"]))
+        except ValueError:
+            pass
+    return notes
+
+
+def run(args):
+    hosts_file = args.hosts or DEFAULT_HOSTS
+    if not os.path.isfile(hosts_file):
+        print("swarm-fleet: REFUSED: no host list at %s. It is deliberately "
+              "untracked -- copy docs/repo/hosts.example there." % hosts_file,
+              file=sys.stderr)
+        return 2
+    try:
+        hosts = read_hosts(hosts_file)
+    except ValueError as exc:
+        print("swarm-fleet: REFUSED: %s: %s" % (hosts_file, exc), file=sys.stderr)
+        return 2
+    if not hosts:
+        print("swarm-fleet: REFUSED: %s lists no hosts. An empty fleet must not "
+              "report as a healthy one." % hosts_file, file=sys.stderr)
+        return 2
+
+    me = subprocess.run(["hostname"], capture_output=True, text=True).stdout.strip()
+    rows = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(hosts)) as pool:
+        futures = {pool.submit(query, l, a, me, args.timeout): (l, a)
+                   for l, a in hosts}
+        for fut in concurrent.futures.as_completed(futures):
+            label, addr = futures[fut]
+            try:
+                rows.append(fut.result())
+            except Exception as exc:                      # timeout, ssh death
+                rows.append((label, addr, None, str(exc)))
+    rows.sort(key=lambda r: [h[0] for h in hosts].index(r[0]))
+
+    for line in render(rows):
+        print(line)
+    notes = divergences(rows)
+    if notes:
+        print("--- what disagrees ---")
+        for n in notes:
+            print("  " + n)
+    # A REACHABLE HOST WHOSE REGISTRY WE COULD NOT READ IS NOT A CLEAN REPORT.
+    # Row 216: the census used to describe a malformed retained final as a
+    # registered job, so the operator saw a number and no reason to look. An
+    # UNKNOWN census now contributes a nonzero exit, the same way an unreachable
+    # host does -- both are "this report does not cover what you asked".
+    census_unknown = [r[0] for r in rows
+                      if r[2] is not None and r[2].get("jobs_state") == "UNKNOWN"]
+    if census_unknown:
+        print("swarm-fleet: registry census is UNKNOWN on %d host(s): %s -- "
+              "`swarm-jobs list` there; malformed finals are RETAINED."
+              % (len(census_unknown), ", ".join(census_unknown)), file=sys.stderr)
+
+    measurement_unknown = [
+        (r[0], unknown_measurements(r[2]))
+        for r in rows if r[2] is not None and unknown_measurements(r[2])
+    ]
+    if measurement_unknown:
+        print(
+            "swarm-fleet: measurements are UNKNOWN on %d host(s): %s -- this "
+            "report is incomplete."
+            % (len(measurement_unknown), "; ".join(
+                "%s=%s" % (label, ",".join(fields))
+                for label, fields in measurement_unknown)),
+            file=sys.stderr,
+        )
+
+    unreachable = [r[0] for r in rows if r[2] is None]
+    if unreachable:
+        print("swarm-fleet: %d of %d host(s) UNREACHABLE: %s -- this report covers "
+              "%d host(s), not the fleet."
+              % (len(unreachable), len(rows), ", ".join(unreachable),
+                 len(rows) - len(unreachable)), file=sys.stderr)
+        return 1
+    return bool(census_unknown or measurement_unknown)
+
+
+def selftest(_args):
+    failures = []
+
+    d = parse_probe("head=abc1234\nversion=3.66.1\ndirty=clean\n")
+    if d.get("head") != "abc1234" or d.get("dirty") != "clean":
+        failures.append("probe output was not parsed into key/value")
+
+    with tempfile.TemporaryDirectory() as td:
+        f = pathlib.Path(td) / "hosts"
+        f.write_text("# c\n\nmaster 1.2.3.4\ncandidate 1.2.3.5\n")
+        if read_hosts(str(f)) != [("master", "1.2.3.4"), ("candidate", "1.2.3.5")]:
+            failures.append("host parsing dropped a host or kept a comment")
+        f.write_text("master\n")
+        try:
+            read_hosts(str(f))
+            failures.append("a line with no address was accepted")
+        except ValueError:
+            pass
+        f.write_text("# only comments\n")
+        ns = argparse.Namespace(hosts=str(f), timeout=10)
+        if run(ns) != 2:
+            failures.append("a host file listing no hosts was not refused")
+        ns = argparse.Namespace(hosts=str(pathlib.Path(td) / "nope"), timeout=10)
+        if run(ns) != 2:
+            failures.append("a missing host file was not refused")
+
+    out = "\n".join(render([("a", "1.1.1.1", None, "timed out")]))
+    if "UNREACHABLE" not in out:
+        failures.append("an unreachable host did not print UNREACHABLE")
+
+    # ROW 216: the three registry census states, each asserted for its
+    # DISTINCTIVE outcome. A shared "something was said" check would let one
+    # state's message satisfy another's assertion.
+    ok = [("a", "1", {"head": "a", "version": "1", "dirty": "clean",
+                      "service": "active", "pytest": "0", "jobs": "2",
+                      "jobs_malformed": "0", "jobs_state": "OK"}, None)]
+    notes = " ".join(divergences(ok))
+    if "UNKNOWN" in notes:
+        failures.append("a fully valid registry was described as UNKNOWN")
+
+    bad = [("a", "1", {"head": "a", "version": "1", "dirty": "clean",
+                       "service": "active", "pytest": "0", "jobs": "1",
+                       "jobs_malformed": "1", "jobs_state": "UNKNOWN"}, None)]
+    notes = " ".join(divergences(bad))
+    if "census is UNKNOWN" not in notes:
+        failures.append("a malformed final did not make the census UNKNOWN")
+    if "malformed=1" not in notes:
+        failures.append("the UNKNOWN census did not publish its malformed count")
+    if "NOTHING registered" in notes:
+        failures.append("an UNREADABLE registry was reported as an EMPTY one")
+
+    # And the empty-registry warning must survive: it is a real signal and this
+    # cut reorders the branch that produces it.
+    empty = [("a", "1", {"head": "a", "version": "1", "dirty": "clean",
+                         "service": "active", "pytest": "3", "jobs": "0",
+                         "jobs_malformed": "0", "jobs_state": "OK"}, None)]
+    if "NOTHING registered" not in " ".join(divergences(empty)):
+        failures.append("pytest with a known-empty registry was not flagged")
+
+    unparsed = [("a", "1", {"head": "a", "version": "1", "dirty": "clean",
+                            "service": "active", "pytest": "0", "jobs": "?",
+                            "jobs_malformed": "?", "jobs_state": "UNKNOWN"}, None)]
+    if "census is UNKNOWN" not in " ".join(divergences(unparsed)):
+        failures.append("an unparseable swarm-jobs summary did not report UNKNOWN")
+
+    rows = [("a", "1", {"head": "aaa", "version": "1", "dirty": "clean",
+                        "service": "active", "pytest": "0", "jobs": "0"}, None),
+            ("b", "2", {"head": "bbb", "version": "1", "dirty": "dirty",
+                        "service": "active", "pytest": "0", "jobs": "0"}, None)]
+    notes = " ".join(divergences(rows))
+    if "DIVERGES" not in notes:
+        failures.append("two hosts on different commits were not flagged")
+    if "UNCOMMITTED" not in notes:
+        failures.append("a dirty tree was not flagged")
+    rows = [("a", "1", {"head": "a", "version": "1", "dirty": "clean",
+                        "service": "active", "pytest": "3", "jobs": "0",
+                        "tmp_bd": "700"}, None)]
+    notes = " ".join(divergences(rows))
+    # Match the COUNT and the remedy, not the phrasing. This asserted the
+    # literal "700 /tmp/swarm-*" and broke at v3.66.1078 when the note stopped
+    # naming a glob it no longer counts -- a selftest coupled to wording
+    # fails on a correct change and says nothing about behaviour.
+    if "700" not in notes or "swarm-gc" not in notes:
+        failures.append("a litter count of 700 was collected and never "
+                        "reported -- a field written and never read")
+    if "NOTHING registered" not in notes:
+        failures.append("unregistered pytest was not flagged -- this is the "
+                        "state that broke a deploy at step 9")
+
+    for f in failures:
+        print("SELFTEST FAIL: %s" % f, file=sys.stderr)
+    if failures:
+        return 1
+    print("SELFTEST PASS: parsing, refusals, unreachable, divergence detection")
+    return 0
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(description="read-only fleet status")
+    p.add_argument("--hosts", help="host list (default: ~/.config/bd/hosts)")
+    p.add_argument("--timeout", type=int, default=30)
+    p.add_argument("--selftest", action="store_true")
+    args = p.parse_args(argv)
+    if args.selftest:
+        return selftest(args)
+    return run(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

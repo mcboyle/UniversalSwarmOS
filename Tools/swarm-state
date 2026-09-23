@@ -1,0 +1,308 @@
+#!/usr/bin/env python3
+"""swarm-state -- cross-check STATE.json against the actual source zip in ~1s.
+
+STATE.json is the per-session pin (schema in STATE.schema.json). This asserts it
+is not lying: the FULL-ZIP sha256, version, file_count, and guard SHAs in the pin
+must all match the zip. Run it at session start (after swarm-install) and again at
+session close after release evidence is regenerated. A failure means a prose doc /
+the pin drifted from source -- fix before trusting anything.
+
+NOTE (v3.66.276 hardening): the full-zip sha256 gate was added because an OFF-PIN,
+SAME-NAMED zip whose version + guard-shas + file_count all matched still slipped
+through -- only `sha256sum <zip>` vs STATE.zip.sha256 caught it. Same-name != same-bytes.
+Version/guards/count alone are NOT sufficient; the full-zip sha is the binding identity check.
+
+Usage:
+    bd python3 swarm-state --state STATE.json --zip <source.zip>
+    bd python3 swarm-state                       # autodetect newest STATE.json + highest zip
+Exit 0 = pin matches zip, 1 = mismatch.
+"""
+import argparse
+import atexit
+import glob
+import hashlib
+import importlib.util
+import json
+import os
+import re
+import sys
+import tempfile
+import zipfile
+
+_RESOLVER_PATH = os.path.join(os.path.dirname(os.path.realpath(__file__)), "_bd_work_tree.py")
+try:
+    _resolver_spec = importlib.util.spec_from_file_location("_bd_state_work_tree", _RESOLVER_PATH)
+    if _resolver_spec is None or _resolver_spec.loader is None:
+        raise ImportError(f"cannot load {_RESOLVER_PATH}")
+    _resolver = importlib.util.module_from_spec(_resolver_spec)
+    _resolver_spec.loader.exec_module(_resolver)
+except (Exception, SystemExit) as exc:
+    _resolver = None
+    _RESOLVER_LOAD_ERROR = exc
+else:
+    _RESOLVER_LOAD_ERROR = None
+
+G, R, Y, RST = "\033[32m", "\033[31m", "\033[33m", "\033[0m"
+try:
+    if _resolver is None:
+        raise RuntimeError(f"resolver missing beside physical tool: {_RESOLVER_LOAD_ERROR}")
+    DEFAULT_WORK = str(_resolver.resolve_work_tree(__file__))
+    _WORK_TREE_ERROR = None
+except RuntimeError as exc:
+    DEFAULT_WORK = ""
+    _WORK_TREE_ERROR = exc
+STATE_ROOT = os.environ.get("SWARM_STATE_ROOT", DEFAULT_WORK)
+UPLOAD_ROOT = os.environ.get("SWARM_UPLOADS", "/mnt/user-data/uploads")
+_TEMP_STATE_PATHS = set()
+
+
+def _cleanup_temp_states():
+    """Remove only private state extracts created by this process."""
+    while _TEMP_STATE_PATHS:
+        path = _TEMP_STATE_PATHS.pop()
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass
+
+
+atexit.register(_cleanup_temp_states)
+
+
+def find_zip():
+    # Same rule as find_state(): operator artifact root first, then uploads.
+    # uploads may be read-only and evict, so a freshly built zip can live locally.
+    # globbing uploads alone means this gate cannot see the artifact it was just asked
+    # to check, and it happily reports FAIL against last session's zip instead.
+    best, key = None, None
+    for z in (glob.glob(os.path.join(STATE_ROOT, "${TARGET_REPO_PATH}_v*.zip")) +
+              glob.glob(os.path.join(UPLOAD_ROOT, "${TARGET_REPO_PATH}_v*.zip"))):
+        try:
+            with zipfile.ZipFile(z) as zf:
+                init = next((n for n in zf.namelist()
+                             if n.endswith("bulk_downloader/__init__.py")), None)
+                v = None
+                if init:
+                    for ln in zf.read(init).decode("utf-8", "replace").splitlines():
+                        if "__version__" in ln and "=" in ln:
+                            v = ln.split("=", 1)[1].strip().strip('"').strip("'"); break
+        except Exception:  # why: this zip is not a readable BD release; skip and try the next candidate
+            continue
+        if not v:
+            continue
+        k = tuple(int(x) for x in v.split(".") if x.isdigit())
+        if key is None or k > key:
+            best, key = z, k
+    return best
+
+
+def find_state():
+    """Locate the CANONICAL STATE.json and report where it came from.
+
+    Priority: direct local pin, local session pack, upload session pack, loose
+    upload pin, cwd pin, then the warned recursive local fallback.
+    Returns (path, label). STATE_schema.json is never matched.
+    """
+    def _ok(n):
+        return n.rstrip("/").endswith("STATE.json") and not n.endswith("STATE_schema.json")
+
+    def _version_key(path):
+        return tuple(int(x) for x in re.findall(r"\d+", os.path.basename(path))), path
+
+    def _loose(candidates, label):
+        for candidate in candidates:
+            if not candidate or not os.path.isfile(candidate) or not _ok(candidate):
+                continue
+            try:
+                json.load(open(candidate))
+            except Exception as exc:
+                print(f"WARN: corrupt {label} candidate {candidate}: {exc}", file=sys.stderr)
+                continue
+            return candidate, f"{label}: {candidate}"
+        return None
+
+    def _pack(candidates, label):
+        for candidate in sorted(candidates, key=_version_key, reverse=True):
+            try:
+                with zipfile.ZipFile(candidate) as zf:
+                    members = [n for n in zf.namelist() if _ok(n)]
+                    if not members:
+                        raise ValueError("no STATE.json member")
+                    member = min(members, key=lambda n: (n.count("/"), n))
+                    payload = zf.read(member)
+                    json.loads(payload)
+                fd, tmp = tempfile.mkstemp(prefix="bd_canonical_STATE_", suffix=".json")
+                try:
+                    with os.fdopen(fd, "wb") as handle:
+                        handle.write(payload)
+                except BaseException:
+                    try:
+                        os.unlink(tmp)
+                    except FileNotFoundError:
+                        pass
+                    raise
+                _TEMP_STATE_PATHS.add(tmp)
+                return tmp, f"{label}: {os.path.basename(candidate)} -> {member}"
+            except Exception as exc:
+                print(f"WARN: corrupt {label} candidate {candidate}: {exc}", file=sys.stderr)
+        return None
+
+    # Named tiers are categorical. A newer lower-tier artifact never outranks a
+    # valid higher-tier operator choice.
+    selected = _loose([os.path.join(STATE_ROOT, "STATE.json")], "direct local state")
+    if selected:
+        return selected
+
+    selected = _pack(
+        glob.glob(os.path.join(STATE_ROOT, "BulkDL_next_session_*.zip")),
+        "local session pack",
+    )
+    if selected:
+        return selected
+
+    selected = _pack(
+        glob.glob(os.path.join(UPLOAD_ROOT, "BulkDL_next_session_*.zip")),
+        "upload session pack",
+    )
+    if selected:
+        return selected
+
+    upload_loose = [os.path.join(UPLOAD_ROOT, "STATE.json")]
+    upload_loose.extend(glob.glob(os.path.join(UPLOAD_ROOT, "**", "STATE.json"), recursive=True))
+    selected = _loose(upload_loose, "loose upload state")
+    if selected:
+        return selected
+
+    cwd = os.path.realpath(os.getcwd())
+    if cwd != os.path.realpath(STATE_ROOT):
+        selected = _loose([os.path.join(cwd, "STATE.json")], "cwd state")
+        if selected:
+            return selected
+
+    recursive = [
+        path for path in glob.glob(os.path.join(STATE_ROOT, "**", "STATE.json"), recursive=True)
+        if os.path.realpath(path) != os.path.realpath(os.path.join(STATE_ROOT, "STATE.json"))
+    ]
+    selected = _loose(sorted(recursive), "recursive local state")
+    if selected:
+        path, label = selected
+        return path, (label + "  [WARN: work-tree copy from the source zip -- its zip.sha is "
+                       "self-referential and cannot match; attach the session pack or pass --state]")
+    return None, None
+
+
+def _file_sha256(path):
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+
+def selftest():
+    """Delegates to swarm-coretest --only swarm-state -- the REAL fault-injection case
+    (I-5/C-23). A bespoke smoke selftest would assert "it runs", which is the
+    ~92%-are-smoke problem swarm-coretest exists to fix. If the harness is absent
+    we say so and FAIL: a selftest that cannot verify must not report success."""
+    import subprocess as _sp
+    ct = os.path.join(os.path.dirname(os.path.realpath(__file__)), "swarm-coretest")
+    if not os.path.isfile(ct):
+        print("SELFTEST FAIL")
+        sys.stderr.write("CANNOT-EVALUATE selftest: reason=ABSENT "
+                         "(swarm-coretest harness not found)\n")
+        return 2
+    cp = _sp.run([sys.executable, ct, "--no-cache", "--only", "swarm-state"],
+                 capture_output=True, text=True, timeout=180)
+    sys.stdout.write(cp.stdout)
+    ok = cp.returncode == 0
+    print("SELFTEST PASS" if ok else "SELFTEST FAIL")
+    return 0 if ok else 1
+
+
+def main(argv=None):
+    if _WORK_TREE_ERROR is not None:
+        print(f"BD-WORK-TREE-UNRUNNABLE: {_WORK_TREE_ERROR}", file=sys.stderr)
+        return 2
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--state", default=None)
+    ap.add_argument("--zip", default=None)
+    ap.add_argument("--selftest", action="store_true",
+                    help="fault-injection selftest (delegates to swarm-coretest)")
+    a = ap.parse_args(argv)
+    if a.selftest:
+        return selftest()
+    if a.state:
+        sp, label = a.state, a.state
+    else:
+        sp, label = find_state()
+    zp = a.zip or find_zip()
+    if not sp or not os.path.exists(sp):
+        print(f"{R}FAIL{RST} no STATE.json found"); return 1
+    if not zp:
+        print(f"{R}FAIL{RST} no source zip found"); return 1
+    st = json.load(open(sp))
+    fails = []
+
+    # --- FULL-ZIP sha256 gate (v3.66.276) -------------------------------------
+    # The binding identity check. Computed over the whole zip file, independent of
+    # the member-level guard shas below. An off-pin same-named zip (matching
+    # version/guards/count but differing in other bytes) fails HERE and nowhere else.
+    want_sha = (st.get("zip", {}) or {}).get("sha256")
+    if want_sha:
+        got_sha = _file_sha256(zp)
+        if got_sha != want_sha:
+            fails.append(
+                f"full-zip sha256: STATE={want_sha[:12]}... zip={got_sha[:12]}... "
+                f"(off-pin or wrong artifact -- same name does NOT mean same bytes)"
+            )
+    else:
+        # Don't silently pass when the pin omits the sha -- say so loudly.
+        print(f"  {R}WARN{RST} STATE.zip.sha256 absent -- cannot run the full-zip identity gate; "
+              f"add it to the pin so this can't be skipped.")
+
+    with zipfile.ZipFile(zp) as zf:
+        names = zf.namelist()
+        # version
+        init = next((n for n in names if n.endswith("bulk_downloader/__init__.py")), None)
+        zver = None
+        if init:
+            for ln in zf.read(init).decode().splitlines():
+                if "__version__" in ln and "=" in ln:
+                    zver = ln.split("=", 1)[1].strip().strip('"').strip("'"); break
+        want = st.get("built_version") or st.get("live_version")
+        if zver != want:
+            fails.append(f"version: STATE={want} zip={zver}")
+        # file_count (exclude dir entries)
+        fc = sum(1 for n in names if not n.endswith("/"))
+        if "file_count" in st.get("zip", {}) and fc != st["zip"]["file_count"]:
+            fails.append(f"file_count: STATE={st['zip']['file_count']} zip={fc}")
+        # zip name
+        if st.get("zip", {}).get("name") and os.path.basename(zp) != st["zip"]["name"]:
+            fails.append(f"zip name: STATE={st['zip']['name']} actual={os.path.basename(zp)}")
+        # guard SHAs (first 8)
+        for path, want8 in st.get("guards", {}).items():
+            if path not in names:
+                fails.append(f"guard missing in zip: {path}"); continue
+            got8 = hashlib.sha256(zf.read(path)).hexdigest()[:8]
+            if got8 != want8:
+                fails.append(f"guard {path}: STATE={want8} zip={got8}")
+
+    if "[WARN:" in (label or ""):
+        print(f"  {Y}WARN{RST} canonical STATE.json is in the session pack; "
+              f"falling back to the work-tree copy -- attach BulkDL_next_session_*.zip or pass --state.")
+    print(f"  STATE.json: {label}")
+    print(f"  zip: {os.path.basename(zp)}")
+    if fails:
+        for f in fails:
+            print(f"  {R}FAIL{RST} {f}")
+        print(f"{R}RESULT: FAIL{RST} -- STATE.json pin disagrees with the zip; reconcile.")
+        return 1
+    sha_note = "full-zip sha OK | " if want_sha else "full-zip sha SKIPPED | "
+    print(f"  {G}PASS{RST} {sha_note}version {want} | {fc} files | {len(st.get('guards', {}))} guards match")
+    print(f"{G}RESULT: PASS{RST} -- STATE.json pin matches the source zip.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

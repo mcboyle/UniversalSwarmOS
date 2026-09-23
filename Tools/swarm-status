@@ -1,0 +1,147 @@
+#!/bin/bash
+# swarm-status -- one-shot health check of the sandbox env + services.
+# Usage: swarm-status
+# --selftest: this is a bootstrap/orchestration script; a real run IS its test.
+case " $* " in *" --selftest "*)
+  echo "SKIP: needs a provisioned session (run it directly to see live status)"
+  echo "SELFTEST PASS"; exit 0;; esac
+# @878 -- FAIL CLOSED when the env this tool exists to load is absent.
+# Earlier versions sourced a fixed sandbox env file and carried on regardless:
+# `bd` had no `set -e` and exec'd the command anyway, so it ran with NONE of the
+# environment its whole purpose is to provide, and exited 0. A tool whose output
+# is a verdict an operator acts on must not produce one over an environment it
+# never loaded. SWARM_ENV_FILE overrides the location; SWARM_SKIP_ENV_CHECK=1 is the
+# single documented escape hatch, named in the refusal so it is a gate and not
+# a wall.
+_bd_tool_file="$(readlink -f "${BASH_SOURCE[0]}")" || exit 2
+_bd_tool_dir="$(CDPATH= cd -- "$(dirname -- "$_bd_tool_file")" && pwd -P)" || exit 2
+if [ -f "$_bd_tool_dir/.bdenv.sh" ]; then
+  _bd_default_env="$_bd_tool_dir/.bdenv.sh"
+else
+  _bd_default_env="$(dirname "$_bd_tool_dir")/bdenv.sh"
+fi
+SWARM_ENV_FILE="${SWARM_ENV_FILE:-$_bd_default_env}"
+if [ "${SWARM_SKIP_ENV_CHECK:-0}" != "1" ]; then
+  if [ ! -f "$SWARM_ENV_FILE" ]; then
+    echo "BD-UNEVALUABLE: no env file at $SWARM_ENV_FILE." >&2
+    echo "  This tool exists to run things WITH that environment loaded; without" >&2
+    echo "  it the result describes a session that was never provisioned." >&2
+    echo "  Set SWARM_ENV_FILE=<path>, or SWARM_SKIP_ENV_CHECK=1 to proceed bare." >&2
+    exit 2
+  fi
+  . "$SWARM_ENV_FILE" || exit $?
+fi
+
+c_ok=$'\e[32mOK \e[0m'
+c_no=$'\e[31m-- \e[0m'
+c_dim=$'\e[2m'
+c_off=$'\e[0m'
+
+check_path() {
+    local label="$1" path="$2"
+    if [ -e "$path" ]; then echo "  $c_ok $label $c_dim($path)$c_off"
+    else echo "  $c_no $label $c_dim($path missing)$c_off"; fi
+}
+
+# Check that at least one of N candidate paths exists. Useful for kits
+# whose install layout varies between versions or where multiple
+# acceptable evidence-paths exist (e.g. pip-installed packages can
+# live in either the venv site-packages or system site-packages).
+check_any_path() {
+    local label="$1"; shift
+    local first="$1"
+    for p in "$@"; do
+        if [ -e "$p" ]; then
+            echo "  $c_ok $label $c_dim($p)$c_off"
+            return 0
+        fi
+    done
+    echo "  $c_no $label $c_dim(none of: $first ... missing)$c_off"
+}
+
+# Check that `python3 -c "import X"` succeeds. The right signal for
+# pip-installed kits (optional, lsp) whose evidence lives in
+# site-packages rather than a dedicated directory.
+check_import() {
+    local label="$1" mod="$2"
+    if python3 -c "import $mod" 2>/dev/null; then
+        echo "  $c_ok $label $c_dim(import $mod ok)$c_off"
+    else
+        echo "  $c_no $label $c_dim(import $mod failed)$c_off"
+    fi
+}
+
+check_proc() {
+    local label="$1" pattern="$2"
+    local pid
+    pid=$(pgrep -f "$pattern" 2>/dev/null | while read p; do
+        cmd=$(tr '\0' ' ' < /proc/$p/cmdline 2>/dev/null)
+        case "$cmd" in *"/bin/sh"*|*"bash -"*) ;; *) echo "$p"; break ;; esac
+    done | head -1)
+    if [ -n "$pid" ]; then echo "  $c_ok $label $c_dim(PID $pid)$c_off"
+    else echo "  $c_no $label $c_dim(not running)$c_off"; fi
+}
+
+check_port() {
+    local label="$1" port="$2"
+    local ok=0
+    for delay in 0 0.3 0.8; do
+        [ "$delay" != "0" ] && sleep $delay
+        if python3 -c "import socket,sys; s=socket.socket(); s.settimeout(1.5)
+try: s.connect((\"127.0.0.1\",$port))
+except Exception: sys.exit(1)
+" 2>/dev/null; then ok=1; break; fi
+    done
+    if [ $ok -eq 1 ]; then echo "  $c_ok $label $c_dim(:$port)$c_off"
+    else echo "  $c_no $label $c_dim(:$port closed)$c_off"; fi
+}
+
+echo "=== ENV ==="
+echo "  DISPLAY=$DISPLAY   SWARM_HOME=$SWARM_HOME   SWARM_DISABLE_KEEPALIVE=$SWARM_DISABLE_KEEPALIVE"
+echo "  PATH head: $(echo $PATH | cut -d: -f1-3)"
+
+echo
+echo "=== CURRENT TOOLCHAIN ==="
+WORK="$(python3 "$_bd_tool_dir/_bd_work_tree.py")" || exit 2
+check_path "core (prestaged python)" /tmp/prestaged_site_packages
+check_path "venv (service runtime)"  "$WORK/venv/bin/python"
+check_import "optional (yt-dlp)"      yt_dlp
+check_path "chromium (playwright)"    "$PLAYWRIGHT_BROWSERS_PATH"
+check_path "frontend (node_modules)"  "$WORK/frontend/node_modules"
+check_path "vitest (harness)"         "$WORK/frontend/node_modules/.bin/vitest"
+check_path "bd_home"                  "$SWARM_HOME"
+[ -z "${GTK_ROOT:-}" ] || check_path "gtk" "$GTK_ROOT"
+[ -z "${APPRISE_BIN:-}" ] || check_path "apprise" "$APPRISE_BIN"
+[ -z "${MOCKS_DIR:-}" ] || check_path "mocks" "$MOCKS_DIR/mock_plex.py"
+
+echo
+echo "=== SERVICES (processes + ports) ==="
+check_proc "Xvfb :99"        "Xvfb :99"
+check_proc "apprise"         "fake_webhook_server.py"
+check_port "  apprise"       8765
+check_proc "mock_plex"       "mock_plex.py"
+check_port "  plex"          32400
+check_proc "mock_jellyfin"   "mock_jellyfin.py"
+check_port "  jellyfin"      8096
+check_proc "mock_stash"      "mock_stash.py"
+check_port "  stash"         9999
+
+echo
+echo "=== SOURCE TREE ==="
+check_path "${TARGET_REPO_PATH} source" "$WORK/bulk_downloader"
+check_path "package_json"          "$WORK/frontend/package.json"
+
+# v3.66.721: the SERVICE VENV. Its loss is completely silent -- swarm-install does
+# `rm -rf work/*` before extracting and the zip has NO venv/, so re-running
+# swarm-boot/swarm-install DESTROYS it and nothing restores it. Every tool hardcoding
+# venv/bin/python then probes NOTHING (how swarm-sbcap reported "chromium build
+# resolvable" having verified nothing). Surface it here, every status call.
+if [ -x "$WORK/venv/bin/python3" ] || [ -x "$WORK/venv/bin/python" ]; then
+  printf "  %-24s %s\n" "service venv" "OK (work/venv)"
+else
+  printf "  %-24s %s\n" "service venv" "MISSING -- re-running swarm-boot/swarm-install destroys it. Tools hardcoding venv/bin/python probe NOTHING. FIX: swarm-venv"
+fi
+
+echo
+echo "=== DISK ==="
+df -h "$WORK" /tmp 2>/dev/null | tail -2 | awk '{printf "  %-12s %s used, %s free (%s)\n", $6, $3, $4, $5}'

@@ -1,0 +1,1272 @@
+#!/usr/bin/env python3
+"""swarm-precut -- report an advisory prediction + GATE before you bump/build.
+
+One advisory and the blocking gates delegate to their authoritative sources:
+  A. precut_check.py     -- advisory version/pin/surface/guard prediction only.
+  2. in-sync GENERATORS  -- runs the actual in-sync gate tests (they regenerate the
+                            derived doc in-process and diff vs source). This catches
+                            a FUNCTION_INDEX/ROUTE_INDEX/etc that is stale vs source
+                            -- the class the old file-diff prediction MISSED (F-03).
+  3. swarm-envscan (v2)     -- the exact env_vars that would fail the env-tranche gate
+                            (delegates to config_surface_inventory). Catches the
+                            SWARM_-literal trap (F-01) the old flow shipped at v3.66.699.
+
+Usage:
+  swarm-precut [--baseline ZIP] [--root DIR] [--json]        # advisory (exit 0)
+  swarm-precut --gate [...]                                  # BLOCKING: exit != 0 if any
+                                                          #   real problem -> gate a cut:
+                                                          #   swarm-precut --gate && swarm-cut ...
+  swarm-precut --no-insync / --no-envscan                   # skip a check
+"""
+import argparse, ast, atexit, glob, importlib.util, os, pathlib, re, shutil, subprocess, sys, tempfile
+# `datetime` is imported on ITS OWN LINE, and the line above is left byte-identical to
+# what it was at base, because tests/mutants/v3_66_1452_shuffle_lane_containment.json M3
+# anchors on that exact import line. MEASURED: folding `datetime` into it cost the anchor
+# its resolution and the precut gate failed
+# tests/test_row532_a_mutant_anchor_must_resolve_into_code.py and
+# tests/test_row357_mutant_anchors_are_not_fragile.py on it. An anchor is a reader.
+import datetime
+
+# Placed AFTER the whole import block on purpose: inserting above `import sys`
+# leaves sys undefined at the insertion point and --help dies with NameError,
+# while ast.parse still accepts the file (the v3.66.851 trap).
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import bdtools_sec as sec  # noqa: E402  -- DEFAULT_WORK follows a relocated checkout
+
+IN_SYNC = [
+    "tests/test_function_index_in_sync.py",
+    "tests/test_dependency_graph_in_sync.py",
+    "tests/test_import_graph_no_new_edges.py",
+    "tests/test_route_index_in_sync.py",
+    "tests/test_endpoint_catalog_in_sync.py",
+    "tests/test_pin_index_in_sync.py",
+    "tests/test_route_map_invariant.py",
+]
+
+
+def _version(name):
+    m = re.search(r"v?(\d+)[._](\d+)[._](\d+)", os.path.basename(name))
+    return tuple(int(x) for x in m.groups()) if m else (0, 0, 0)
+
+
+def _auto_baseline(root=None):
+    """Newest release zip to diff against, or None.
+
+    v3.66.855 port: the three sandbox globs (/mnt/user-data/uploads,
+    /home/claude/out, /home/claude) are retired and can never match here, so the
+    only honest default is the ONE place a zip can now appear -- <root>/out,
+    which is where swarm-cut --out writes. Returning None is the normal case in a
+    git checkout, and the caller already says so out loud rather than pretending
+    precut_check ran.
+    """
+    root = root or sec.DEFAULT_WORK
+    found = [f for f in glob.glob(os.path.join(root, "out", "${TARGET_REPO_PATH}_v*.zip"))
+             if "overlay" not in os.path.basename(f).lower()]
+    return max(found, key=_version) if found else None
+
+
+def _derive_baseline(root, tmpdir):
+    """Build the previous tree from git when there is no release zip.
+
+    WHY THIS EXISTS. precut_check needs a snapshot of the tree the cut is being
+    measured against; it happens to READ that snapshot from a zip. The release
+    zip flow is retired here, so in a git checkout there was never a baseline
+    and the version/pin/surface check NEVER RAN -- reported honestly as UNKNOWN,
+    on every cut, forever. A permanent UNKNOWN is not a measurement: it held
+    v3.66.1360 for hours and blocked v3.66.1378, and a verdict nobody can ever
+    satisfy is one people learn to step over, which is worse than no verdict.
+
+    origin/main is the snapshot the cut is actually measured against, and git
+    can produce it exactly. THIS DOES NOT REVIVE THE RELEASE ZIP FLOW: the
+    archive is a private temp file, never published, never a release artifact.
+
+    Returns (path, reason). Exactly one is None. A failure returns the reason so
+    the caller can keep saying UNKNOWN out loud instead of guessing.
+    """
+    if not os.path.isdir(os.path.join(root, ".git")) and not os.path.isfile(
+            os.path.join(root, ".git")):
+        return None, "not a git checkout, so no baseline can be derived"
+    rev = subprocess.run(["git", "-C", root, "rev-parse", "--verify", "-q",
+                          "origin/main^{commit}"], capture_output=True, text=True)
+    if rev.returncode != 0 or not rev.stdout.strip():
+        return None, "origin/main does not resolve here, so no baseline can be derived"
+    sha = rev.stdout.strip()
+    out = os.path.join(tmpdir, "baseline-origin-main.zip")
+    ar = subprocess.run(["git", "-C", root, "archive", "--format=zip", "-o", out, sha],
+                        capture_output=True, text=True)
+    if ar.returncode != 0 or not os.path.isfile(out) or os.path.getsize(out) == 0:
+        return None, f"git archive of {sha[:12]} produced no usable baseline"
+    return out, None
+
+
+def _auto_root():
+    """v3.66.855 port: /home/claude/work is gone. sec.DEFAULT_WORK walks up from
+    the shared library's own file to the checkout that owns this tool, so it is
+    right from any cwd; cwd stays as the second rung for a tree that is not the
+    one this tool was installed into."""
+    for c in (sec.DEFAULT_WORK, os.getcwd()):
+        if os.path.isdir(os.path.join(c, "bulk_downloader")):
+            return c
+    return os.getcwd()
+
+
+def _run_insync(root):
+    """Run the in-sync gate tests (authoritative staleness check). Returns
+    (ok, detail). Degrades to (None, reason) if the harness can't run."""
+    rt = os.path.join(root, "run_tests.py")
+    if not os.path.isfile(rt):
+        return None, "run_tests.py not found"
+    present = [t for t in IN_SYNC if os.path.isfile(os.path.join(root, t))]
+    if not present:
+        return None, "no in-sync test files found"
+    env = dict(os.environ)
+    env.pop("SWARM_INSTALL_DIR", None)
+    env["SWARM_HOME"] = tempfile.mkdtemp()
+    env["SWARM_DISABLE_KEEPALIVE"] = "1"
+    # v3.66.855 port: this used to CLOBBER PYTHONPATH with the retired prestaged
+    # site-packages -- both a dead path and a destructive assignment, since a
+    # caller's own PYTHONPATH was discarded. The deps now come from the venv that
+    # is running us; the tree root is what the in-sync tests actually need.
+    _prev = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = f"{root}:{_prev}" if _prev else root
+    try:
+        r = subprocess.run([sys.executable, "run_tests.py"] + present,
+                           cwd=root, env=env, capture_output=True, text=True, timeout=180)
+    except Exception as e:
+        return None, f"harness error: {e}"
+    out = r.stdout + r.stderr
+    m = re.search(r"Failed:\s*(\d+)", out)
+    failed = int(m.group(1)) if m else (0 if r.returncode == 0 else 1)
+    fails = re.findall(r"FAIL\s+(\S+)", out)
+    return (failed == 0), (fails[:8] if failed else "all in-sync gates green")
+
+
+def _run_envscan(root):
+    """Run swarm-envscan (v2). Returns (ok, open_env_vars)."""
+    exe = os.path.join(os.path.dirname(os.path.realpath(__file__)), "swarm-envscan")
+    try:
+        r = subprocess.run([sys.executable, exe, "--tree", root, "--json"],
+                           capture_output=True, text=True, timeout=120)
+        import json
+        d = json.loads(r.stdout) if r.stdout.strip().startswith("{") else {}
+        ev = d.get("open_env_vars", [])
+        return (not ev), ev
+    except Exception as e:
+        return None, f"envscan error: {e}"
+
+
+def selftest():
+    """DELEGATE: wraps swarm-coretest. Asserts the target file is present in the tool's own
+    bin dir -- if not, FAIL (a wrapper that cannot find what it wraps is broken;
+    a selftest that cannot verify must not report success)."""
+    import os as _o
+    here = _o.path.dirname(_o.path.realpath(__file__))
+    found = _o.path.isfile(_o.path.join(here, "swarm-coretest"))
+    print(("PASS" if found else "FAIL") + "  delegation target present: swarm-coretest")
+    print("SELFTEST PASS" if found else "SELFTEST FAIL")
+    return 0 if found else 1
+
+
+# --- ROW 615 -------------------------------------------------------------
+# WHY THIS IS THREE FUNCTIONS AND NOT ONE STRING. The underived-gate block ran
+# the six gate files in ONE pytest subprocess and kept only the return code, so
+# ANY non-zero rc appended the `why` string for ALL SIX gates. MEASURED
+# 2026-09-02: a real failure in exactly one of them printed the whole six-gate
+# class description, named neither the node id nor the assertion, and cost a
+# rerun by hand to learn which one. CLAUDE.md A7 names that shape for
+# swarm-vault-unlock's four-request "pairing fallback failed": two diagnoses
+# needing opposite actions -- fix gate X or fix gate Y -- were indistinguishable
+# from the refusal alone.
+#
+# The subprocess is still ONE run (one interpreter boot per gate would be the slow fix
+# and would change the tool's shape); it now also writes a JUnit record, which
+# carries the node id and pytest's own message. rc remains the VERDICT
+# authority -- the record only names what failed, it never decides whether
+# anything did (CLAUDE.md A5: a partial JUnit file must not define its own
+# expected denominator).
+#
+# FIVE causes reach this refusal and each gets its OWN words. Sharing one
+# message between two of them would be the very defect being fixed, so the
+# self-audit is written into the tests: row 615's controls assert the messages
+# DIFFER, not merely that each is non-empty.
+_UNDERIVED_BUDGET_S = 1800
+# H360 (2026-09-14): five of five remote precuts of one cut hit the fixed 1800 s
+# wall on loaded 48-core pool hosts at [60%]..[98%] -- throughput, not a hung
+# node -- and there was no way to give the run more time short of editing this
+# file. SWARM_PRECUT_BUDGET_S sets the wall, clamped to [floor, ceiling]. A value
+# that cannot be an integer, or one below the floor, is IGNORED and the tool
+# SAYS so in one bounded stderr line; a silently ignored knob is a trap. The
+# ceiling is clamped, not ignored: asking for more than 7200 s means "as much
+# as allowed", and the line says which value applied.
+_UNDERIVED_BUDGET_ENV = "SWARM_PRECUT_BUDGET_S"
+_UNDERIVED_BUDGET_CEILING_S = 7200
+
+
+def _underived_budget_s(environ=None, err=None):
+    """The wall for the underived pytest run, in seconds.
+
+    Unset -> _UNDERIVED_BUDGET_S, silently. Set -> int(value) clamped to
+    [_UNDERIVED_BUDGET_S, _UNDERIVED_BUDGET_CEILING_S]. Non-integer or below
+    the floor -> the default, with ONE bounded stderr line saying it was
+    ignored; above the ceiling -> the ceiling, with one line saying so.
+    """
+    environ = os.environ if environ is None else environ
+    err = sys.stderr if err is None else err
+    raw = environ.get(_UNDERIVED_BUDGET_ENV)
+    if raw is None:
+        return _UNDERIVED_BUDGET_S
+    try:
+        value = int(raw.strip())
+    except ValueError:
+        print(_one_line("swarm-precut: %s=%r ignored: not an integer; the default "
+                        "%ss applies" % (_UNDERIVED_BUDGET_ENV, raw,
+                                         _UNDERIVED_BUDGET_S)), file=err)
+        return _UNDERIVED_BUDGET_S
+    if value < _UNDERIVED_BUDGET_S:
+        print(_one_line("swarm-precut: %s=%s ignored: below the floor of %ss; the "
+                        "default %ss applies" % (_UNDERIVED_BUDGET_ENV, raw.strip(),
+                                                 _UNDERIVED_BUDGET_S,
+                                                 _UNDERIVED_BUDGET_S)), file=err)
+        return _UNDERIVED_BUDGET_S
+    if value > _UNDERIVED_BUDGET_CEILING_S:
+        print(_one_line("swarm-precut: %s=%s clamped to the ceiling of %ss"
+                        % (_UNDERIVED_BUDGET_ENV, raw.strip(),
+                           _UNDERIVED_BUDGET_CEILING_S)), file=err)
+        return _UNDERIVED_BUDGET_CEILING_S
+    return value
+
+
+def _one_line(text, limit=240):
+    """Collapse a message to one bounded line, SAYING when it truncated."""
+    flat = " ".join(str(text).split())
+    return flat if len(flat) <= limit else flat[:limit] + " ...[truncated]"
+
+
+def _dotted_module(rel):
+    """tests/test_foo.py -> tests.test_foo, the form JUnit's classname uses."""
+    stem = rel[:-3] if rel.endswith(".py") else rel
+    return stem.replace(os.sep, ".").replace("/", ".")
+
+
+def _junit_nodeid(case, known_files=()):
+    """Rebuild the pytest node id from a JUnit <testcase>.
+
+    MEASURED 2026-09-02: pytest's DEFAULT junit family (xunit2) writes NO
+    `file` attribute -- only classname="tests.test_foo" for a module-level
+    function and "tests.test_foo.TestX" for a method. A node id built from
+    classname alone reads `tests.test_foo::test_bar`, which cannot be pasted
+    back into a rerun and does not match the gate list either, so the `why`
+    lookup silently missed. The independent denominator is the gate list this
+    tool already holds, so the file is RESOLVED against it rather than guessed
+    from a dotted string; `file` is used when a family provides it.
+
+    An unmatched classname is not laundered into a plausible-looking path: it
+    is returned as-is and labelled, because a wrong path in a refusal is worse
+    than an honest dotted one.
+    """
+    name = case.get("name") or "?"
+    rel = case.get("file") or ""
+    classname = case.get("classname") or ""
+    if not rel:
+        for candidate in known_files:
+            module = _dotted_module(candidate)
+            if classname == module or classname.startswith(module + "."):
+                rel = candidate
+                break
+    if not rel:
+        return "%s::%s" % (classname or "<unknown file>", name)
+    module = _dotted_module(rel)
+    if not classname or classname == module:
+        return "%s::%s" % (rel, name)
+    if classname.startswith(module + "."):
+        inner = classname[len(module) + 1:].replace(".", "::")
+        return "%s::%s::%s" % (rel, inner, name)
+    return "%s::%s" % (classname, name)
+
+
+def _junit_failures(path, known_files=()):
+    """(cases, None) for a readable JUnit record, (None, reason) otherwise.
+
+    An EMPTY cases list and an UNREADABLE record are different answers and the
+    caller must not merge them: a run that failed while naming no test is not a
+    run whose record could not be read.
+    """
+    import xml.etree.ElementTree as ET
+    if not os.path.isfile(path):
+        return None, "no JUnit record was written"
+    try:
+        tree = ET.parse(path)
+    except Exception as exc:
+        return None, ("its JUnit record is unparseable (%s: %s)"
+                      % (type(exc).__name__, _one_line(exc, 120)))
+    cases = []
+    for case in tree.iter("testcase"):
+        for child in case:
+            if child.tag not in ("failure", "error"):
+                continue
+            cases.append((child.tag.upper(), _junit_nodeid(case, known_files),
+                          _one_line(child.get("message") or child.text or
+                                    "(no message recorded)")))
+    return cases, None
+
+
+def _underived_detail(rc, junit, present, argv, timed_out_after=None):
+    """Name WHICH underived gate failed, in WHOSE words, per cause."""
+    whys = dict(present)
+    rerun = " ".join(str(a) for a in argv)
+    if timed_out_after is not None:
+        # O445 / int-B 10:32Z: the old wording here said "it names no gate
+        # because none reported", and it was FALSE -- the 1540b hang carried 38
+        # failures and 3 errors, 41 REPORTED non-passing outcomes, against zero
+        # summary lines. OUTCOMES WERE REPORTED; NAMES WERE NEVER WRITTEN.
+        return ("pytest did NOT finish within %ss over %d gate file(s), so the "
+                "SUMMARY was never written -- this is a HANG. Every outcome that "
+                "WAS reported before the wall is named PRECUT-FAIL above, derived "
+                "from the per-node records; nodes that never reported at all are "
+                "counted by the PRECUT-INCOMPLETE line. Re-run by hand: %s"
+                % (timed_out_after, len(present), rerun))
+    cases, reason = _junit_failures(junit, [rel for rel, _ in present])
+    if cases is None:
+        return ("pytest exited rc=%d and %s, so the failing test could NOT be "
+                "named from this run. Re-run by hand: %s" % (rc, reason, rerun))
+    if not cases:
+        return ("pytest exited rc=%d but its JUnit record names ZERO failing "
+                "tests -- a collection abort, an internal error or an "
+                "interruption, NOT a per-gate assertion. Re-run by hand: %s"
+                % (rc, rerun))
+    shown = cases[:6]
+    parts = []
+    for kind, nodeid, message in shown:
+        rel = nodeid.split("::", 1)[0]
+        why = whys.get(rel)
+        parts.append("%s %s: %s%s" % (nodeid, kind, message,
+                                      (" [gate: %s]" % why) if why else ""))
+    files = sorted({node.split("::", 1)[0] for _, node, _ in cases})
+    tail = ("" if len(shown) == len(cases)
+            else "; +%d further failing test(s) not listed here, see the "
+                 "pytest output above" % (len(cases) - len(shown)))
+    return ("%d failing test(s) in %d of %d gate file(s) -- %s%s"
+            % (len(cases), len(files), len(present), "; ".join(parts), tail))
+
+
+# --- H389: NAME THE FAILING GATES, AND KEEP THE RECORD ------------------------
+# MEASURED 2026-09-14 (HARNESS_BACKLOG H389, swarm-integrator-B): lane train-1540b
+# printed PRECUT_RC=3 naming ZERO failing nodes. Two causes, both here:
+#   * the underived run uses `-q`, whose progress row ends WITHOUT a newline, so
+#     the next thing printed is concatenated onto it -- the lane log literally
+#     read `.....F...RESULT: NOT CUT-READY`;
+#   * the JUnit record holding the names was written into the mkdtemp scratch
+#     that this function's own `finally` removes. The one artifact that could
+#     answer "which gate?" was deleted by the run that produced it.
+# `_underived_detail` above is NOT a substitute: it caps at six cases, it lives
+# inside a semicolon-joined prose blob, and it rides the same RESULT line that
+# got truncated.
+_EVIDENCE_DIR_ENV = "SWARM_PRECUT_EVIDENCE_DIR"
+
+
+def _print_underived_failures(junit, known_files=()):
+    """One `PRECUT-FAIL <nodeid>` line per failing OR erroring testcase.
+
+    Returns the count, which is the number of such testcases and not the number
+    of files. An unreadable or absent record is a THIRD outcome and says so
+    under its own token: it must never emit a PRECUT-FAIL line, because a reader
+    grepping that prefix would otherwise count a lost record as a passing run.
+
+    The node id comes from `_junit_nodeid`, not from a raw `classname::name`.
+    That helper's docstring carries the measurement: pytest's default xunit2
+    family writes no `file` attribute, so the dotted form "cannot be pasted back
+    into a rerun and does not match the gate list either". The dotted form is
+    still what is printed when the gate list cannot resolve the classname --
+    an honest dotted name beats a plausible-looking wrong path.
+    """
+    cases, reason = _junit_failures(junit, known_files)
+    if cases is None:
+        print("PRECUT-NAMES-UNAVAILABLE %s" % reason, flush=True)
+        return 0
+    for _kind, nodeid, _message in cases:
+        print("PRECUT-FAIL %s" % nodeid, flush=True)
+    return len(cases)
+
+
+def _evidence_destination(now=None):
+    """Where the JUnit record is KEPT, outside the scratch dir that dies.
+
+    The stamp carries microseconds, not whole seconds: H348 was two concurrent
+    runs of one index silently sharing a log path, and a second-resolution name
+    reproduces that class exactly whenever a pool host starts two precuts inside
+    the same second.
+    """
+    stamp = (now or datetime.datetime.now(datetime.timezone.utc)).strftime(
+        "%Y%m%dT%H%M%S.%fZ")
+    base = os.environ.get(_EVIDENCE_DIR_ENV) or os.path.join(
+        os.getcwd(), ".swarm-precut-evidence")
+    return os.path.join(base, "underived-%s.xml" % stamp)
+
+
+def _preserve_underived_evidence(junit):
+    """Copy the record out and print `PRECUT-EVIDENCE <path>`; return it or None.
+
+    Done for PASSING runs too, on purpose: THE ARTIFACT'S PRESENCE IS NOT THE
+    SIGNAL. If evidence appeared only on failure, a reader could not tell a
+    clean run from a run whose record was lost, which is the H389 defect wearing
+    a different hat.
+    """
+    dest = _evidence_destination()
+    try:
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        shutil.copyfile(junit, dest)
+    except OSError as exc:
+        print("PRECUT-EVIDENCE-UNAVAILABLE %s (%s: %s)"
+              % (dest, type(exc).__name__, _one_line(exc, 120)), flush=True)
+        return None
+    print("PRECUT-EVIDENCE %s" % dest, flush=True)
+    return dest
+
+
+# --- H389 LIMB 3: NAME WHAT WAS IN FLIGHT WHEN THE WALL CUT THE RUN OFF -------
+# MEASURED (int-B, swarm-persist/landing/1540b-CORRECTION-THE-PRECUT-RED-IS-A-HANG-
+# NOT-LOST-EVIDENCE-*.md): the 1540b RED was a HANG at _UNDERIVED_BUDGET_S, not a
+# lost record. On a hang pytest is KILLED, so it writes no JUnit at all and limb
+# 1 above can name nothing -- correctly, but uselessly. The names that matter
+# then are the gates that had STARTED and not finished.
+#
+# WHY A PLUGIN AND NOT THE `-v` PROGRESS. The run carries `-n`/`--dist loadfile`
+# when xdist is present, and xdist prints a node id only AFTER the test reports.
+# A started-but-unfinished node therefore NEVER appears in xdist's progress at
+# all, so deriving in-flight from captured output would silently report none for
+# exactly the runs this limb exists to explain. `pytest_runtest_logstart` fires
+# in the worker before the test body, so it is the only place the fact exists.
+_INFLIGHT_ENV = "SWARM_PRECUT_INFLIGHT_LOG"
+_INFLIGHT_PLUGIN_NAME = "bd_precut_inflight"
+_INFLIGHT_PLUGIN_SOURCE = '''"""swarm-precut in-flight recorder (H389 limb 3). Written by swarm-precut."""
+import os
+
+_PATH = os.environ.get("%(env)s")
+
+
+def _record(kind, nodeid):
+    if not _PATH:
+        return
+    # One O_APPEND write per event, flushed and closed: a SIGKILL at the wall
+    # must not take the record with it, and xdist workers are separate
+    # processes appending to the same file.
+    with open(_PATH, "a", encoding="utf-8") as handle:
+        handle.write("%%s %%s\\n" %% (kind, nodeid))
+        handle.flush()
+
+
+def pytest_collection_finish(session):
+    # THE DENOMINATOR, recorded AT COLLECTION TIME (O445). Every xdist worker
+    # collects the whole suite before the controller hands it a subset, so each
+    # one writes the same total and the reader takes the maximum.
+    # `len(session.items)`, NOT `session.testscollected`: MEASURED -- pytest
+    # assigns testscollected only AFTER this hook returns, so reading it here
+    # records 0 and a 0 denominator would make every hang look "closed".
+    _record("COLLECTED", len(getattr(session, "items", ()) or ()))
+
+
+def pytest_runtest_logstart(nodeid, location):
+    _record("START", nodeid)
+
+
+def pytest_runtest_logfinish(nodeid, location):
+    _record("FINISH", nodeid)
+
+
+def pytest_runtest_logreport(report):
+    # THE OUTCOME ITSELF. A wall that falls in pytest_sessionfinish kills the
+    # SUMMARY WRITER, not the outcomes -- each of these was already reported by
+    # the test that produced it. Fires in the worker and again in the controller
+    # that receives it, so the reader keys on (when, nodeid) and dedupes.
+    _record("REPORT", "%%s %%s %%s" %% (report.when, report.outcome, report.nodeid))
+''' % {"env": _INFLIGHT_ENV}
+
+
+def _inflight_records(path):
+    """Parse the recorder's log once. (records, None) or (None, reason).
+
+    records: {"started": [nodeid...], "finished": set(), "collected": int|None,
+              "reports": {(when, nodeid): outcome}}
+
+    A record that is missing or unreadable is COULD NOT LOOK and says so, rather
+    than answering with an empty parse that reads as "nothing happened".
+    """
+    if not os.path.isfile(path):
+        return None, "no in-flight record was written"
+    rec = {"started": [], "finished": set(), "collected": None, "reports": {}}
+    try:
+        with open(path, encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                kind, _, rest = line.strip().partition(" ")
+                if not rest:
+                    continue
+                if kind == "START":
+                    rec["started"].append(rest)
+                elif kind == "FINISH":
+                    rec["finished"].add(rest)
+                elif kind == "COLLECTED":
+                    try:
+                        total = int(rest)
+                    except ValueError:
+                        continue
+                    if rec["collected"] is None or total > rec["collected"]:
+                        rec["collected"] = total
+                elif kind == "REPORT":
+                    when, _, tail = rest.partition(" ")
+                    outcome, _, nodeid = tail.partition(" ")
+                    if nodeid:
+                        rec["reports"][(when, nodeid)] = outcome
+    except OSError as exc:
+        return None, ("its in-flight record is unreadable (%s: %s)"
+                      % (type(exc).__name__, _one_line(exc, 120)))
+    return rec, None
+
+
+def _denominator(stats):
+    """(closed, finished, collected). CLOSED means FINISH == COLLECTED (O445).
+
+    AN UNKNOWN COLLECTED COUNT IS NEVER CLOSED. A run whose recorder never wrote
+    a denominator cannot show that every collected node reported, and O445 is
+    explicit that below FINISH == COLLECTED the result stays UNKNOWN: a node the
+    controller never dispatched leaves NO in-flight record either, because the
+    channel it would have travelled on was already closed.
+    """
+    collected = stats.get("collected")
+    finished = stats.get("finished", 0)
+    # `collected > 0` is not pedantry: 0 == 0 is arithmetically closed and
+    # semantically empty, and a recorder that wrote no usable count would
+    # otherwise DERIVE A PASS out of a run in which nothing ran at all. My own
+    # acceptance (a) caught exactly that before this shipped.
+    closed = collected is not None and collected > 0 and finished == collected
+    return closed, finished, collected
+
+
+def _records_nonpassing(rec):
+    """Node ids with a non-passing REPORTED outcome, in the order recorded.
+
+    A node is non-passing when ANY phase reported `failed` -- setup is an ERROR,
+    call is a FAILURE, teardown is an ERROR -- which is the rule pytest's own
+    summary applies. `skipped` is not a failure and is not counted here.
+    """
+    bad = []
+    for (_when, nodeid), outcome in rec["reports"].items():
+        if outcome == "failed" and nodeid not in bad:
+            bad.append(nodeid)
+    return bad
+
+
+def _inflight_files(path):
+    """(files, None, stats) for gate files with a started-and-unfinished node.
+
+    (None, reason, stats) when the record itself is missing or unreadable -- a
+    run killed before the plugin wrote anything is COULD NOT LOOK, and must not
+    be reported as "nothing was in flight". That distinction is the whole reason
+    this returns a pair of answers instead of a list.
+
+    `stats` carries started/finished/collected because on a timed-out run the
+    relation between them IS the finding: see `_print_inflight`.
+    """
+    stats = {"started": 0, "finished": 0, "collected": None}
+    rec, reason = _inflight_records(path)
+    if rec is None:
+        return None, reason, stats
+    stats = {"started": len(set(rec["started"])),
+             "finished": len(rec["finished"]),
+             "collected": rec["collected"]}
+    unfinished = [n for n in rec["started"] if n not in rec["finished"]]
+    return sorted({n.split("::", 1)[0] for n in unfinished}), None, stats
+
+
+def _print_inflight(path, timed_out=False):
+    """Print one `PRECUT-INFLIGHT <path>` line per unfinished gate file.
+
+    Called on EVERY run, not only a timed-out one, so a finishing run is a
+    MEASURED zero rather than a question nobody asked (rule 7: the probe that
+    reports none here is the same probe that names gates on a hang).
+
+    A TIMED-OUT RUN WITH NOTHING IN FLIGHT GETS ITS OWN LINE, and which line it
+    gets is O445's mandatory condition. The tempting reading -- "every started
+    node finished, so the wall fell in teardown" -- IS NOT SOUND, and the
+    adjudicator refuted it by measurement: on
+    fleet-run-artifacts/2026-08-25/inflight/train-1540b-precut.log there were
+    2864 reported outcomes against a collected total in (2895, 2925], so between
+    31 and 61 nodes NEVER REPORTED -- and an undispatched node leaves no
+    in-flight record either, because the controller's channels were already
+    closed. So the claim is made only when the denominator is CLOSED
+    (FINISH == COLLECTED, `PRECUT-COMPLETE N-of-N`); otherwise the line names
+    the shortfall and the result stays UNKNOWN.
+    """
+    files, reason, stats = _inflight_files(path)
+    if files is None:
+        print("PRECUT-INFLIGHT-UNAVAILABLE %s" % reason, flush=True)
+        return 0
+    for rel in files:
+        print("PRECUT-INFLIGHT %s" % rel, flush=True)
+    if timed_out and not files:
+        closed, finished, collected = _denominator(stats)
+        if closed:
+            print("PRECUT-COMPLETE %d-of-%d every collected node reported before "
+                  "the wall, so the hang is in teardown/sessionfinish and NOT in "
+                  "a gate that runs long" % (finished, collected), flush=True)
+        elif collected is None:
+            print("PRECUT-INCOMPLETE %d-of-UNKNOWN no collected count was "
+                  "recorded, so it CANNOT be shown that every collected node "
+                  "reported -- the result is UNKNOWN, not a pass (O445)"
+                  % finished, flush=True)
+        else:
+            print("PRECUT-INCOMPLETE %d-of-%d -- %d collected node(s) never "
+                  "reported, and an undispatched node leaves no in-flight record "
+                  "either, so the result is UNKNOWN, not a pass (O445)"
+                  % (finished, collected, collected - finished), flush=True)
+    return len(files)
+
+
+def _print_records_failures(path):
+    """PRECUT-FAIL lines derived from the RECORDS, for a run that wrote no JUnit.
+
+    O445 approves this UNCONDITIONALLY, even on an open denominator: an outcome
+    that was reported is evidence that EXISTS, and the defect H389 was filed for
+    is precisely that 41 reported non-passing outcomes went unnamed because the
+    summary writer died with the session.
+    """
+    rec, reason = _inflight_records(path)
+    if rec is None:
+        print("PRECUT-NAMES-FROM-RECORDS-UNAVAILABLE %s" % reason, flush=True)
+        return 0
+    bad = _records_nonpassing(rec)
+    for nodeid in bad:
+        print("PRECUT-FAIL %s" % nodeid, flush=True)
+    return len(bad)
+
+
+def _derive_from_records(path):
+    """(rc, detail) for a wall-cut run whose denominator is CLOSED, else None.
+
+    None means "do not derive": the caller keeps rc 124 and reports UNKNOWN.
+    That gate is the whole of O445's condition -- deriving CUT-READY while
+    dozens of collected nodes never ran would be a COULD NOT LOOK dressed as a
+    pass, which is the O413 class and what FLEET_RULE 6 forbids.
+    """
+    rec, _reason = _inflight_records(path)
+    if rec is None:
+        return None
+    closed, _finished, collected = _denominator(
+        {"finished": len(rec["finished"]), "collected": rec["collected"]})
+    if not closed:
+        return None
+    bad = _records_nonpassing(rec)
+    if not bad:
+        return 0, ""
+    return 1, ("%d of %d collected node(s) reported a NON-PASSING outcome before "
+               "the wall (named PRECUT-FAIL above, derived from the per-node "
+               "records). Every collected node reported, so these are the run's "
+               "own verdicts and not a consequence of the hang."
+               % (len(bad), collected))
+
+
+# --- REPO-WIDE MARKER CENSUS -------------------------------------------------
+# PRECUT WAS BLIND TO REPO-WIDE GATES: IT RAN A HAND LIST, NOT THE MARKER.
+# Rows 46/99/133 shipped `SWARM_GATE_SCOPE = "repo-wide"` and made CI's shards
+# consume it. Nothing BEFORE assembly did: this tool ran only _UNDERIVED_GATES,
+# and swarm-collect-gate.sh runs own-tests plus this tool, so a repo-wide census
+# gate outside that hand list was invisible to the worker's floor, to collect
+# and to prep, and first failed at assembly (row713; cx-hostsafety at law
+# 23:40:46Z). The hand list grew one incident at a time -- row 315 is the one
+# its own comment records. MEASURED 2026-09-07 on origin/main a8267e5d: 208
+# tracked tests/test*.py declare the marker repo-wide, the hand list names 7,
+# and 2 of those 7 carry no marker at all. So the marker is the denominator,
+# the hand list stays as a pinned floor, and the UNION runs, in one subprocess.
+_SCOPE_MARKER = "SWARM_GATE_SCOPE"
+_REPO_WIDE_SCOPE = "repo-wide"
+_MODULE_SCOPE = "module"
+_MARKER_WHY = 'declares SWARM_GATE_SCOPE = "repo-wide", a gate over the whole tree'
+# xdist workers for the underived run. The marker-selected population is the
+# whole CI gate lane, which CI runs as 36 shards; serially it does not fit the
+# 1800s budget below, let alone swarm-collect-gate.sh's 600s. `--dist loadfile`
+# keeps every file whole inside one worker, the shape CI already runs them in.
+_UNDERIVED_WORKERS_CAP = 16
+
+
+def _marker_text(path):
+    """The file's text when it carries the marker anywhere, else None.
+
+    OSError and UnicodeDecodeError PROPAGATE: an unreadable file is the
+    caller's UNKNOWN, never a silent 'unmarked'."""
+    with open(path, encoding="utf-8") as fh:
+        text = fh.read()
+    return text if _SCOPE_MARKER in text else None
+
+
+def _module_scope_literal(text):
+    """The MODULE-LEVEL SWARM_GATE_SCOPE value assigned in text, or None.
+
+    Module scope only, via the AST, the same rule CI's shard gate applies: a
+    docstring, a comment or an assignment inside a function names the marker
+    and declares nothing, because a comment is inside the denominator of every
+    gate that reads source text (CLAUDE.md section 0). SyntaxError PROPAGATES.
+    """
+    tree = ast.parse(text)
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            targets = node.targets
+        elif isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+        else:
+            continue
+        if not any(isinstance(t, ast.Name) and t.id == _SCOPE_MARKER for t in targets):
+            continue
+        value = node.value
+        if isinstance(value, ast.Constant):
+            return value.value
+        return "<non-literal: %s>" % type(value).__name__
+    return None
+
+
+def _repo_wide_marker_census(root):
+    """Census every TRACKED tests/test*.py under root for its scope marker.
+
+    The denominator is `git ls-files -- tests/test*.py`, enumerated from the
+    checkout and never from a list; an untracked file is outside it. Buckets:
+      selected       module-level "repo-wide"        -> run beside the floor
+      excluded       module-level "module"           -> not a tree gate
+      mentions       carries the marker text and declares nothing
+      unclassified   unreadable, unparsable, or a scope value that is neither
+                     -> NAMED and reported UNKNOWN, never silently dropped
+    marked counts every readable file carrying the marker text, so a reader can
+    check marked == selected + excluded + mentions + (unclassified that were
+    read) rather than trust it. error names a census that COULD NOT LOOK (git
+    did not answer); every other field is then empty.
+    """
+    census = {"tracked": 0, "marked": 0, "selected": [], "excluded": 0,
+              "mentions": 0, "unclassified": [], "error": ""}
+    try:
+        run = subprocess.run(["git", "ls-files", "--", "tests/test*.py"],
+                             cwd=root, capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as exc:
+        census["error"] = "git ls-files did not run: %s" % _one_line(exc)
+        return census
+    if run.returncode != 0:
+        census["error"] = "git ls-files exited rc=%d: %s" % (
+            run.returncode, _one_line(run.stderr or "no stderr", 160))
+        return census
+    tracked = sorted(set(run.stdout.split()))
+    census["tracked"] = len(tracked)
+    for rel in tracked:
+        try:
+            text = _marker_text(os.path.join(root, rel))
+        except (OSError, UnicodeDecodeError) as exc:
+            census["unclassified"].append(
+                (rel, "unreadable: %s" % _one_line(exc, 120)))
+            continue
+        if text is None:
+            continue
+        census["marked"] += 1
+        try:
+            scope = _module_scope_literal(text)
+        except (SyntaxError, ValueError) as exc:
+            census["unclassified"].append(
+                (rel, "unparsable: %s" % _one_line(exc, 120)))
+            continue
+        if scope is None:
+            census["mentions"] += 1
+        elif scope == _REPO_WIDE_SCOPE:
+            census["selected"].append(rel)
+        elif scope == _MODULE_SCOPE:
+            census["excluded"] += 1
+        else:
+            census["unclassified"].append(
+                (rel, "SWARM_GATE_SCOPE = %r is neither %r nor %r"
+                 % (scope, _REPO_WIDE_SCOPE, _MODULE_SCOPE)))
+    return census
+
+
+def _census_line(census):
+    """One reconciliation line: the counts a reader checks against each other."""
+    return ("  [repo-wide marker census] tracked=%d expected=%d (marked) selected=%d "
+            "(repo-wide) excluded=%d (module) mentions-only=%d unclassified=%d"
+            % (census["tracked"], census["marked"], len(census["selected"]),
+               census["excluded"], census["mentions"], len(census["unclassified"])))
+
+
+def _marker_selected_gates(census, floor):
+    """(rel, why) for every marker-selected gate not already on the floor."""
+    on_floor = {rel for rel, _ in floor}
+    return [(rel, _MARKER_WHY) for rel in census["selected"] if rel not in on_floor]
+
+
+def _underived_parallelism():
+    """xdist arguments for the underived run, or [] when xdist is absent."""
+    if importlib.util.find_spec("xdist") is None:
+        return []
+    workers = max(1, min(_UNDERIVED_WORKERS_CAP, os.cpu_count() or 1))
+    return ["-n", str(workers), "--dist", "loadfile"]
+
+
+def _run_underived_gates(root, present, env):
+    """Run the underived gates once; return (rc, detail). detail is "" on rc 0.
+
+    The JUnit record goes in a directory this process created, so removing it
+    removes only a target whose identity and ownership are proven (CLAUDE.md
+    A7). mkdtemp also proves the evidence destination is writable BEFORE the
+    subprocess runs.
+    """
+    scratch = tempfile.mkdtemp(prefix="swarm-precut-underived-")
+    junit = os.path.join(scratch, "underived.xml")
+    inflight = os.path.join(scratch, "inflight.log")
+    # H389 limb 3: the recorder lives in the scratch dir this process made, and
+    # reaches pytest through PYTHONPATH rather than by writing into the tree.
+    with open(os.path.join(scratch, _INFLIGHT_PLUGIN_NAME + ".py"),
+              "w", encoding="utf-8") as handle:
+        handle.write(_INFLIGHT_PLUGIN_SOURCE)
+    env = dict(env)
+    env[_INFLIGHT_ENV] = inflight
+    env["PYTHONPATH"] = os.pathsep.join(
+        [scratch] + ([env["PYTHONPATH"]] if env.get("PYTHONPATH") else []))
+    argv = [sys.executable, "-m", "pytest", "-q", "-p", "no:randomly",
+            "-p", _INFLIGHT_PLUGIN_NAME,
+            "--timeout=240", "--timeout-method=signal",
+            "--junitxml=" + junit] + _underived_parallelism() + [rel for rel, _ in present]
+    budget = _underived_budget_s()
+    try:
+        timed_out_after = None
+        try:
+            rc = subprocess.run(argv, cwd=root, env=env,
+                                timeout=budget).returncode
+        except subprocess.TimeoutExpired:
+            rc, timed_out_after = 124, budget
+        # H389. ONE newline, printed ONCE, before either block: `-q` leaves its
+        # progress row unterminated, so the first thing printed after the child
+        # is otherwise concatenated onto it and stops being greppable.
+        print("", flush=True)
+        _print_underived_failures(junit, [rel for rel, _ in present])
+        # On a hang there is no JUnit at all, so this is the ONLY line that can
+        # name a gate; on a finishing run it is a measured zero.
+        _print_inflight(inflight, timed_out=timed_out_after is not None)
+        if timed_out_after is not None:
+            # H389 limb 4: no JUnit exists on a hang, so the outcomes that WERE
+            # reported can only come from the records. Printed unconditionally,
+            # before RESULT; the VERDICT below is what O445 gates.
+            _print_records_failures(inflight)
+        # BEFORE the finally below removes the directory holding it, and on a
+        # green run as well as a red one.
+        _preserve_underived_evidence(junit)
+        if timed_out_after is not None:
+            derived = _derive_from_records(inflight)
+            if derived is None:
+                return 124, _underived_detail(124, junit, present, argv,
+                                              timed_out_after=budget)
+            drc, ddetail = derived
+            if drc == 0:
+                print("PRECUT-CUT-READY-FROM-RECORDS the wall fell after every "
+                      "collected node had reported, and none of them failed",
+                      flush=True)
+            return drc, ddetail
+        if rc == 0:
+            return 0, ""
+        return rc, _underived_detail(rc, junit, present, argv)
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+
+
+def _run_ratchet_gate(root, rex=None):
+    if not os.path.isfile(rex := rex or os.path.join(os.path.dirname(os.path.realpath(__file__)), "swarm-ratchet")): return None, "swarm-ratchet not found"
+    try:
+        cp = subprocess.run([sys.executable, rex, "--check", "--tree", root], capture_output=True, text=True, timeout=900); sys.stdout.write(cp.stdout); sys.stderr.write(cp.stderr); out = cp.stdout
+    except TypeError:
+        cp = subprocess.run([sys.executable, rex, "--check", "--tree", root], timeout=900); out = getattr(cp, "stdout", "") or ""
+    if cp.returncode != 3: return cp.returncode, None
+    deltas = []
+    for ln in out.splitlines():
+        m = re.search(r"^\s*\*\s*([^:]+):\s*(?:rose|fell)\s*(\S+)\s*->\s*(\S+)", ln)
+        if m:
+            k, b, c = m.groups(); d = f"{float(c)-float(b):+g}" if ("." in b or "." in c) else f"{int(c)-int(b):+d}"; deltas.append(f"metric: {k}\nbaseline: {b}\nvalue: {c}\ndelta: {d}\n"); print(f"  [advisory ratchet] {ln.strip()} (delta={d})")
+    rev = os.path.join(root, ".review"); os.makedirs(rev, exist_ok=True); pathlib.Path(rev, "RATCHET-ADVISORY.md").write_text("# RATCHET-ADVISORY (O733)\n\n" + "\n".join(deltas or ["metric: unknown\nbaseline: unknown\nvalue: unknown\ndelta: unknown\n"]))
+    return (3, "metric ratchet regressed -- see swarm-ratchet output above") if os.environ.get("SWARM_RATCHET_BLOCK") == "1" else (0, "metric ratchet regressed -- ADVISORY, see .review/RATCHET-ADVISORY.md")
+
+
+def main(argv=None):
+    class PrecutArgumentParser(argparse.ArgumentParser):
+        def error(self, message):
+            self.print_usage(sys.stderr)
+            err = f"REFUSED: unknown argument / usage error: {message}\n"
+            sys.stdout.write(err)
+            sys.stdout.flush()
+            sys.stderr.write(err)
+            sys.stderr.flush()
+            sys.exit(2)
+
+    ap = PrecutArgumentParser(prog="swarm-precut")
+    ap.add_argument("--baseline")
+    ap.add_argument("--root", "--work", dest="root")
+    ap.add_argument("--gate", action="store_true", help="exit != 0 on any real problem")
+    ap.add_argument("--no-insync", action="store_true")
+    ap.add_argument("--no-envscan", action="store_true")
+    ap.add_argument("--no-coretest", action="store_true",
+                    help="skip the tool-integrity check (swarm-coretest, ~12s)")
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--selftest", action="store_true")
+    a = ap.parse_args(argv)
+    if not hasattr(a, "work"):
+        a.work = a.root
+    if a.selftest:
+        return selftest()
+
+    root = a.root or _auto_root()
+    sec.require_source_tree(root, label="--root")
+    tmpdir = tempfile.mkdtemp(prefix="swarm-precut-baseline.")
+    atexit.register(shutil.rmtree, tmpdir, True)
+    derived_reason = None
+    tracked_only = False
+    baseline = a.baseline or _auto_baseline(root)
+    if not baseline:
+        baseline, derived_reason = _derive_baseline(root, tmpdir)
+        tracked_only = baseline is not None
+    print(f"== swarm-precut{' --gate' if a.gate else ''} :: root={root}")
+    if baseline:
+        kind = "derived from origin/main" if tracked_only else "release zip"
+        print(f"               baseline={os.path.basename(baseline)} ({kind})\n")
+
+    blocking = []
+    unknown = []          # checks that did NOT run -- never fold these into "OK"
+
+    # A. precut_check (version/pin/surface) is a PREDICTOR, not a gate. Its own
+    # module docstring says so and main() has no failing verdict. Every condition
+    # it predicts is enforced independently below or by the release/freshness
+    # gates. Putting a predictor's availability or process status in `blocking`
+    # gives advisory machinery authority it explicitly does not own.
+    tool = os.path.join(root, "tools", "precut_check.py")
+    if os.path.isfile(tool) and baseline:
+        cmd = [sys.executable, tool, "--baseline", baseline, "--root", root]
+        if tracked_only:
+            # BOTH SIDES MUST USE THE SAME DENOMINATOR. A git archive holds the
+            # tracked set; build_release's walk holds the tracked set PLUS the
+            # generated artifacts it would package. Comparing one against the
+            # other reports every generated file as newly added, which is a
+            # surface report that describes the tooling rather than the cut.
+            cmd.append("--tracked-only")
+        try:
+            rc = subprocess.run(cmd, timeout=900).returncode
+            state = "completed" if rc == 0 else "unavailable (rc=%d)" % rc
+        except (OSError, subprocess.SubprocessError) as exc:
+            state = "unavailable (%s: %s)" % (type(exc).__name__, exc)
+        print("  [advisory precut_check] %s -- outside the blocking verdict" % state)
+    else:
+        why = "no tools/precut_check.py" if not os.path.isfile(tool) else \
+              (derived_reason or "no baseline available")
+        print("  [advisory precut_check NOT RUN -- %s; outside the blocking "
+              "verdict]\n" % why)
+
+    # 2. executable footgun registry (env-tranche F-01 + in-sync F-03 + route-map +
+    #    import-edge + endpoint + pin + guard-sha) -- the single source of truth,
+    #    so no lesson is forgotten and nothing is double-run.
+    footguns_ran = False
+    fge = os.path.join(os.path.dirname(os.path.realpath(__file__)), "swarm-footguns")
+    if os.path.isfile(fge):
+        rc = subprocess.run([sys.executable, fge, "--check", "--tree", root], timeout=900).returncode
+        if rc == 3:
+            blocking.append("footgun violation(s) -- see swarm-footguns output above")
+        elif rc == 0:
+            footguns_ran = True
+        else:
+            unknown.append("footgun registry exited rc=%d (neither clean nor "
+                           "a violation)" % rc)
+    else:
+        print("  [swarm-footguns not found -- footgun registry SKIPPED]")
+        unknown.append("footgun registry (swarm-footguns not found)")
+
+    # 3. metric ratchets (Plan A2/F1): a cut must not regress a pinned metric
+    #    (unwired operator endpoints, defect DP total, ...). Delegates to swarm-ratchet.
+    ratchet_ran = False
+    ratchet_advisory = False
+    rex = os.path.join(os.path.dirname(os.path.realpath(__file__)), "swarm-ratchet")
+    if os.path.isfile(rex):
+        rc, err = _run_ratchet_gate(root, rex)
+        if rc == 3:
+            blocking.append(err or "metric ratchet regressed -- see swarm-ratchet output above")
+        elif rc == 0:
+            ratchet_ran = True
+            if err: ratchet_advisory = True
+        else:
+            unknown.append("metric ratchet exited rc=%d (neither clean nor "
+                           "a regression)" % rc)
+    else:
+        print("  [swarm-ratchet not found -- metric ratchet SKIPPED]")
+        unknown.append("metric ratchet (swarm-ratchet not found)")
+
+    # 4. TOOL INTEGRITY (702): the gates above are only as trustworthy as the
+    #    tools that run them. swarm-coretest fault-injects the release-gating
+    #    mutators (swarm-cut/swarm-bump/swarm-regen/swarm-guardcheck/...)
+    #    and asserts each CATCHES an injected fault. It existed but NOTHING RAN IT
+    #    -- a check that never runs is prose, not a gate (the whole thesis of the
+    #    footgun registry). This program has already been bitten: swarm-band-derive
+    #    once shipped a near-constant band (a false-GREEN class bug) caught only by
+    #    manual diffing. ~12s against a ~32s gate: cheap insurance that the tool
+    #    about to cut a release is not itself broken.
+    ct = os.path.join(os.path.dirname(os.path.realpath(__file__)), "swarm-coretest")
+    if os.path.isfile(ct) and not a.no_coretest:
+        import subprocess as _sp
+        cp = _sp.run([sys.executable, ct], capture_output=True, text=True, timeout=900)
+        tail = [ln for ln in cp.stdout.splitlines() if "CORE TOOLS PASSING" in ln]
+        print("  [tool integrity] " + (tail[0].strip() if tail else
+                                       "swarm-coretest rc=%d" % cp.returncode))
+        if cp.returncode != 0:
+            blocking.append("core tool integrity FAILED -- a release-gating tool "
+                            "does not catch an injected fault (swarm-coretest)")
+    elif a.no_coretest:
+        print("  [tool integrity] SKIPPED (--no-coretest)")
+        unknown.append("core tool integrity (--no-coretest)")
+    else:
+        print("  [swarm-coretest not found -- tool integrity SKIPPED]")
+        unknown.append("core tool integrity (swarm-coretest not found)")
+
+    print()
+    # N-1. THE RELEASE TRIO, FROM GIT RATHER THAN FROM A ZIP.
+    #
+    # precut_check owns this, but it needs a baseline release zip and the zip
+    # flow is retired in this checkout -- so it printed
+    # "version/pin/surface NOT RUN" on EVERY invocation. An UNKNOWN that appears
+    # every single time is worse than no line at all: it trains the reader to
+    # skip the summary, which is where the real UNKNOWNs also live. This derives
+    # the same three facts from the working tree.
+    trio_problem = None
+    try:
+        init = pathlib.Path(root, "bulk_downloader", "__init__.py").read_text(encoding="utf-8")
+        m = re.search(r'^__version__ = "([^"]+)"', init, re.M)
+        if not m:
+            trio_problem = "bulk_downloader/__init__.py declares no __version__"
+        else:
+            version = m.group(1)
+            pin = pathlib.Path(root, "tests", "test_settings_center_slice4.py").read_text(encoding="utf-8")
+            if ('__version__ == "%s"' % version) not in pin:
+                trio_problem = ("the version pin in tests/test_settings_center_slice4.py "
+                                "does not name %s" % version)
+            else:
+                changelog = pathlib.Path(root, "CHANGELOG.md").read_text(encoding="utf-8")
+                first = re.search(r"^## (v\S+)", changelog, re.M)
+                if not first:
+                    trio_problem = "CHANGELOG.md has no release header"
+                elif first.group(1) != "v" + version:
+                    trio_problem = ("CHANGELOG.md's top entry is %s, not v%s -- the "
+                                    "entry must be PREPENDED and anchored on the "
+                                    "previous release" % (first.group(1), version))
+                else:
+                    entry = changelog[first.start():]
+                    nxt = re.search(r"\n## v", entry)
+                    body = entry[:nxt.start()] if nxt else entry
+                    # AND THE GENERATED PIN, which is the half that actually
+                    # bit. At v3.66.1239 the three SOURCE facts agreed while
+                    # PIN_INDEX.json still recorded the previous version,
+                    # because a regen ran before the last version edit rather
+                    # than after it (A3 step 7). Source agreement is not
+                    # release readiness when a generated artifact carries the
+                    # same fact.
+                    pin_index = pathlib.Path(root, "PIN_INDEX.json")
+                    if pin_index.is_file():
+                        blob = pin_index.read_text(encoding="utf-8")
+                        if ('"%s"' % version) not in blob:
+                            trio_problem = (
+                                "PIN_INDEX.json does not record %s -- regenerate "
+                                "with swarm-regen-order AFTER the last source edit"
+                                % version)
+                    nonascii = [c for c in body if ord(c) > 127]
+                    if trio_problem:
+                        pass
+                    elif nonascii:
+                        trio_problem = ("the %s CHANGELOG entry contains %d non-ASCII "
+                                        "character(s) (%r) -- A6 requires ASCII-only"
+                                        % (first.group(1), len(nonascii), nonascii[:4]))
+    except OSError as exc:
+        trio_problem = "release trio unreadable: %s" % exc
+    if trio_problem:
+        blocking.append("release trio: " + trio_problem)
+    else:
+        print("  [release trio] version, pin and CHANGELOG head agree; entry is ASCII")
+
+    # N-2. CI SHARD HEADROOM.
+    #
+    # CLAUDE.md A5 forbids trimming a slow shard and requires splitting or
+    # asking when one exceeds its budget -- but nothing MEASURED the budget, so
+    # the first symptom of a squeeze is a timeout on somebody else's unrelated
+    # cut. v3.66.1236 added 87s to one shard in a single cut (a gate went 3s to
+    # 89.6s), which is the rate that makes this worth watching.
+    #
+    # ADVISORY BY CONSTRUCTION: it reads the LAST CI run, which is about a
+    # different commit than the one being cut. A verdict from stale evidence is
+    # not a verdict (A2), so this reports headroom and never blocks.
+    try:
+        wf = pathlib.Path(root, ".github", "workflows", "ci.yml").read_text(encoding="utf-8")
+        cap = re.search(r"^\s*timeout-minutes:\s*(\d+)", wf, re.M)
+        cap_s = int(cap.group(1)) * 60 if cap else None
+        # ASK FOR A RUN THAT FINISHED, NOT MERELY THE NEWEST ONE.
+        # This used to take `--limit 1`, the newest run of ANY status. When
+        # GitHub's runners are backed up the newest run is QUEUED, it has no job
+        # durations to read, and the check returned UNKNOWN -- which
+        # swarm-verify-cut escalates into NOT SHIPPABLE. Measured 2026-09-02: four
+        # runs queued and the lane refused a candidate whose band was clean over
+        # 70 files, while THREE completed successful runs sat seconds older in
+        # the same listing. Queue depth is not evidence about a candidate.
+        # `--status success` selects the newest run that actually produced
+        # durations, so the check is measurable whenever any run has ever
+        # succeeded, and still returns UNKNOWN honestly when none has.
+        jobs = subprocess.run(
+            ["gh", "run", "list", "--status", "success", "--limit", "1",
+             "--json", "databaseId", "--jq", ".[0].databaseId"],
+            cwd=root, capture_output=True, text=True, timeout=120)
+        run_id = jobs.stdout.strip()
+        if cap_s and run_id:
+            det = subprocess.run(
+                ["gh", "run", "view", run_id, "--json", "jobs", "--jq",
+                 ".jobs[] | select(.conclusion==\"success\") | "
+                 "[.name, (((.completedAt|fromdate) - (.startedAt|fromdate))|tostring)] | @tsv"],
+                cwd=root, capture_output=True, text=True, timeout=120)
+            worst = None
+            for line in det.stdout.splitlines():
+                parts = line.split("\t")
+                if len(parts) != 2:
+                    continue
+                try:
+                    secs = int(float(parts[1]))
+                except ValueError:
+                    continue
+                if worst is None or secs > worst[1]:
+                    worst = (parts[0], secs)
+            if worst:
+                pct = 100.0 * worst[1] / cap_s
+                print("  [shard headroom] slowest lane %r ran %ds of a %ds cap (%.0f%%)"
+                      % (worst[0], worst[1], cap_s, pct))
+                if pct >= 70.0:
+                    print("      NOTE: past 70%% of the cap. A5 says SPLIT or ASK -- "
+                          "never trim the shard to regain green.")
+            else:
+                unknown.append("CI shard headroom (no successful lane durations read)")
+        else:
+            unknown.append("CI shard headroom (no timeout-minutes or no recent run)")
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        unknown.append("CI shard headroom is UNKNOWN: %s" % exc)
+
+    # N. THE GATES swarm-band-derive DOES NOT DERIVE.
+    #
+    # WHY THIS CHECK EXISTS, and it is not four checks but one. Between
+    # v3.66.1223 and v3.66.1238 the same integrator shipped four separate
+    # defects that a gate ALREADY IN THIS TREE would have caught -- a mutation
+    # anchor that resolved zero or two times (four times over), a subprocess
+    # budget of 600s inside a 240s bound, and a subprocess inheriting the
+    # ambient LC_ALL. None was a missing gate. Every one was a gate that exists
+    # and did not RUN, because `swarm-band-derive` derives an affected band from
+    # CHANGED PATHS and these gates judge the TREE, so no diff ever reaches them.
+    # Two were caught by GitHub CI after a push, each costing a re-run and a
+    # force-push; the other two were caught by a battery that only ran because
+    # someone remembered.
+    #
+    # A floor is not a ceiling (CLAUDE.md A5). This is the part of the ceiling
+    # that is mechanical, so it belongs in a tool rather than in a habit.
+    _UNDERIVED_GATES = [
+        ("tests/test_v3_66_1184_mutation_specs_are_tracked.py",
+         "every tracked mutant anchor occurs exactly once"),
+        ("tests/test_row357_mutant_anchors_are_not_fragile.py",
+         "no literal mutation anchor freezes a re-derived value"),
+        ("tests/test_row473_register_tree_containment.py",
+         "no OPEN register row names a fully landed candidate"),
+        ("tests/test_v3_66_1222_every_budget_is_subordinate_to_its_bound.py",
+         "no inner budget is at or above the bound governing its item"),
+        ("tests/test_v3_66_1197_ambient_locale_into_subprocess.py",
+         "an env-inheriting subprocess pins LC_ALL"),
+        ("tests/test_import_graph_no_new_edges.py",
+         "no undeclared import edge"),
+        # ADDED AT ROW 315, AND IT COST A CI CYCLE TO FIND. This is the
+        # sys.modules leak RATCHET: it censuses EVERY tracked tests/*.py for a
+        # file that drops `bulk_downloader.*` and never restores it, then
+        # compares the count to a fixed budget. Its subject is the whole tree, so
+        # swarm-band-derive can never select it -- exactly the shape above
+        # are here for -- yet it was missing from this list.
+        #
+        # MEASURED: on 2026-08-27 a candidate returned PRECUT_RC=0 and a GREEN
+        # band of 1476 tests, then GitHub CI failed `gate-suites (isolation)`
+        # with "14 files delete bulk_downloader.* from sys.modules without
+        # restoring it, over a budget of 13". Precut is the pre-freeze floor and
+        # it said cut-ready about a tree that was not.
+        ("tests/test_v3_66_1034_guards_survive_a_module_wipe.py",
+         "no new sys.modules leaker over the ratchet budget"),
+    ]
+    present = [(rel, why) for rel, why in _UNDERIVED_GATES
+               if os.path.isfile(os.path.join(root, rel))]
+    if not present:
+        unknown.append("underived gates (none of the seven are present in this tree)")
+    elif len(present) < len(_UNDERIVED_GATES):
+        # ASSERT THE POPULATION BEFORE THE VERDICT. A list that silently shrank
+        # to one would still print a green line, which is the shape these gates
+        # exist to refuse.
+        missing = [rel for rel, _ in _UNDERIVED_GATES
+                   if not os.path.isfile(os.path.join(root, rel))]
+        unknown.append("underived gates: %d of %d absent (%s)"
+                       % (len(missing), len(_UNDERIVED_GATES), ", ".join(missing)))
+
+    # THE MARKER THE TREE ALREADY CARRIES (see the census block above). Every
+    # tracked tests/test*.py declaring SWARM_GATE_SCOPE = "repo-wide" is selected
+    # beside the floor with NO edit to _UNDERIVED_GATES; a file the census could
+    # not classify is UNKNOWN by name, never a silent drop.
+    census = _repo_wide_marker_census(root)
+    if census["error"]:
+        derived = []
+        unknown.append("repo-wide marker census COULD NOT LOOK (%s), so only "
+                       "the hand-listed floor ran" % census["error"])
+    else:
+        # flush: stdout is block-buffered under redirection, and the pytest
+        # child below writes straight to the fd -- without it the census line
+        # lands AFTER the run, or nowhere if a collector timeout kills us first.
+        print(_census_line(census), flush=True)
+        derived = _marker_selected_gates(census, present)
+        if census["unclassified"]:
+            named = ["%s (%s)" % item for item in census["unclassified"][:6]]
+            tail = ("" if len(named) == len(census["unclassified"])
+                    else "; +%d more" % (len(census["unclassified"]) - len(named)))
+            unknown.append("repo-wide marker census: %d tracked test file(s) could "
+                           "not be classified, so the selection is INCOMPLETE, not "
+                           "clean: %s%s" % (len(census["unclassified"]),
+                                            "; ".join(named), tail))
+        if not census["selected"]:
+            unknown.append("repo-wide marker census selected NO gate among %d "
+                           "tracked tests/test*.py -- the population is absent, "
+                           "which is UNKNOWN, not clean" % census["tracked"])
+    gates = present + derived
+    if gates:
+        env = dict(os.environ)
+        env.pop("SWARM_INSTALL_DIR", None)          # A5: pop, do not merely omit
+        env["SWARM_DISABLE_KEEPALIVE"] = "1"
+        rc, detail = _run_underived_gates(root, gates, env)
+        if rc != 0:
+            blocking.append(
+                "underived gate(s) FAILED -- these judge the whole tree, so "
+                "swarm-band-derive never selects them and a green band says "
+                "nothing about them: " + detail)
+
+    if blocking:
+        print("RESULT: NOT CUT-READY -- " + "; ".join(blocking))
+        return 3 if a.gate else 0   # only BLOCK (non-zero) in --gate mode
+    # The verdict now enumerates ONLY what actually ran. A check that did not run
+    # is UNKNOWN, and UNKNOWN is a third state -- it is reported, not absorbed
+    # into "cut-ready". The exit code is unchanged (an unrun check is not a
+    # finding, and making it one would be the over-sensitivity bug), so --gate
+    # keeps exactly the teeth it had.
+    ran_parts = []
+    if footguns_ran:
+        ran_parts.append("footguns clean")
+    if ratchet_ran:
+        if ratchet_advisory:
+            ran_parts.append("metric ratchet regressed -- ADVISORY, see .review/RATCHET-ADVISORY.md")
+        else:
+            ran_parts.append("metric ratchets clean")
+    ran = ", ".join(ran_parts) if ran_parts else "nothing"
+    if unknown:
+        print(f"RESULT: cut-ready for what RAN ({ran}) -- "
+              f"{len(unknown)} check(s) NOT RUN, so UNKNOWN, not OK:")
+        for u in unknown:
+            print(f"  - {u}")
+    else:
+        print("RESULT: cut-ready (blocking gates green; advisory precut_check "
+              "is outside this verdict)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,10 @@
+# DIGEST 12:55Z 2026-09-23 (swarm-pm-B, DAY MODE O1298; prior digest 10:55Z)
+main 261069ff = live 10.0.70.50 = live 10.0.70.95 (v3.66.1659). Main CI green on 926e290f and 261069ff. 0 open PRs.
+LANDED since 10:55Z (3 trains, PM-verified live + main CI green): T82c 235be47f (1081 LC_ALL, 1028, 1082 stdin), T83 926e290f (979/1046/1057/1083 record_error), T84 261069ff (1084 live_telemetry). Records: landing/LANDED-TRAIN8[234]-*-PM-VERIFIED.md. Since 06:57Z: 17 trains, 31 rows + ci-rework + H701 + 5 hotfixes.
+T83 was HELD once (census pin 75!=74 pre-landing, HOLD-T83) -> R-B fixed in place (ORDERS-0094), hold released, landed 12:21Z.
+OPEN TRAINS: none. T85 (R-B) prepped, no boarded-unblocked candidates yet; carries register MOOT closes 983/999/1071 (T85-amend-*.json, PLAN-2040/T85-PREP-swarm-integrator-R-B.md). S-A idle awaiting T86 material.
+FIXERS (O1299 drain): fixer-B WF refutes-1142 on 984/985/986/1050 (ledgers in harness-work/fixer-B/row*/; 1050 VERIFY r1 FAIL 12:45Z -> repair loop). fixer-A WF11 on 998/1066/1076/1077 (+1036/995/1064 after); row979 was in its list though landed T83 -> NOTE-0095 sent to drop it. No fixed cut delivered since 11:45Z (1084); lenses (6) idle waiting on fixed trees.
+SEATS: 13 live (2 integrators, 6 lenses, 2 fixers, adjudicator-A, agy-council-pro, pm). Sweep 12:55Z: no TURN-BUDGET/context/autocompact signal on any live seat; fixer-A's 11:55Z 50/50 was recycled (fresh session 12:10Z, WF11). PM compacted 12:31Z. No seat recycled since.
+O-LINES since 10:55Z: O1298 day mode (10-min updates, interactive asks), O1299 drain refuted/dropped backlog only (no new rows; harness backlog behind it), O1300 keep 6 lenses + both Opus-max fixers.
+HARNESS: H721 regen-after-land, H725 HOLD-T<NN>, H726 verdict-route to owner all live; filed H727 (precut --fast census tests), H728, H729 (dispatch-check DONE markers), H722-H724, H716/H717 queued behind the drain.
+NEXT: first fixer "fixed <tree>" -> one pool-B lens leg -> T85 (R-B) / T86 (S-A); hotfix ids from 1085; any new main red -> attribute -> hotfix row -> fixer -> top train.

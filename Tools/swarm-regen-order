@@ -1,0 +1,548 @@
+#!/usr/bin/env python3
+"""swarm-regen-order -- regenerate every derived artifact in THE ONE CORRECT ORDER.
+
+The order is not arbitrary and it is not documented anywhere a tool can read. It lived in
+footguns, in a handoff, and in my head -- and getting it wrong cost, in a single session,
+TWO stash REDs and one aborted cut:
+
+  * @714: a control was wired in the frontend. ROUTE_INDEX records a `spa_wired` flag per
+    (method, path), so wiring a CALLER flips the index even though url_map is untouched.
+    ROUTE_INDEX was not regenerated -> full suite RED on stash.
+  * @717: I regenerated ROUTE_INDEX *before* gui_parity. swarm-cut then regenerates the parity
+    inventory at its step 3, which moved the spa_wired join out from under my committed
+    index -> the band ABORTED the cut (correctly) with a zip-vs-tree divergence.
+
+THE ORDER, and why each edge exists:
+
+  1. gui_parity_inventory   -- produces the spa_wired truth ROUTE_INDEX joins against.
+  2. build_route_index      -- MUST follow (1). It reads the parity inventory; built first,
+                               it is stale the moment (1) runs.
+  3. build_endpoint_catalog -- url_map -> catalog; independent of (1)/(2) but cheap here.
+  4. dependency_graph       -- AST walk of the package; must follow any file add/delete.
+  5. build_function_index   -- line-number-sensitive; must follow any edit that shifts lines.
+  6. build_inv_tags         -- current-source invariant view; follows source edits.
+  7. source_window_hashes   -- hashes resolved fixed-window content after source edits.
+  8. build_pin_index        -- follows the version bump and every generated test artifact.
+  9. check_route_counts     -- VERIFIES (2)/(3) against the test pins. A gate, not a generator.
+
+WHAT THIS TOOL DELIBERATELY WILL NOT DO
+---------------------------------------
+It will NOT re-freeze the FROZEN BASELINES:
+
+    tests/route_map_baseline.txt + test_route_map_invariant._BASELINE_SHA
+    tools/decomp/import_graph_baseline.json
+
+Those are DECLARATIONS OF INTENT, not derived docs. The route_map SHA pin exists to make an
+ACCIDENTAL baseline edit impossible, and it did its job: it BLOCKED the 716 cut until the
+removal of 4 routes was declared deliberate. A regen tool that silently re-froze them would
+defeat both gates -- it would turn "you changed the route surface, say so" into "the tool
+said so for you". If you meant it, say so with --declare-surface / --declare-edges.
+
+Read-only until it runs the generators. --dry-run prints the chain. --selftest.
+"""
+import argparse
+import json
+import hashlib
+import importlib.util
+import os
+import re
+import subprocess
+import sys
+
+G, R, Y, DIM, BOLD, RST = ("\033[32m", "\033[31m", "\033[33m",
+                           "\033[2m", "\033[1m", "\033[0m")
+
+
+def repo_root(script_file: str) -> str:
+    """Find the repository containing either canonical or documented command copy."""
+    here = os.path.dirname(os.path.abspath(script_file))
+    while True:
+        if (os.path.isdir(os.path.join(here, "bulk_downloader")) and
+                os.path.isdir(os.path.join(here, "tools"))):
+            return here
+        parent = os.path.dirname(here)
+        if parent == here:
+            raise RuntimeError("could not find repository root from %s" % script_file)
+        here = parent
+
+
+def python_for(work: str) -> str:
+    """Prefer the work tree's Python environment, then the running interpreter."""
+    for environment in (".venv", "venv"):
+        python = os.path.join(work, environment, "bin", "python")
+        if os.path.isfile(python) and os.access(python, os.X_OK):
+            return python
+    return sys.executable
+
+
+def check_census_expiry(work: str) -> tuple[bool, str]:
+    """Run the target tree's static human-review census verifier."""
+    tests = os.path.join(work, "tests")
+    if not os.path.isdir(tests):
+        return True, "no tests population can carry a census pin"
+    checker = os.path.join(tests, "_row_census_pin.py")
+    if not os.path.isfile(checker):
+        return False, "UNKNOWN census expiry: static checker is missing"
+
+    name = "_bd_census_pin_" + hashlib.sha256(
+        os.path.realpath(checker).encode("utf-8")
+    ).hexdigest()[:12]
+    try:
+        spec = importlib.util.spec_from_file_location(name, checker)
+        if spec is None or spec.loader is None:
+            return False, "UNKNOWN census expiry: static checker cannot be loaded"
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+        active = module.verify_dirty_candidate(work)
+    except Exception as exc:
+        loaded = sys.modules.get(name)
+        expired = getattr(loaded, "CensusExpired", ())
+        unavailable = getattr(loaded, "CensusMeasurementError", ())
+        if expired and isinstance(exc, expired):
+            return False, str(exc)
+        if unavailable and isinstance(exc, unavailable):
+            return False, f"UNKNOWN census expiry: {exc}"
+        return False, f"UNKNOWN census expiry: checker failed: {exc}"
+
+    if active:
+        return True, f"{active} active census pin(s) match the integration target"
+    return True, "no census pin in the integration patch"
+
+
+WORK = repo_root(__file__)
+
+# (label, argv, why-this-position). Order is the contract.
+CHAIN = [
+    ("FRONTEND_SECRET_KEYS", ["tools/gen_frontend_secret_keys.py"],
+     "server secret-key authorities -> tracked frontend constants; must precede "
+     "every consumer-derived artifact"),
+    ("gui_parity", ["tools/gui_parity_inventory.py"],
+     "produces the spa_wired truth ROUTE_INDEX joins against"),
+    ("ROUTE_INDEX", ["tools/build_route_index.py"],
+     "MUST follow gui_parity -- built first, it is stale the moment gui_parity runs"),
+    ("ENDPOINT_CATALOG", ["tools/build_endpoint_catalog.py"],
+     "url_map -> catalog"),
+    ("DEPENDENCY_GRAPH", ["tools/dependency_graph.py"],
+     "AST walk; must follow any file add/delete"),
+    ("FUNCTION_INDEX", ["tools/build_function_index.py"],
+     "line-number sensitive; must follow any edit that shifts lines"),
+    ("INV_TAGS", ["tools/build_inv_tags.py"],
+     "current-source invariant view; follows every source edit"),
+    ("SOURCE_WINDOW_HASHES", ["tools/build_source_window_hashes.py"],
+     "resolved-window content hashes; follows every source edit"),
+    ("PIN_INDEX", ["tools/build_pin_index.py"],
+     "follows the version bump and every generated test artifact above"),
+    ("STATIC_KB", ["toolchain/bin/swarm-kb-sync", "seed", "project-knowledge"],
+     "LAST: hashes project-knowledge/, so nothing that could write there may "
+     "follow it. Added @947 (register item 35) -- @944 gated this manifest's "
+     "membership but nothing regenerated it, so the staleness recurred one cut "
+     "late and blamed the wrong cut. It could not be added earlier because "
+     "seeding was not idempotent: a wall-clock `generated` field rewrote the "
+     "file on every run, and CI's check is this chain followed by "
+     "`git status --porcelain`. --version is omitted deliberately; swarm-kb-sync "
+     "derives it from the tree, so this entry cannot go stale against a bump."),
+]
+
+# Independent membership denominator for the operational chain above. This is
+# deliberately NOT computed from CHAIN: deleting a generator from CHAIN also
+# deletes it from the main regen loop, so a CHAIN-derived expectation would
+# certify the same omission that leaves the generated set stale.
+REQUIRED_CHAIN_LABELS = (
+    "FRONTEND_SECRET_KEYS",
+    "gui_parity",
+    "ROUTE_INDEX",
+    "ENDPOINT_CATALOG",
+    "DEPENDENCY_GRAPH",
+    "FUNCTION_INDEX",
+    "INV_TAGS",
+    "SOURCE_WINDOW_HASHES",
+    "PIN_INDEX",
+    "STATIC_KB",
+)
+
+# Each generator's tracked products live beside the chain authority, keyed by
+# REQUIRED_CHAIN_LABELS. Consumers must derive the flat population by walking
+# that independent label denominator; no consumer gets a second path list to
+# forget to bump. gui_parity's only product is deliberately gitignored.
+TRACKED_OUTPUTS_BY_LABEL = {
+    "FRONTEND_SECRET_KEYS": ("frontend/src/lib/secretKeys.generated.ts",),
+    "gui_parity": (),
+    "ROUTE_INDEX": ("ROUTE_INDEX.json",),
+    "ENDPOINT_CATALOG": ("ENDPOINT_CATALOG.md",),
+    "DEPENDENCY_GRAPH": ("DEPENDENCY_GRAPH.json", "DEPENDENCY_GRAPH.md"),
+    "FUNCTION_INDEX": ("FUNCTION_INDEX.md",),
+    "INV_TAGS": ("INV_TAGS.md",),
+    "SOURCE_WINDOW_HASHES": ("tests/source_window_hashes.json",),
+    "PIN_INDEX": ("PIN_INDEX.json",),
+    "STATIC_KB": ("project-knowledge/STATIC_KB_MANIFEST.json",),
+}
+
+
+def tracked_outputs() -> tuple[str, ...]:
+    """The exact tracked product set, derived through the required labels."""
+    required = tuple(REQUIRED_CHAIN_LABELS)
+    if not required or len(required) != len(set(required)):
+        raise RuntimeError("required chain labels are empty or duplicated")
+    if set(TRACKED_OUTPUTS_BY_LABEL) != set(required):
+        raise RuntimeError(
+            "tracked-output labels disagree with REQUIRED_CHAIN_LABELS: "
+            "missing=%r unexpected=%r"
+            % (sorted(set(required) - set(TRACKED_OUTPUTS_BY_LABEL)),
+               sorted(set(TRACKED_OUTPUTS_BY_LABEL) - set(required)))
+        )
+    outputs = tuple(
+        path
+        for label in required
+        for path in TRACKED_OUTPUTS_BY_LABEL[label]
+    )
+    if not outputs or len(outputs) != len(set(outputs)):
+        raise RuntimeError("tracked chain outputs are empty or duplicated")
+    return outputs
+
+VERIFY = [
+    ("template identity", ["tools/decomp/templates_snapshot.py", "--check"],
+     "GATE: verifies the reviewed frozen template identity; never auto-freezes it"),
+    ("route counts", ["tools/check_route_counts.py"],
+     "GATE: verifies ROUTE_INDEX/ENDPOINT_CATALOG against the test pins"),
+]
+
+_BASELINE_SHA_RE = re.compile(r'_BASELINE_SHA = "([a-f0-9]{64})"')
+
+
+def _run_venv(work, argv):
+    """Run under the selected work-tree interpreter, with PYTHONPATH stripped.
+
+    This matters and is not a style choice. `_run` uses the selected interpreter plus
+    PYTHONPATH=/tmp/prestaged_site_packages, which does NOT have httpx -- so
+    app_scrape_listing fails to register, its route never enters url_map, and the
+    endpoint DISAPPEARS FROM THE DENOMINATOR. The reachability ledger then counts it as
+    "not dark" rather than "unknown", the sandbox computes dark=119, stash computes 120,
+    and the ratchet goes RED on stash having been green in the sandbox. (Observed, 724.)
+
+    A denominator that silently shrinks when a module fails to import is the same bug this
+    whole ratchet exists to catch. The selected interpreter is therefore explicit.
+    """
+    py = python_for(work)
+    e = dict(os.environ)
+    e.pop("PYTHONPATH", None)
+    e.setdefault("SWARM_HOME", "/tmp/bd_regen_home")
+    os.makedirs(e["SWARM_HOME"], exist_ok=True)
+    r = subprocess.run([py] + argv, cwd=work, capture_output=True,
+                       text=True, timeout=300, env=e)
+    return r.returncode, (r.stdout or "") + (r.stderr or "")
+
+
+def check_reach(work):
+    """Is the reachability ratchet in sync? Report DRIFT here, not on stash."""
+    tool = os.path.join(work, "tools", "endpoint_reachability.py")
+    base_p = os.path.join(work, "reports", "endpoint_reachability.json")
+    if not os.path.isfile(tool) or not os.path.isfile(base_p):
+        return None, "endpoint_reachability not present"
+    rc, out = _run_venv(work, ["-c",
+        "import json,sys;sys.path.insert(0,'.');"
+        "from tools import endpoint_reachability as er;"
+        "d=er.build('.');"
+        "print(len([e for e in d['endpoints'] if e['reach']=='dark']))"])
+    if rc is None:
+        return False, out
+    if rc != 0:
+        return False, "reachability build failed: %s" % out.strip().splitlines()[-1:]
+    try:
+        now = int([l for l in out.strip().splitlines() if l.strip().isdigit()][-1])
+        base = json.load(open(base_p, encoding="utf-8"))["dark_count"]
+    except Exception as ex:
+        return False, "could not read dark_count (%s)" % ex
+    if now == base:
+        return True, "dark=%d, in sync" % now
+    return False, ("dark=%d but the ledger pins %d -- a wiring cut changed reachability. "
+                   "Re-pin IN THIS CUT with --declare-reach (stash WILL catch this)."
+                   % (now, base))
+
+
+def declare_reach(work):
+    """Re-pin the dark_count ratchet. ONLY when the operator says the change is intended."""
+    rc, out = _run_venv(work, ["tools/endpoint_reachability.py", "--update"])
+    if rc is None:
+        return False, out
+    if rc != 0:
+        return False, "re-pin failed: %s" % out.strip()[-160:]
+    line = [l for l in out.splitlines() if "pinned" in l]
+    return True, (line[-1].strip() if line else "reachability ledger re-pinned")
+
+
+def _run(work, argv, env=None):
+    e = dict(os.environ)
+    e.setdefault("SWARM_HOME", "/tmp/bd_regen_home")
+    e["PYTHONPATH"] = work + ":/tmp/prestaged_site_packages"
+    if env:
+        e.update(env)
+    os.makedirs(e["SWARM_HOME"], exist_ok=True)
+    r = subprocess.run([python_for(work)] + argv, cwd=work, capture_output=True,
+                       text=True, timeout=300, env=e)
+    return r.returncode, (r.stdout or "") + (r.stderr or "")
+
+
+def declare_surface(work):
+    """Re-freeze the route_map baseline + its SHA pin. ONLY when the operator says the
+    surface change was intentional -- this is the gate that blocked 716 until it was."""
+    snap = os.path.join(work, "tools", "route_map_snapshot.py")
+    base = os.path.join(work, "tests", "route_map_baseline.txt")
+    test = os.path.join(work, "tests", "test_route_map_invariant.py")
+    if not (os.path.isfile(snap) and os.path.isfile(test)):
+        return False, "route_map_snapshot.py / test_route_map_invariant.py not found"
+    e = dict(os.environ)
+    # NOTE: PYTHONPATH must carry the WORK TREE. `env -u PYTHONPATH` strips it and the
+    # snapshot comes out EMPTY, silently overwriting the baseline with nothing.
+    e["PYTHONPATH"] = work + ":/tmp/prestaged_site_packages"
+    r = subprocess.run([python_for(work), snap], cwd=work, capture_output=True,
+                       text=True, timeout=300, env=e)
+    if r.returncode != 0 or not r.stdout.strip():
+        return False, "snapshot produced nothing (PYTHONPATH must include the work tree)"
+    open(base, "w", encoding="utf-8").write(r.stdout)
+    sha = hashlib.sha256(open(base, "rb").read()).hexdigest()
+    src = open(test, encoding="utf-8").read()
+    if not _BASELINE_SHA_RE.search(src):
+        return False, "_BASELINE_SHA pin not found in test_route_map_invariant.py"
+    src = _BASELINE_SHA_RE.sub('_BASELINE_SHA = "%s"' % sha, src, count=1)
+    open(test, "w", encoding="utf-8").write(src)
+    n = len(open(base, encoding="utf-8").read().splitlines())
+    return True, "route_map re-frozen (%d rules) + SHA pin restated" % n
+
+
+def declare_edges(work):
+    """Re-freeze the import-graph baseline. ONLY for an INTENDED new/removed import edge."""
+    gate = os.path.join(work, "tools", "decomp", "import_graph_gate.py")
+    if not os.path.isfile(gate):
+        return False, "import_graph_gate.py not found"
+    # --shrink is passed because THIS ENTRY POINT IS THE DECLARATION. The gate
+    # refuses a baseline shrink by default so that a silently dropped edge
+    # cannot be frozen in; but --declare-edges is the operator saying, in as
+    # many words, that the edge change is intended -- and this function's own
+    # docstring covers a REMOVED edge. Without the passthrough the documented
+    # use case fails with "re-run with --shrink" and no way to supply it.
+    rc, out = _run(work, ["tools/decomp/import_graph_gate.py", "--update", "--shrink"])
+    return rc == 0, out.strip().splitlines()[-1] if out.strip() else "re-frozen"
+
+
+def selftest():
+    ok = True
+
+    labels = [c[0] for c in CHAIN]
+
+    # DENOMINATOR: frozen independently of CHAIN, nonempty, and exact today.
+    # The uniqueness clause makes a duplicated declaration fail rather than
+    # laundering one missing label behind the required count of ten.
+    d1 = (bool(REQUIRED_CHAIN_LABELS)
+          and len(REQUIRED_CHAIN_LABELS) == 10
+          and len(set(REQUIRED_CHAIN_LABELS)) == 10)
+    print(("%sPASS%s" if d1 else "%sFAIL%s") % ((G, RST) if d1 else (R, RST)) +
+          "  DENOMINATOR: exactly 10 unique required chain labels (nonzero)")
+    ok &= d1
+
+    required_labels = list(REQUIRED_CHAIN_LABELS)
+    missing = [label for label in required_labels if label not in labels]
+    unexpected = [label for label in labels if label not in required_labels]
+    duplicates = sorted({label for label in labels if labels.count(label) > 1})
+    m1 = (not missing and not unexpected and not duplicates
+          and len(labels) == len(required_labels))
+    if m1:
+        membership_detail = "exact required membership; nothing missing or unexpected"
+    else:
+        membership_detail = "missing: %s; unexpected: %s; duplicates: %s" % (
+            ", ".join(missing) or "none",
+            ", ".join(unexpected) or "none",
+            ", ".join(duplicates) or "none",
+        )
+    print(("%sPASS%s" if m1 else "%sFAIL%s") % ((G, RST) if m1 else (R, RST)) +
+          "  MEMBERSHIP: " + membership_detail)
+    ok &= m1
+
+    try:
+        outputs = tracked_outputs()
+        o1 = bool(outputs)
+        output_detail = "%d unique tracked outputs derived through required labels" % len(outputs)
+    except RuntimeError as exc:
+        o1 = False
+        output_detail = str(exc)
+    print(("%sPASS%s" if o1 else "%sFAIL%s") % ((G, RST) if o1 else (R, RST)) +
+          "  OUTPUTS: " + output_detail)
+    ok &= o1
+
+    # POS: the ORDER is the contract -- gui_parity must precede ROUTE_INDEX.
+    p1 = ("gui_parity" in labels and "ROUTE_INDEX" in labels
+          and labels.index("gui_parity") < labels.index("ROUTE_INDEX"))
+    print(("%sPASS%s" if p1 else "%sFAIL%s") % ((G, RST) if p1 else (R, RST)) +
+          "  POS: gui_parity precedes ROUTE_INDEX (the @717 abort)")
+    ok &= p1
+
+    # NEG: the frozen baselines are NOT in the default chain. A regen tool that silently
+    # re-froze them would defeat the gates that exist to make an accidental edit impossible.
+    blob = " ".join(a for _l, argv, _w in CHAIN for a in argv)
+    n1 = "route_map_snapshot" not in blob and "import_graph_gate" not in blob
+    print(("%sPASS%s" if n1 else "%sFAIL%s") % ((G, RST) if n1 else (R, RST)) +
+          "  NEG: the FROZEN BASELINES are not auto-re-frozen (they are declarations, "
+          "not derived docs)")
+    ok &= n1
+
+    # NEG: the verify step is a GATE, not a generator -- it must not be in CHAIN.
+    n2 = "check_route_counts" not in blob
+    print(("%sPASS%s" if n2 else "%sFAIL%s") % ((G, RST) if n2 else (R, RST)) +
+          "  NEG: check_route_counts is a gate, not a generator")
+    ok &= n2
+
+    verify_blob = " ".join(a for _l, argv, _w in VERIFY for a in argv)
+    n3 = "templates_snapshot.py --check" in verify_blob and \
+         "templates_snapshot.py" not in blob and "--freeze" not in verify_blob
+    print(("%sPASS%s" if n3 else "%sFAIL%s") % ((G, RST) if n3 else (R, RST)) +
+          "  NEG/POS: template identity is verified but never auto-frozen")
+    ok &= n3
+
+    print("SELFTEST PASS" if ok else "SELFTEST FAIL")
+    return 0 if ok else 1
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="swarm-regen-order")
+    ap.add_argument("--work", "--tree", dest="work", default=WORK)
+    ap.add_argument("--dry-run", action="store_true", help="print the chain, run nothing")
+    ap.add_argument("--declare-surface", action="store_true",
+                    help="re-freeze route_map + SHA (an INTENDED route add/remove)")
+    ap.add_argument("--declare-edges", action="store_true",
+                    help="re-freeze the import-graph baseline (an INTENDED import edge)")
+    ap.add_argument("--declare-reach", action="store_true",
+                    help="re-pin the endpoint-reachability dark_count ratchet "
+                         "(an INTENDED wiring change)")
+    ap.add_argument("--check", action="store_true",
+                    help="READ-ONLY: run the verdicts (census expiry, reachability "
+                         "ratchet, verifiers) and SKIP the regeneration chain. This is "
+                         "the mode a GATE or a FOOTGUNS detector asks for -- row 660.")
+    ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--tracked-outputs", action="store_true",
+                    help="print the tracked CHAIN outputs, one path per line")
+    a = ap.parse_args()
+    if a.check and (a.declare_surface or a.declare_edges or a.declare_reach):
+        print("swarm-regen-order: --check is READ-ONLY and --declare-* asks for a write; "
+              "choose one.", file=sys.stderr)
+        return 2
+    if a.selftest:
+        return selftest()
+
+    if a.tracked_outputs:
+        try:
+            print("\n".join(tracked_outputs()))
+        except RuntimeError as exc:
+            print("TRACKED OUTPUTS UNKNOWN: %s" % exc, file=sys.stderr)
+            return 2
+        return 0
+
+    if a.dry_run:
+        print("%s== swarm-regen-order :: the chain ==%s" % (BOLD, RST))
+        for i, (label, argv, why) in enumerate(CHAIN, 1):
+            print("  %d. %-18s %s%s%s" % (i, label, DIM, why, RST))
+        for label, argv, why in VERIFY:
+            print("  V. %-18s %s%s%s" % (label, DIM, why, RST))
+        print("  %s(frozen baselines are NOT touched -- --declare-surface / "
+              "--declare-edges)%s" % (DIM, RST))
+        return 0
+
+    work = os.path.abspath(a.work)
+    print("%s== swarm-regen-order :: %s ==%s" % (BOLD, work, RST))
+    if not os.path.isdir(work):
+        print("  %sXX%s %-18s work tree not found" % (R, RST, "work"))
+        return 1
+    census_ok, census_message = check_census_expiry(work)
+    print("  %s %-18s %s" % (
+        (G + "OK" + RST) if census_ok else (R + "XX" + RST),
+        "census expiry",
+        census_message,
+    ))
+    if not census_ok:
+        print("%sREGEN INCOMPLETE%s -- census expiry" % (R, RST))
+        return 1
+    failed = []
+    # ROW 660. A DETECTOR asks for the VERDICT; it never asks for the WRITE. swarm-precut's
+    # FG-CENSUS-NEEDS-THE-VENV footgun ran this tool as a read-only probe against the live
+    # worktree, and the chain below rewrote every tracked generated artifact on the way
+    # past -- measured by strace: one O_TRUNC + 42579-byte write to PIN_INDEX.json inside
+    # a `swarm-precut --gate` run. Worse when interrupted: the gate abandons this tool at
+    # 150s, and because the chain writes artifacts IN SEQUENCE, the kill leaves an
+    # arbitrary PREFIX of them rewritten, which is why separate sightings named different
+    # files. The verdicts this tool blocks on are all read-only -- census expiry above,
+    # the reachability ratchet and the VERIFY steps below -- so a caller that wants only
+    # a verdict skips the chain and judges exactly the same subject.
+    if a.check:
+        print("  %s-- %-18s read-only: %d generator(s) NOT run%s"
+              % (DIM, "chain skipped", len(CHAIN), RST))
+    else:
+        for label, argv, _why in CHAIN:
+            script = os.path.join(work, argv[0])
+            if not os.path.isfile(script):
+                print("  %sXX%s %-18s required generator absent" % (R, RST, label))
+                failed.append(label)
+                continue
+            rc, out = _run(work, argv)
+            if rc == 0:
+                print("  %sOK%s %-18s" % (G, RST, label))
+            else:
+                print("  %sXX%s %-18s %s" % (R, RST, label, out.strip().splitlines()[-1:]))
+                failed.append(label)
+
+    if a.declare_surface:
+        good, msg = declare_surface(work)
+        print("  %s %-18s %s" % ((G + "OK" + RST) if good else (R + "XX" + RST),
+                                 "route_map (declared)", msg))
+        if not good:
+            failed.append("route_map")
+
+    if a.declare_edges:
+        good, msg = declare_edges(work)
+        print("  %s %-18s %s" % ((G + "OK" + RST) if good else (R + "XX" + RST),
+                                 "import_graph (declared)", msg))
+        if not good:
+            failed.append("import_graph")
+
+    # The REACHABILITY RATCHET. Not a derived doc and not a frozen baseline -- a ratchet,
+    # so it is CHECKED every run and only re-pinned on request. Added at 724, where wiring
+    # 7 endpoints dropped dark 127 -> 120 and the ledger stayed pinned at 127: green in the
+    # sandbox, RED on stash. A ratchet nobody regenerates is a ratchet that only ever fires
+    # in the place it costs the most.
+    if a.declare_reach:
+        good, msg = declare_reach(work)
+        print("  %s %-18s %s" % ((G + "OK" + RST) if good else (R + "XX" + RST),
+                                 "reachability (declared)", msg))
+        if not good:
+            failed.append("reachability")
+    else:
+        good, msg = check_reach(work)
+        if good is None:
+            print("  %sXX%s %-18s %s" % (R, RST, "reachability", msg))
+            failed.append("reachability")
+        else:
+            print("  %s %-18s %s" % ((G + "OK" + RST) if good else (R + "XX" + RST),
+                                     "reachability", msg))
+            if not good:
+                failed.append("reachability")
+
+    for label, argv, _why in VERIFY:
+        if not os.path.isfile(os.path.join(work, argv[0])):
+            print("  %sXX%s %-18s required verifier absent" % (R, RST, label))
+            failed.append(label)
+            continue
+        rc, out = _run(work, argv)
+        tail = out.strip().splitlines()[-1] if out.strip() else ""
+        print("  %s %-18s %s" % ((G + "OK" + RST) if rc == 0 else (R + "XX" + RST),
+                                 label, tail[:90]))
+        if rc != 0:
+            failed.append(label)
+
+    if failed:
+        print("%sREGEN INCOMPLETE%s -- %s" % (R, RST, ", ".join(failed)))
+        return 1
+    print("%sREGEN COMPLETE%s %s(frozen baselines untouched -- declare them explicitly "
+          "if the surface/edges changed on purpose)%s" % (G, RST, DIM, RST))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,565 @@
+#!/usr/bin/env python3
+"""swarm-modwatch -- does this test file leave the bulk_downloader module table changed?
+
+WHY A RUNTIME INSTRUMENT AT ALL. Item 48's second mechanism is a test module
+holding an IMPORT-TIME `from bulk_downloader import X` while some earlier file
+deleted and re-created that module: the holder keeps the pre-wipe object, the
+code under test re-imports a fresh one, and the two run on independent
+module-level state.
+
+`tests/test_v3_66_1034_guards_survive_a_module_wipe.py` ratchets a TEXT
+heuristic for this -- files that delete from `sys.modules` without a recognised
+restore idiom -- and its own docstring calls the predicate a heuristic. Text
+cannot answer whether a restore actually WORKS. Only running the code can.
+
+WHAT IS MEASURED, AND WHAT IS NOT. This tool runs [generated loader, candidate]
+in one pytest session and compares the `bulk_downloader.*` entries in
+`sys.modules` from just before the candidate is COLLECTED to the end of the
+session. Per name: DROPPED (gone), SWAPPED (present, different object -- the
+dangerous one, because the name still resolves), ADDED (reported, not judged).
+
+AN OPEN DISAGREEMENT, RECORDED RATHER THAN RESOLVED. A full-suite probe run on
+2026-08-12 reported ten files orphaning module objects, one of them at 269
+swapped. Pointed at those same files, this tool reports ZERO drift -- with a
+five-module loader and again with a loader that pulls in `app` and therefore
+most of the package. Both instruments cannot be right. What that means in
+practice: this tool measures a TWO-FILE denominator, and a defect that needs a
+deeper session to appear is outside it. Do NOT read a clean result here as
+evidence a file is safe in a full run. The disagreement is the finding; it is
+not yet closed, and no number from either side should be quoted as settled.
+
+THREE DRAFTS GOT THE BASELINE WRONG, EACH REPORTING A CONFIDENT ZERO, and they
+are worth knowing before editing this:
+  * baseline at the first test's SETUP -- already post-wipe for any file that
+    wipes at IMPORT time, which pytest performs during COLLECTION;
+  * baseline at SESSION START -- nothing is imported yet, so a file that wipes
+    what it itself loaded shows no net change;
+  * no prior loader at all -- the defect only exists relative to somebody
+    else's modules.
+Each was caught by the selftest, which asserts BOTH directions: it sees a
+synthetic wipe and stays silent on a clean file. A detector that reports nothing
+and one that reports everything are equally useless, and only the first looks
+reassuring.
+
+IT IS OPT-IN, DELIBERATELY, AND THAT IS A COST DECISION. A hook that runs for
+every test is paid ~15,600 times per capture (CLAUDE.md section 2, rule 6). This
+is a tool you point at files when asking this question, never a plugin the suite
+carries.
+
+IT CHANGES NOTHING: runs pytest, reads `sys.modules`, writes one temp report.
+
+    swarm-modwatch tests/test_foo.py
+    swarm-modwatch --all
+    swarm-modwatch --selftest
+"""
+import argparse
+import json
+import os
+import pathlib
+import stat
+import subprocess
+import sys
+import tempfile
+
+REGISTERED = "REGISTERED"
+REGISTRATION_FAILED = "REGISTRATION FAILED"
+NO_REGISTRAR = "NO REGISTRAR IN THIS TREE"
+_REGISTRATION_STATE_PREFIX = "BD-PYTEST REGISTRATION STATE: "
+_PYTEST_REGISTRATION_REPOSITORY_ROOT = pathlib.Path(__file__).resolve().parents[2]
+
+_PYTEST_REGISTRATION_BOOTSTRAP = r'''\
+import os
+import runpy
+import shlex
+import subprocess
+import sys
+
+state, jobs, anchor, proof, purpose, *pytest_args = sys.argv[1:]
+if state == "REGISTERED":
+    command = shlex.join([sys.executable, "-m", "pytest", *pytest_args])
+    try:
+        registration = subprocess.run(
+            [sys.executable, jobs, "register", "--pid", str(os.getpid()),
+             "--purpose", purpose, "--cmd", command],
+            capture_output=True, text=True,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        print("BD-PYTEST REGISTRATION STATE: REGISTRATION FAILED: "
+              f"anchor={anchor}; registrar={jobs}; {type(exc).__name__}: {exc}",
+              file=sys.stderr)
+        raise SystemExit(3)
+    if registration.returncode:
+        detail = (registration.stdout + registration.stderr).strip()
+        print("BD-PYTEST REGISTRATION STATE: REGISTRATION FAILED: "
+              f"anchor={anchor}; registrar={jobs}; exit={registration.returncode}"
+              + (f"; {detail}" if detail else ""), file=sys.stderr)
+        raise SystemExit(3)
+    print("BD-PYTEST REGISTRATION STATE: REGISTERED: "
+          f"anchor={anchor}; registrar={jobs}", file=sys.stderr)
+elif state == "NO REGISTRAR IN THIS TREE":
+    print("BD-PYTEST REGISTRATION STATE: NO REGISTRAR IN THIS TREE: "
+          f"anchor={anchor}; {proof}", file=sys.stderr)
+else:
+    print("BD-PYTEST REGISTRATION UNKNOWN: invalid internal state "
+          f"{state!r}; anchor={anchor}; nothing ran", file=sys.stderr)
+    raise SystemExit(3)
+sys.argv[:] = ["pytest", *pytest_args]
+runpy.run_module("pytest", run_name="__main__", alter_sys=True)
+'''
+
+
+class PytestRegistrationRefused(RuntimeError):
+    """Owned pytest could not start because registry evidence refused."""
+
+
+def _registration_refusal(output):
+    for raw_line in str(output).splitlines():
+        line = raw_line.strip()
+        if (line.startswith(_REGISTRATION_STATE_PREFIX + REGISTRATION_FAILED + ":")
+                or line.startswith("BD-PYTEST REGISTRATION UNKNOWN:")):
+            return line
+    return None
+
+
+def _raise_if_registration_refused(output):
+    detail = _registration_refusal(output)
+    if detail:
+        raise PytestRegistrationRefused(detail)
+
+
+def _registration_unknown(anchor, detail):
+    raise PytestRegistrationRefused(
+        "BD-PYTEST REGISTRATION UNKNOWN: anchor=%s; %s; nothing ran"
+                       % (anchor, detail))
+
+
+def _resolve_pytest_registrar(repository_root=None):
+    """Resolve only the explicit repository anchor; never ambient candidates."""
+    raw_anchor = (repository_root if repository_root is not None
+                  else _PYTEST_REGISTRATION_REPOSITORY_ROOT)
+    try:
+        anchor = pathlib.Path(raw_anchor).resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        _registration_unknown(raw_anchor, "anchor is unavailable: %s" % exc)
+    if not anchor.is_dir():
+        _registration_unknown(anchor, "anchor is not a directory")
+    registrar = anchor / "toolchain" / "bin" / "swarm-jobs"
+    registrar_present = True
+    for owned_dir in (anchor / "toolchain", anchor / "toolchain" / "bin"):
+        try:
+            owned_info = owned_dir.lstat()
+        except FileNotFoundError:
+            registrar_present = False
+            break
+        except OSError as exc:
+            _registration_unknown(
+                anchor, "registrar metadata is unavailable: %s" % exc)
+        if stat.S_ISLNK(owned_info.st_mode):
+            _registration_unknown(
+                anchor, "registrar parent is a symlink: %s" % owned_dir)
+        if not stat.S_ISDIR(owned_info.st_mode):
+            _registration_unknown(
+                anchor, "registrar parent is not a directory: %s" % owned_dir)
+    if registrar_present:
+        try:
+            registrar_info = registrar.lstat()
+        except FileNotFoundError:
+            registrar_present = False
+        except OSError as exc:
+            _registration_unknown(
+                anchor, "registrar metadata is unavailable: %s" % exc)
+        else:
+            if stat.S_ISLNK(registrar_info.st_mode):
+                _registration_unknown(anchor, "registrar is a symlink: %s" % registrar)
+            if not stat.S_ISREG(registrar_info.st_mode):
+                _registration_unknown(
+                    anchor, "registrar is not a regular file: %s" % registrar)
+
+    try:
+        (anchor / ".git").lstat()
+    except FileNotFoundError:
+        if registrar_present:
+            proof = ("anchor has no .git repository metadata; untracked "
+                     "toolchain/bin/swarm-jobs is not a registrar")
+        else:
+            proof = ("anchor has no .git repository metadata and no "
+                     "toolchain/bin/swarm-jobs")
+        return NO_REGISTRAR, None, proof
+    except OSError as exc:
+        _registration_unknown(anchor, "repository metadata is unavailable: %s" % exc)
+    try:
+        top = subprocess.run(["git", "-C", str(anchor), "rev-parse", "--show-toplevel"],
+                             capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as exc:
+        _registration_unknown(anchor, "repository-root measurement failed: %s" % exc)
+    if top.returncode != 0 or not top.stdout.strip():
+        _registration_unknown(anchor, "repository-root measurement returned exit %d: %s"
+                              % (top.returncode, (top.stdout + top.stderr).strip()))
+    try:
+        measured_root = pathlib.Path(top.stdout.strip()).resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        _registration_unknown(anchor, "measured repository root is unavailable: %s" % exc)
+    if measured_root != anchor:
+        _registration_unknown(anchor, "anchor is not the measured repository root %s"
+                              % measured_root)
+    try:
+        tracked = subprocess.run(
+            ["git", "-C", str(anchor), "ls-files", "--error-unmatch", "--",
+             "toolchain/bin/swarm-jobs"], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as exc:
+        _registration_unknown(anchor, "tracked-registrar measurement failed: %s" % exc)
+    if tracked.returncode == 0:
+        if not registrar_present:
+            _registration_unknown(anchor,
+                                  "tracked toolchain/bin/swarm-jobs is absent or not a file")
+        return REGISTERED, registrar, "tracked toolchain/bin/swarm-jobs"
+    if tracked.returncode == 1:
+        proof = "Git proves toolchain/bin/swarm-jobs is not tracked under this anchor"
+        if registrar_present:
+            proof += "; the untracked path is not trusted"
+        return NO_REGISTRAR, None, proof
+    _registration_unknown(anchor, "tracked-registrar measurement returned exit %d: %s"
+                          % (tracked.returncode,
+                             (tracked.stdout + tracked.stderr).strip()))
+
+
+def _registered_pytest_argv(python, purpose, *pytest_args, repository_root=None):
+    """Return a same-PID register-before-import pytest command."""
+    raw_anchor = (repository_root if repository_root is not None
+                  else _PYTEST_REGISTRATION_REPOSITORY_ROOT)
+    state, registrar, proof = _resolve_pytest_registrar(raw_anchor)
+    anchor = pathlib.Path(raw_anchor).resolve(strict=True)
+    return [str(python), "-c", _PYTEST_REGISTRATION_BOOTSTRAP,
+            state, str(registrar or ""), str(anchor), proof, str(purpose),
+            *[str(arg) for arg in pytest_args]]
+
+PREFIX = "bulk_downloader"
+
+# The plugin is written to a temp file and loaded with `-p`. It is NOT kept in
+# tests/, because a plugin living there is one `-p` away from being loaded by
+# every run, and section 2 rule 6 is explicit about what per-test hooks cost.
+_PLUGIN = '''
+import json, os, sys
+
+_PREFIX = "bulk_downloader"
+_OUT = os.environ["SWARM_MODWATCH_OUT"]
+_TARGET = os.environ["SWARM_MODWATCH_TARGET"]
+
+
+def _snap():
+    return {k: id(v) for k, v in sys.modules.items()
+            if k == _PREFIX or k.startswith(_PREFIX + ".")}
+
+
+class _Watch:
+    """Baseline at the CANDIDATE's collectstart, not at session start.
+
+    Two earlier drafts got this wrong in opposite directions, and both reported
+    a confident ZERO:
+
+      * baseline at the first test's SETUP -- already post-wipe for any file
+        that wipes at IMPORT time, which pytest performs during COLLECTION. The
+        detector compared the damage against itself.
+      * baseline at SESSION START -- nothing is imported yet, so a file that
+        wipes what it itself loaded shows no net change.
+
+    The defect only exists relative to a PRIOR loader: someone else's modules,
+    wiped by this file. So the run is [loader, candidate], and the baseline is
+    taken when pytest starts collecting the CANDIDATE -- by which point the
+    loader is imported and the candidate is not.
+    """
+
+    def __init__(self):
+        self.before = None
+
+    def pytest_collectstart(self, collector):
+        if self.before is None and _TARGET in str(getattr(collector, "path", "")):
+            self.before = _snap()
+
+    def pytest_sessionfinish(self, session, exitstatus):
+        before = self.before
+        if before is None:
+            # UNKNOWN, not clean. The candidate was never collected, so nothing
+            # was measured and reporting "no drift" would be a check passing
+            # over a subject it never saw.
+            with open(_OUT, "w") as fh:
+                json.dump({"unmeasured": True}, fh)
+            return
+        after = _snap()
+        with open(_OUT, "w") as fh:
+            json.dump({
+                "dropped": sorted(k for k in before if k not in after),
+                "swapped": sorted(k for k in before
+                                  if k in after and after[k] != before[k]),
+                "added": sorted(k for k in after if k not in before),
+                "n_before": len(before), "n_after": len(after),
+            }, fh)
+
+
+def pytest_configure(config):
+    config.pluginmanager.register(_Watch(), "bd_modwatch_inner")
+'''
+
+# Imported by the generated loader so the candidate has something to wipe. Kept
+# small and stable: this is a fixture, not a census.
+# `app` transitively imports most of the package, which matters: the defect is
+# proportional to how much is loaded when the wipe happens. A five-module loader
+# measured ZERO drift on files a full-suite probe had measured at 269 swapped --
+# the harness, not the tree, was the difference.
+_LOADER_IMPORTS = ("app", "db", "log", "plugins", "detect", "app_global_config")
+
+
+def repo_root():
+    here = pathlib.Path(__file__).resolve()
+    for cand in list(here.parents):
+        if (cand / "bulk_downloader" / "__init__.py").is_file():
+            return cand
+    return pathlib.Path.cwd()
+
+
+def tracked_tests(root):
+    out = subprocess.run(["git", "ls-files", "--", "tests/*.py"],
+                         cwd=root, capture_output=True, text=True)
+    return [l for l in out.stdout.split() if l]
+
+
+def watch(root, files, timeout):
+    """Run [loader, candidate] in one pytest session; return the drift report.
+
+    The loader is generated, not chosen from the tree: a real file would bring
+    its own fixtures, its own imports and its own drift, and the measurement
+    would be about the pair rather than about the candidate.
+    """
+    with tempfile.TemporaryDirectory() as td:
+        plugin_dir = pathlib.Path(td)
+        (plugin_dir / "bd_modwatch_plugin.py").write_text(_PLUGIN)
+        out_path = plugin_dir / "report.json"
+
+        loader = plugin_dir / "test_bd_modwatch_loader.py"
+        loader.write_text(
+            "".join("import bulk_downloader.%s\n" % m for m in _LOADER_IMPORTS)
+            + "def test_loader_holds_the_modules():\n"
+              "    assert bulk_downloader.db is not None\n")
+
+        env = dict(os.environ)
+        # POP, never merely refrain from setting: an inherited SWARM_INSTALL_DIR is
+        # preferred over the working directory by db._resolve_db_path, so every
+        # test in the child would share one database (CLAUDE.md section 5).
+        env.pop("SWARM_INSTALL_DIR", None)
+        env["SWARM_DISABLE_KEEPALIVE"] = "1"
+        env["SWARM_MODWATCH_OUT"] = str(out_path)
+        env["SWARM_MODWATCH_TARGET"] = os.path.basename(files[0])
+        env["PYTHONPATH"] = str(plugin_dir) + os.pathsep + env.get("PYTHONPATH", "")
+
+        cmd = _registered_pytest_argv(
+            sys.executable, "swarm-modwatch %s" % " ".join(files), str(loader),
+            *files, "-q", "-p", "no:randomly", "-p", "bd_modwatch_plugin",
+            repository_root=_PYTEST_REGISTRATION_REPOSITORY_ROOT)
+        proc = subprocess.run(cmd, cwd=root, capture_output=True, text=True,
+                              env=env, timeout=timeout)
+        if not out_path.is_file():
+            return None, proc
+        rep = json.loads(out_path.read_text())
+        if rep.get("unmeasured"):
+            return None, proc
+        return rep, proc
+
+
+class Refused(Exception):
+    """A refusal with a reason, so the caller can print one message."""
+
+
+def plan_targets(args, tracked, root):
+    """(groups, mode). ONE GROUP PER FILE unless --together is asked for.
+
+    THE BUG THIS REPLACES (@1068, backlog 94). `--all` planned one group per
+    FILE while explicitly-named files were collapsed into a SINGLE group:
+
+        if args.all:      targets = [[f] for f in tracked_tests(root)]
+        elif args.files:  targets = [list(args.files)]
+
+    So naming three files silently changed the question from "does each of
+    these leave the module table changed?" to "does this co-batched run, as a
+    whole, leave it changed?" -- and then reported the answer with the word
+    "file(s)" against a space-joined label. A batch of N could only ever report
+    0 or 1, it could never name the offender, and a wipe in one file offset by
+    an import in another nets out CLEAN.
+
+    That is where a retracted claim came from: backlog row 22 carried
+    "swarm-modwatch reports 0 for those files" as evidence against a full-suite
+    probe, and the reading was a BATCH answer compared against a PER-FILE
+    question. The two instruments were never measuring the same thing.
+
+    --together keeps the co-batched question askable, because it is the one a
+    real `pytest -n N --dist loadfile` run answers. It just has to be ASKED.
+    """
+    if args.files and args.all:
+        raise Refused("name files or pass --all, not both -- they are "
+                      "different denominators")
+    if args.all:
+        return [[f] for f in tracked(root)], "per-file"
+    if args.files:
+        if getattr(args, "together", False):
+            return [list(args.files)], "together"
+        return [[f] for f in args.files], "per-file"
+    raise Refused("name files or pass --all. Refusing to guess a denominator.")
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(
+        description="report test files that leave the bulk_downloader module "
+                    "table changed")
+    p.add_argument("files", nargs="*", help="test files to run (default: --all)")
+    p.add_argument("--all", action="store_true",
+                   help="every tracked test file, one pytest session each")
+    p.add_argument("--timeout", type=int, default=600,
+                   help="per-session cap in seconds (default 600)")
+    p.add_argument("--together", action="store_true",
+                   help="measure the named files as ONE co-batched run "
+                        "(the question a real --dist loadfile run answers) "
+                        "instead of one at a time")
+    p.add_argument("--json", action="store_true", help="machine-readable output")
+    p.add_argument("--selftest", action="store_true")
+    args = p.parse_args(argv)
+
+    if args.selftest:
+        return selftest()
+
+    root = repo_root()
+    try:
+        targets, mode = plan_targets(args, tracked_tests, root)
+    except Refused as exc:
+        print("swarm-modwatch: REFUSED: %s" % exc, file=sys.stderr)
+        return 2
+
+    offenders = {}
+    unknown = []
+    for group in targets:
+        report, proc = watch(root, group, args.timeout)
+        if report is None:
+            unknown.append((group, proc.returncode))
+            continue
+        if report["dropped"] or report["swapped"]:
+            offenders[" ".join(group)] = report
+
+    if args.json:
+        print(json.dumps({"offenders": offenders,
+                          "unknown": [g for g, _ in unknown]}, indent=2))
+    else:
+        for rel in sorted(offenders):
+            d = offenders[rel]
+            print("%s  dropped=%d swapped=%d"
+                  % (rel, len(d["dropped"]), len(d["swapped"])))
+        for group, rc in unknown:
+            print("UNKNOWN %s -- no report produced (pytest rc=%s); drift for "
+                  "these files was NOT measured" % (" ".join(group), rc),
+                  file=sys.stderr)
+        # NAME THE MODE IN THE VERDICT. The count is over GROUPS, and a
+        # group is ONE FILE in per-file mode but the WHOLE SET under
+        # --together -- so the same number means two different things.
+        # Saying which produced it is what stops a batch artifact being
+        # read as a per-file answer, which is exactly how a retracted
+        # claim entered backlog row 22.
+        unit = "file(s)" if mode == "per-file" else "co-batched group(s)"
+        print("%d %s leave the module table changed; %d unmeasured [mode: %s]"
+              % (len(offenders), unit, len(unknown), mode))
+
+    # Unknown blocks, exactly as a FAIL does: a file whose drift could not be
+    # evaluated is not a file that is clean.
+    if unknown:
+        return 2
+    return 1 if offenders else 0
+
+
+def selftest():
+    """Prove the detector SEES a leak and does NOT cry wolf on a clean file.
+
+    Both directions, because a detector that reports everything and one that
+    reports nothing are equally useless and only the second looks reassuring.
+    """
+    failures = []
+    root = repo_root()
+
+    # THE DISPATCH, FIRST. @1068: named files used to collapse into ONE group
+    # while --all planned one per file, so the tool answered a different
+    # question depending on how it was invoked and said nothing about which.
+    # The selftest ran green throughout, because it never touched argv
+    # planning -- a battery that exercises only the detector reports green over
+    # the half that decides WHAT is detected.
+    class _A:
+        def __init__(self, files=(), all=False, together=False):
+            self.files, self.all, self.together = list(files), all, together
+
+    def _tracked(_root):
+        return ["a.py", "b.py"]
+
+    got, mode = plan_targets(_A(files=["x.py", "y.py"]), _tracked, root)
+    if got != [["x.py"], ["y.py"]] or mode != "per-file":
+        failures.append("named files must plan ONE GROUP PER FILE, got %r (%s)"
+                        % (got, mode))
+    got, mode = plan_targets(_A(files=["x.py", "y.py"], together=True), _tracked, root)
+    if got != [["x.py", "y.py"]] or mode != "together":
+        failures.append("--together must plan one co-batched group, got %r (%s)"
+                        % (got, mode))
+    got, mode = plan_targets(_A(all=True), _tracked, root)
+    if got != [["a.py"], ["b.py"]] or mode != "per-file":
+        failures.append("--all must plan one group per tracked file, got %r" % (got,))
+    for bad, why in ((_A(), "no files and no --all"),
+                     (_A(files=["x.py"], all=True), "files AND --all")):
+        try:
+            plan_targets(bad, _tracked, root)
+        except Refused:
+            pass
+        else:
+            failures.append("must REFUSE on %s rather than guess" % why)
+
+    with tempfile.TemporaryDirectory() as td:
+        d = pathlib.Path(td)
+        leaky = d / "test_modwatch_leaky.py"
+        # THE IMPORT IS AT MODULE SCOPE, AND THAT IS THE WHOLE FIXTURE. An
+        # earlier draft imported and deleted inside one test body: the module
+        # was absent before AND after, so net drift was correctly zero and the
+        # selftest failed against a working detector. The defect being modelled
+        # is a file that wipes what the SESSION already had loaded, so the
+        # fixture has to load it before the test runs.
+        leaky.write_text(
+            "import sys\n"
+            "import bulk_downloader.db\n"
+            "def test_wipes():\n"
+            "    for m in [m for m in sys.modules\n"
+            "              if m == 'bulk_downloader' or m.startswith('bulk_downloader.')]:\n"
+            "        del sys.modules[m]\n")
+        clean = d / "test_modwatch_clean.py"
+        clean.write_text(
+            "import bulk_downloader.db\n"
+            "def test_touches_nothing():\n"
+            "    assert bulk_downloader.db is not None\n")
+
+        rep, _ = watch(root, [str(leaky)], 300)
+        if rep is None:
+            failures.append("no report for the leaky fixture")
+        else:
+            got = rep
+            if not got["dropped"]:
+                failures.append("the leaky fixture reported no dropped modules "
+                                "-- the detector is blind")
+
+        rep2, _ = watch(root, [str(clean)], 300)
+        if rep2 is None:
+            failures.append("no report for the clean fixture")
+        else:
+            got2 = rep2
+            if got2["dropped"] or got2["swapped"]:
+                failures.append("the clean fixture was reported as drifting "
+                                "-- the detector cries wolf: %r" % got2)
+
+    if failures:
+        for f in failures:
+            print("SELFTEST FAIL: %s" % f, file=sys.stderr)
+        return 1
+    print("SELFTEST PASS: sees a real wipe, stays silent on a clean file")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

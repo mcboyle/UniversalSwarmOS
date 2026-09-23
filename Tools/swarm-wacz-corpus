@@ -1,0 +1,1389 @@
+#!/usr/bin/env python3
+"""swarm-wacz-corpus -- read-only survey of a local WACZ corpus.
+
+Read-only analyses over ONE denominator, each independently selectable so their
+answers can be compared rather than taken on trust:
+
+  --group    site grouping from the `t_<hash>_<name>.wacz` naming, so the inputs
+             to a template merge are DERIVED rather than eyeballed
+  --hosts    grouping by HOST, three tiers, every group labelled with the method
+             that produced it (see mode_hosts)
+  --templates which sites can make a GREEN template -- from one capture or from
+             a combination -- and whether the answer is corroborated across that
+             site's captures (see mode_templates)
+  --pairs    raw <-> `.redacted` twins and the size ratio between them
+  --health   does each archive open, pass CRC, and carry a WARC payload
+  --scrub    screening pass for credential-shaped material still in the archive
+  --dupes    byte-identical copies, and derivatives identical to their source
+  --all      every mode
+
+WHY THE DENOMINATOR IS REPORTED EVERYWHERE. CLAUDE.md section 0 opens with a
+gate that cannot see its subject reporting OK -- truthfully, and uselessly --
+and this repo owns the scar: swarm-wacz-scrub, swarm-scrub-proof and swarm-share-safe
+each carried a TEXT_EXT allowlist containing no `.warc`, which is where a WACZ's
+payload lives, and all three printed "verified clean" over what turned out to be
+228 contaminated files. So: every mode states what it examined, an empty corpus
+is UNKNOWN rather than "0 problems", and a member that could not be READ is
+counted separately from a member that was read and found clean.
+
+WHAT --scrub IS NOT. It is a SCREEN, not the canonical floor. The floor is
+`bulk_downloader.capture_artifact_redact.scan_floor_secrets`, which operates on
+a parsed capture rather than on raw archive bytes. This mode exists to shortlist
+files worth putting through that, and its own output says so. Treating a clean
+screen as a clean floor would be the same substitution error the allowlists made.
+
+Exit: 0 ran-and-clean, 1 ran-with-findings, 2 UNKNOWN (cannot answer).
+2 is not a softer 1 -- it means the question was not evaluated.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import pathlib
+import re
+import sys
+import zipfile
+from urllib.parse import urlsplit
+
+_HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, _HERE)
+import bdtools_sec as sec  # noqa: E402
+
+EXIT_OK, EXIT_FINDINGS, EXIT_UNKNOWN = 0, 1, 2
+
+_WACZ = ".wacz"
+
+# MEASURED against the real 1251-file corpus, not assumed. The first version of
+# this tool tested `name.endswith(".redacted.wacz")`, which classified 197 of
+# the 601 redacted files -- 33% -- as RAW captures, because 216 files carry a
+# Windows-style copy suffix and `x.redacted (2).wacz` does not end in
+# `.redacted.wacz`. It also had no concept of `.scrubbed` (176 files) or
+# `.redacted.scrubbed` (46), counting all of them as raw.
+_DERIVATIVE_MARKERS = ("redacted", "scrubbed")
+# `(2)` and `(dup1)`, with or without a leading space -- both forms are real.
+_COPY_SUFFIX = re.compile(r"\s*\((?:dup)?\d+\)")
+
+# @983: the marker set was DOT-prefixed, and the box's corpus also writes the
+# UNDERSCORE form with a profile qualifier. Measured over the operator's 742
+# real names: `.redacted` x329, `.scrubbed` x104, `_redacted_safe` x4,
+# `_redacted_strict` x2, `.redacted_2` x1. Six read as RAW captures and the
+# seventh based to the fragment `shaka_2`, which pairs with nothing.
+#
+# Three things this pattern is doing deliberately:
+#   - a LEADING SEPARATOR is required, so a capture of a site whose name merely
+#     begins with the word is not reclassified into an empty base;
+#   - the qualifier tail `(_safe|_strict|_2|...)` is part of the marker, because
+#     `bang247_redacted_safe` and `bang247_redacted_strict` are two redaction
+#     PROFILES of one capture and must collapse to one family;
+#   - the tail only eats `_`-joined runs AFTER the marker word, so
+#     `cap_355b_redacted_safe` keeps `cap_355b`. A rule that ate from the first
+#     underscore would merge every `cap_*` capture into one bucket -- the
+#     over-sensitivity direction, and the one a careless fix breaks.
+# `-1` / `-2` are NOT markers: `wowza` and `wowza-1` differ in size on the box,
+# so they are distinct captures and collapsing them would delete one.
+_MARKER_RE = re.compile(
+    r"[._-](%s)(?:_[a-z0-9]+)*" % "|".join(_DERIVATIVE_MARKERS), re.I)
+
+# `t_<hex>_<name>.wacz` is the export convention; the <name> is the only site
+# signal a filename carries. Anything not matching keeps its whole stem, so an
+# unrecognised naming scheme groups under itself rather than vanishing.
+_NAMED = re.compile(r"^t_[0-9a-fA-F]{6,}_(.+)$")
+_SITE = re.compile(r"^([A-Za-z]+)")
+
+# STRUCTURAL, not entropy-based and not a bare word: a credential-ish key, a
+# separator, then a value with some length to it. `SECRET_WORD_RE` alone fires
+# on any prose containing "secret" -- over-sensitivity is a soundness bug
+# (section 0), and a screen that cries wolf gets switched off.
+_KV = re.compile(
+    rb"(?i)\b(secret|token|api[_-]?key|apikey|password|passwd|authorization"
+    rb"|bearer|session[_-]?id|access[_-]?token)\b\s*[=:]\s*[^\s\"'&;]{8,}")
+
+
+def enumerate_corpus(root: pathlib.Path):
+    """Every *.wacz under root. Returns (files, reason_if_unknown)."""
+    if not root.exists():
+        return [], "root does not exist: %s" % root
+    if not root.is_dir():
+        return [], "root is not a directory: %s" % root
+    files = sorted(p for p in root.rglob("*" + _WACZ) if p.is_file())
+    if not files:
+        return [], "no *.wacz found under root: %s" % root
+    return files, None
+
+
+def _markers(p: pathlib.Path):
+    """Which derivative markers this filename carries, in order of appearance."""
+    stem = p.name[:-len(_WACZ)] if p.name.lower().endswith(_WACZ) else p.name
+    stem = _COPY_SUFFIX.sub("", stem)
+    return tuple(m.group(1).lower() for m in _MARKER_RE.finditer(stem))
+
+
+def _is_redacted(p: pathlib.Path) -> bool:
+    """Any derivative, not just a literal `.redacted.wacz` ending."""
+    return bool(_markers(p))
+
+
+def _base(p: pathlib.Path) -> str:
+    """The SOURCE capture name: copy suffix and every derivative marker removed.
+
+    So `x.wacz`, `x.redacted (2).wacz`, `x.scrubbed.wacz`,
+    `x.redacted.scrubbed.wacz`, `x_redacted_safe.wacz` and `x.redacted_2.wacz`
+    all resolve to `x` -- one family, which is what pairing and the no-op check
+    both need.
+
+    The marker's qualifier goes with the marker. Stripping `.redacted` from
+    `shaka.redacted_2` and leaving `shaka_2` is worse than not stripping at all:
+    a half-stripped base matches nothing and still looks like a real name.
+    """
+    n = p.name
+    n = n[:-len(_WACZ)] if n.lower().endswith(_WACZ) else n
+    n = _COPY_SUFFIX.sub("", n)
+    return _MARKER_RE.sub("", n)
+
+
+def _site_of(p: pathlib.Path) -> str:
+    stem = _base(p)
+    m = _NAMED.match(stem)
+    if not m:
+        # Unrecognised naming: group under the WHOLE stem. Running _SITE over it
+        # would take the leading alpha run of a string never meant to be parsed
+        # -- measured, every `t_<short>_<name>` fixture collapsed into a single
+        # bucket called "t", which is a silent mis-grouping that looks like a
+        # real answer. The docstring already promised this behaviour; the code
+        # did not implement it.
+        return stem.lower()
+    m2 = _SITE.match(m.group(1))
+    return (m2.group(1) if m2 else m.group(1)).lower()
+
+
+def mode_group(files):
+    raws = [p for p in files if not _is_redacted(p)]
+    buckets = {}
+    for p in raws:
+        buckets.setdefault(_site_of(p), []).append(p.name)
+    groups = [{"site": s, "captures": len(v), "merge_candidate": len(v) > 1,
+               "files": sorted(v)}
+              for s, v in sorted(buckets.items())]
+    return {"examined": len(raws),
+            "denominator": "raw (non-.redacted) *.wacz under root",
+            "sites": len(groups),
+            "merge_candidates": sum(1 for g in groups if g["merge_candidate"]),
+            "groups": groups}
+
+
+# ---------------------------------------------------------------- host grouping
+#
+# `--group` reads the `t_<hex>_<name>` EXPORT convention. The box's real corpus
+# does not use it: there, `123.wacz` and `1232.wacz` carry no site signal at all
+# and no filename heuristic will ever group them. Three tiers, filename-first
+# with the archive as the authority, and every group states which one answered.
+
+_PAGES_MEMBER = "pages/pages.jsonl"
+# Bounded on purpose. The member is decompressed, so an unbounded read on an
+# untrusted archive is a memory question, and the entry-point page record is the
+# first line after the format header -- scanning a whole browsertrix crawl to
+# find a netloc would be slow AND would risk picking an off-site resource.
+_PAGES_READ_CAP = 1 << 20
+_PAGES_LINE_CAP = 64
+
+_PARSER_CACHE = None
+
+
+def _load_filename_parser():
+    """(callable, label) for tier 1, or (None, why-not).
+
+    IMPORTED, not copied. `bulk_downloader.dom_analyzer._parse_capture_host` is
+    the same function the capture picker and `scan_captures` use, and a second
+    copy of a naming rule is how two answers to one question start to disagree
+    (CLAUDE.md section 5 on `system_deps.sh`: three copies is a denominator that
+    drifts, and the copy nobody updated is the one that runs).
+
+    The cost of importing rather than copying is that a rename makes tier 1
+    vanish, so the failure is REPORTED rather than absorbed: without it every
+    BD-named capture falls through to an archive read, which a REDACTED capture
+    cannot answer, and a whole corpus would read as `unknown` with nothing in
+    the output saying why.
+    """
+    try:
+        if sec.DEFAULT_WORK not in sys.path:
+            sys.path.insert(0, sec.DEFAULT_WORK)
+        from bulk_downloader.dom_analyzer import _parse_capture_host
+    except Exception as exc:                       # pragma: no cover - env-only
+        return None, "UNAVAILABLE: %s: %s" % (type(exc).__name__, exc)
+    return (_parse_capture_host,
+            "bulk_downloader.dom_analyzer._parse_capture_host")
+
+
+def _filename_parser():
+    global _PARSER_CACHE
+    if _PARSER_CACHE is None:
+        _PARSER_CACHE = _load_filename_parser()
+    return _PARSER_CACHE
+
+
+def _host_from_archive(p):
+    """(host, reason_if_none) from the archive's own page record.
+
+    `wacz_export._pages_jsonl` writes a format header followed by a page entry
+    carrying the captured top-level URL. Measured on a BD-built archive: the
+    redactor scrubs the query but leaves the netloc, so this answers for a
+    `.redacted` capture too.
+
+    `hostname`, NOT `netloc` as first sketched: netloc keeps `user:pass@` and
+    `:port`, so one site behind a port would form a second group and the group
+    LABEL -- which is printed -- would become a place a credential lives
+    (section 7). `hostname` is also already lowercased, which is the shape tier
+    1 returns, so the two tiers can land in the same bucket.
+    """
+    try:
+        with zipfile.ZipFile(p) as z:
+            if _PAGES_MEMBER not in set(z.namelist()):
+                return None, "no_pages_jsonl"
+            with z.open(_PAGES_MEMBER) as fh:
+                blob = fh.read(_PAGES_READ_CAP)
+    except Exception:
+        return None, "unreadable"
+    saw_url = False
+    for line in blob.splitlines()[:_PAGES_LINE_CAP]:
+        try:
+            rec = json.loads(line)
+        except Exception:
+            continue                               # header, blank, or truncated
+        if not isinstance(rec, dict):
+            continue
+        url = rec.get("url")
+        if not isinstance(url, str) or not url:
+            continue
+        saw_url = True
+        host = urlsplit(url).hostname
+        if host:
+            return host.lower(), None
+    return None, ("no_host" if saw_url else "no_url")
+
+
+def _place_by_host(files):
+    """[(path, label, method, reason)], archives_attempted, parser_label.
+
+    Factored out because `--templates` needs the SAME tiering `--hosts` reports.
+    Two copies of the placement rule is how the two modes would start disagreeing
+    about which captures belong to one site, and the merge half of `--templates`
+    is only meaningful if its grouping is the grouping `--hosts` printed.
+    """
+    parser, parser_label = _filename_parser()
+    placed = []
+    attempted = 0
+    for p in files:
+        base = _base(p)
+        host = None
+        if parser is not None:
+            try:
+                host = parser(base)
+            except Exception:
+                host = None
+        if host:
+            placed.append((p, host.lower(), "filename", None))
+            continue
+        attempted += 1
+        host, why = _host_from_archive(p)
+        if host:
+            placed.append((p, host, "archive", None))
+        else:
+            placed.append((p, base.lower(), "unknown", why))
+    return placed, attempted, parser_label
+
+
+def site_families(groups):
+    """Group exact-host buckets into CANDIDATE site families. Never regroups.
+
+    v3.66.1014, implementing 15.74 finding A. `_place_by_host` buckets on the
+    exact hostname, and five of the operator's seven sites span a login host and
+    a content host -- `auth.wowgirls.com`/`venus.wowgirls.com`,
+    `auth.reptyle.com`/`app.reptyle.com`. A login-host bucket reporting green is
+    a FALSE green: login selectors are scored and never gated.
+
+    THREE CONSTRAINTS, ALL FROM 15.74'S DESIGN RATHER THAN INVENTED HERE:
+
+      * `_place_by_host` is NOT re-keyed. This reads its output and returns a
+        separate structure; the caller's groups are not touched.
+      * The exact host stays the MERGE unit. `swarm-template-merge`'s single-host
+        guard is correct for drafts, and nothing here merges anything.
+      * Families are CANDIDATES. Every row says so, and says what derived it, so
+        a consumer cannot mistake a proposal for a measured grouping.
+
+    THE KEY IS THE REGISTRABLE DOMAIN OF THE RESOLVED HOST, never the filename
+    stem. This mode's whole discipline is "never a guess" -- it keys the UNKNOWN
+    bucket apart specifically so a stem that looks like a host cannot be
+    laundered into a measured group. A family built from a stem would launder it
+    straight back, so UNKNOWN buckets are excluded here for the same reason.
+
+    A SINGLETON IS NOT A FAMILY. One host proposes nothing, and a list where
+    most rows are single hosts buries the few that are real claims.
+    """
+    if not groups:
+        return []
+    try:
+        from bulk_downloader.registrable_domain import registrable_domain
+    except ImportError:                       # pragma: no cover - repo-local
+        return []
+
+    buckets = {}
+    for g in groups:
+        # UNKNOWN buckets are unresolved stems, not hosts. See above.
+        if g.get("methods") == ["unknown"]:
+            continue
+        host = (g.get("host") or "").strip().lower()
+        if not host:
+            continue
+        fam = registrable_domain(host)
+        # No registrant (a bare label such as `localhost`) means nothing to
+        # group ON -- grouping on "" would collect every one of them together.
+        if not fam or "." not in fam:
+            continue
+        buckets.setdefault(fam, []).append((host, int(g.get("captures") or 0)))
+
+    out = []
+    for fam, members in sorted(buckets.items()):
+        if len(members) < 2:
+            continue
+        out.append({
+            "family": fam,
+            # CANDIDATE, stated in the row rather than in a header a consumer
+            # may never read.
+            "tier": "candidate",
+            "basis": "registrable_domain",
+            "hosts": sorted(h for h, _c in members),
+            # The evidence a reviewer confirms the split from: it is the
+            # lopsided capture count that identifies a login host
+            # (`auth.reptyle.com cap=5` beside `app.reptyle.com cap=62`).
+            "captures": {h: c for h, c in members},
+        })
+    return out
+
+
+def mode_hosts(files):
+    """Group by host: filename first, the archive as the authority, never a guess.
+
+      1. `{host}_{siteid}_{YYYYMMDD}` in the filename    -> method=filename
+      2. `pages/pages.jsonl` inside the archive          -> method=archive
+      3. the stem, grouped under ITSELF                  -> method=unknown
+
+    Tier 1 runs against `_base()`, not the raw stem. MEASURED on this tree: the
+    capture parser anchors on a date-ish TAIL, and a derivative marker or copy
+    suffix sits exactly where that tail has to be, so
+    `<name>.redacted (2)` returns None while `_base()` of it returns the host.
+    Forgetting the strip sends all 601 redacted files through an archive read
+    they do not need.
+
+    An UNKNOWN bucket is keyed apart from the resolved hosts even when the label
+    matches, so a stem that happens to look like a host can never be laundered
+    into a measured group -- "never guessed" has to hold in the OUTPUT, not just
+    in the derivation.
+
+    Only `unreadable` -- an archive that was opened and could not be read --
+    counts as a finding. An archive that opens and simply carries no URL is a
+    property of this corpus, not a defect; firing on it would flag the hundreds
+    of site-signal-free names the mode exists to describe, and a screen that
+    cries wolf gets switched off (section 0's over-sensitivity failure).
+    """
+    placed, attempted, parser_label = _place_by_host(files)
+
+    buckets = {}
+    for p, label, method, reason in placed:
+        buckets.setdefault((method == "unknown", label), []).append(
+            (p, method, reason))
+
+    groups = []
+    for (is_unknown, label), members in sorted(buckets.items()):
+        sources = {_base(m[0]) for m in members}
+        entries = []
+        for m_p, m_method, m_reason in sorted(members, key=lambda m: m[0].name):
+            e = {"name": m_p.name, "method": m_method}
+            if m_reason:
+                e["reason"] = m_reason
+            entries.append(e)
+        groups.append({"host": label,
+                       "captures": len(members),
+                       # SOURCES, not files: a raw capture and its `.redacted`
+                       # twin are one capture in two forms, and a merge needs
+                       # two DIFFERENT captures to have anything to merge.
+                       "sources": len(sources),
+                       "merge_candidate": (not is_unknown) and len(sources) > 1,
+                       "methods": sorted({m[1] for m in members}),
+                       "files": entries})
+
+    by_method = {"filename": 0, "archive": 0, "unknown": 0}
+    reasons = {}
+    for _p, _label, method, reason in placed:
+        by_method[method] += 1
+        if method == "unknown" and reason:
+            reasons[reason] = reasons.get(reason, 0) + 1
+
+    return {"examined": len(files),
+            "denominator": ("all *.wacz under root; host resolved filename-"
+                            "first, the archive's own page record as authority"),
+            "filename_parser": parser_label,
+            "hosts": sum(1 for g in groups if g["methods"] != ["unknown"]),
+            "unresolved_groups": sum(1 for g in groups
+                                     if g["methods"] == ["unknown"]),
+            "merge_candidates": sum(1 for g in groups if g["merge_candidate"]),
+            "by_method": by_method,
+            # ATTEMPTS, not successes: an archive that failed to open is counted
+            # here and again under `unreadable`.
+            "archives_opened": attempted,
+            "unreadable": reasons.get("unreadable", 0),
+            "unknown_reasons": reasons,
+            # ADDITIVE. A new key beside the existing ones -- `groups` keeps its
+            # exact-host keying, which is what swarm-template-merge consumes.
+            "site_families": site_families(groups),
+            "groups": groups}
+
+
+# --------------------------------------------------------- template viability
+#
+# "Can any of these captures, or a combination of one site's captures, make a
+# green and reliable template?" -- the operator, 2026-08-09.
+#
+# GREEN IS NOT DEFINED HERE. `tools/promote_template.py` is the gate and
+# `template_inventory.assess` mirrors it deliberately, "so the numbers can't
+# diverge from reality". This mode RUNS that predicate. A fourth definition of
+# green is how a tool starts disagreeing with the gate it exists to predict.
+#
+# RELIABLE IS SUPPORT ACROSS A SITE'S CAPTURES -- the operator's definition,
+# taken verbatim. `swarm-template-merge` already records it with denominators, so
+# this reads that rather than inventing a score.
+
+_BUILDER_CACHE = None
+_MERGE_CACHE = None
+
+# THERE IS DELIBERATELY NO RAW-KEY -> CLAUSE MAP HERE.
+#
+# @987 removed one (`_GATE_KEYS`), and a wider tuple would be the same defect
+# with more entries: `merge_drafts` keys support by RAW draft leaf names, and a
+# hand-written map cannot see a leaf `build_template` grows tomorrow. Measured at
+# 07c05f2 -- the tuple looked for `download.trigger`, `download.row_selectors`
+# and `download.button`, while a text-hint site's support was keyed
+# `download.button_hint`; `download.button` is emitted by nothing at all. Sites
+# whose only download evidence was a hint scored no support and read "unknown".
+#
+# So support is voted over the OUTPUT of `normalize_draft` -- the same function
+# that produces the gate's input -- and attributed to values read back out of
+# `normalize(merged)`. A selector normalize discarded is absent from that object
+# and structurally cannot be graded, and a novel raw leaf lands in
+# `capture_gaps.dropped_leaves` by name rather than vanishing.
+
+
+def _load_template_builder():
+    """(build_template, assess, label) or (None, None, why-not).
+
+    Imported from `tools/`, not vendored: `assess` is the promote gate's mirror
+    and a copy of it would be a second answer to "is this promotable".
+    """
+    try:
+        for d in (sec.DEFAULT_WORK, os.path.join(sec.DEFAULT_WORK, "tools")):
+            if d not in sys.path:
+                sys.path.insert(0, d)
+        from build_template_from_wacz import build_template
+        from template_inventory import assess
+        from bulk_downloader.template_normalize import normalize_draft
+    except Exception as exc:                       # pragma: no cover - env-only
+        return None, None, "UNAVAILABLE: %s: %s" % (type(exc).__name__, exc)
+    return (build_template, normalize_draft), assess, (
+        "build_template_from_wacz.build_template -> "
+        "template_normalize.normalize_draft -> template_inventory.assess "
+        "(promote-gate mirror)")
+
+
+def _template_builder():
+    global _BUILDER_CACHE
+    if _BUILDER_CACHE is None:
+        _BUILDER_CACHE = _load_template_builder()
+    return _BUILDER_CACHE
+
+
+def _merge_fn():
+    """`swarm-template-merge.merge_drafts`, loaded by path -- the file is
+    extensionless, so there is no import statement that can reach it."""
+    global _MERGE_CACHE
+    if _MERGE_CACHE is None:
+        try:
+            import importlib.machinery
+            import importlib.util
+            ld = importlib.machinery.SourceFileLoader(
+                "bd_template_merge", os.path.join(_HERE, "swarm-template-merge"))
+            mod = importlib.util.module_from_spec(
+                importlib.util.spec_from_loader(ld.name, ld))
+            ld.exec_module(mod)
+            _MERGE_CACHE = (mod.merge_drafts, None)
+        except Exception as exc:                   # pragma: no cover - env-only
+            _MERGE_CACHE = (None, "%s: %s" % (type(exc).__name__, exc))
+    return _MERGE_CACHE
+
+
+def _dl_clause(normed):
+    """(trigger|None, [row, ...]) off a NORMALIZED draft -- the gate's own two
+    visible clauses. `button` is not one: `_map_selectors` collapses
+    button_hint/trigger/button into `trigger`, so a normalized draft never
+    carries it."""
+    dl = ((normed or {}).get("selectors") or {}).get("download") or {}
+    trig = dl.get("trigger")
+    trig = trig if isinstance(trig, str) and trig else None
+    rows = [r for r in (dl.get("row_selectors") or []) if isinstance(r, str) and r]
+    return trig, rows
+
+
+def _json_artifact(value):
+    """(is_non_scalar_json, parsed). `merge_drafts` json.dumps a non-scalar leaf
+    so it can be voted on, and writes the winning TEXT back into the canonical
+    slot without parsing it (defect G). The result is not a selector.
+
+    Measured: the artifact '["[role=dialog] a.dl"]' PASSES
+    `template_normalize._is_modal_scoped` -- it contains the literal
+    `[role=dialog]` -- so it survives normalize and `assess` reports
+    row_selectors_count 1, promotion_ready True. Presence in the merged draft is
+    therefore necessary and NOT sufficient for a value to be evidence."""
+    try:
+        parsed = json.loads(value)
+    except Exception:
+        return False, None
+    return isinstance(parsed, (list, dict, tuple)), parsed
+
+
+def _normalized_values(normed):
+    """Every scalar value anywhere under a normalized draft's `selectors`, plus
+    its `workflow` block. The set a raw leaf must appear in to count as having
+    SURVIVED -- asked of the whole object rather than of the two gate clauses,
+    because a leaf can legitimately survive somewhere that is not a gate clause
+    (`api_template` does exactly that) and calling it dropped blames the
+    normalizer for work it did correctly."""
+    out = set()
+
+    def walk(v):
+        if isinstance(v, dict):
+            for x in v.values():
+                walk(x)
+        elif isinstance(v, (list, tuple)):
+            for x in v:
+                walk(x)
+        elif isinstance(v, str) and v:
+            out.add(v)
+
+    walk((normed or {}).get("selectors"))
+    walk((normed or {}).get("workflow"))
+    return out
+
+
+def _leaf_survived(value, survivors):
+    """A raw leaf survived if its value -- or, for a list leaf, ANY element of
+    it -- is present in the normalized draft. Any is deliberate: a partly-kept
+    row list is a partial drop, and `dropped_rows` reports which elements went,
+    so counting the whole leaf as dropped would double-count it."""
+    if isinstance(value, (list, tuple)):
+        return any(isinstance(v, str) and v in survivors for v in value)
+    return isinstance(value, str) and value in survivors
+
+
+def _rank_votes(votes, of):
+    return [{"value": v, "support": c, "of": of}
+            for v, c in sorted(votes.items(), key=lambda kv: -kv[1])]
+
+
+def _gate_support(normed_merged, normed_singles, raw_drafts,
+                  captures=None, unbuildable=0):
+    """Support for the gate-critical selectors THE GATE ACTUALLY SEES.
+
+    Never returns None. A block that cannot grade says WHY in `reason`, because
+    an unlabelled absence cannot be told from "nothing to corroborate against"
+    -- and `unknown` is only useful as a third state if it is legible.
+
+    Attribution reads the values back out of `normed_merged`, never off the
+    vote. Measured at 07c05f2: drafts {button_hint:"X"}, {trigger:"Y"},
+    {trigger:"Y"} vote Y at 2 of 3, but `_map_selectors:102` gives the hint
+    PRECEDENCE, so the shipped template carries X. Grading the winner would
+    report corroboration for a value the template does not contain.
+    """
+    n = len(normed_singles)
+    captures = n if captures is None else captures
+    gaps = {"no_download_evidence": 0, "evidence_dropped_by_pipeline": 0,
+            "dropped_leaves": {}, "dropped_rows": []}
+    block = {
+        "of": n, "captures": captures, "unbuildable": unbuildable,
+        "denominator_narrowed": bool(unbuildable),
+        "provenance": "normalized",
+        "reason": None, "gate_visible": False, "best": None,
+        "clauses": {}, "capture_gaps": gaps,
+    }
+
+    if n == 0:
+        block["reason"] = "no_drafts"
+        block["clauses"] = {"trigger": {"merged_value": None, "support": 0,
+                                        "disagree": 0, "absent": 0,
+                                        "candidates": []},
+                            "row_selectors": {"merged_rows": [], "absent": 0,
+                                              "candidates": []}}
+        return block
+
+    if n == 1:
+        block["reason"] = "single_draft"
+        target = normed_singles[0]
+    elif normed_merged is None:
+        block["reason"] = "merge_unavailable"
+        target = None
+    else:
+        target = normed_merged
+
+    # --- votes over the NORMALIZED singles, in draft order -----------------
+    trig_votes, row_votes, trig_absent, row_absent = {}, {}, 0, 0
+    per_draft = []
+    for nd in normed_singles:
+        t, rows = _dl_clause(nd)
+        per_draft.append((t, rows))
+        if t is None:
+            trig_absent += 1
+        else:
+            trig_votes[t] = trig_votes.get(t, 0) + 1
+        if not rows:
+            row_absent += 1
+        # PER CAPTURE, not per occurrence. `normalize_draft` does not dedupe
+        # row_selectors, so counting occurrences let one draft listing the same
+        # row three times report support 4 of 2 -- a ratio above 1 in the field
+        # the two-page-shapes and honeypot readings both depend on.
+        for r in dict.fromkeys(rows):
+            row_votes[r] = row_votes.get(r, 0) + 1
+
+    # --- capture gaps: the (a)/(b) discriminator ---------------------------
+    # A capture whose download control was EXTRACTED and then dropped by the
+    # pipeline is not the same as one that never reached the control. The first
+    # is a normalizer rule to revisit; the second is a re-capture. The old
+    # report printed one number for both, and 77 sites were described to the
+    # operator as a capture-side gap on the strength of it.
+    row_drop_votes = {}
+    for raw, nd, (t, rows) in zip(raw_drafts, normed_singles, per_draft):
+        raw_dl = ((raw or {}).get("selectors") or {}).get("download") or {}
+        raw_leaves = [k for k, v in raw_dl.items() if v]
+        if not raw_leaves:
+            gaps["no_download_evidence"] += 1
+            continue
+        # DROPPED means the leaf's value is nowhere in the normalized draft --
+        # not "the gate clauses came out empty". Adversarial review caught the
+        # difference on a reachable population: `api_template`
+        # (build_template_from_wacz:1749) SURVIVES normalize verbatim and simply
+        # is not a gate clause, so the emptier predicate blamed the normalizer
+        # for a leaf it had kept. That is the retracted-77 advice inverted, in
+        # the counter built to prevent it.
+        survivors = _normalized_values(nd)
+        dropped_here = [leaf for leaf, val in raw_dl.items()
+                        if val and not _leaf_survived(val, survivors)]
+        if dropped_here:
+            for leaf in dropped_here:
+                gaps["dropped_leaves"][leaf] = \
+                    gaps["dropped_leaves"].get(leaf, 0) + 1
+        if t is None and not rows and dropped_here:
+            gaps["evidence_dropped_by_pipeline"] += 1
+        # Rows dropped by SET DIFFERENCE against the survivors -- never by
+        # parsing the warning prose normalize emits, which would couple this
+        # count to a sentence somebody will reword.
+        raw_rows = raw_dl.get("row_selectors") or []
+        if isinstance(raw_rows, str):
+            raw_rows = [raw_rows]
+        for r in raw_rows:
+            if isinstance(r, str) and r and r not in rows:
+                row_drop_votes[r] = row_drop_votes.get(r, 0) + 1
+    gaps["dropped_rows"] = [{"value": v, "supported_by": c, "of": n}
+                            for v, c in sorted(row_drop_votes.items(),
+                                               key=lambda kv: -kv[1])]
+
+    # --- attribution: the values the merged template SHIPS -----------------
+    t_m, rows_m = _dl_clause(target)
+    t_support = sum(1 for t, _ in per_draft if t_m is not None and t == t_m)
+    # UNATTRIBUTED, not disagree, when nothing shipped. A capture cannot
+    # disagree with a value that does not exist, and `disagree` is the field a
+    # reader takes as the two-page-shapes signal -- so on the merge-unavailable
+    # path three unanimous captures used to read as three disagreements.
+    if t_m is None:
+        t_disagree, t_unattributed = 0, n - trig_absent
+    else:
+        t_disagree = sum(1 for t, _ in per_draft if t is not None and t != t_m)
+        t_unattributed = 0
+    block["clauses"]["trigger"] = {
+        "merged_value": t_m, "support": t_support, "disagree": t_disagree,
+        "absent": trig_absent, "unattributed": t_unattributed,
+        "candidates": _rank_votes(trig_votes, n)}
+
+    merged_rows = []
+    for r in rows_m:
+        support = sum(1 for _t, rows in per_draft if r in rows)
+        is_json, parsed = _json_artifact(r)
+        # BOTH conditions. Flagging every JSON-parsable selector would destroy
+        # real templates -- over-sensitivity is a soundness bug, not a safe
+        # default -- so the flag also requires the exact-match support of zero
+        # that is the artifact's measured signature.
+        if is_json and support == 0:
+            merged_rows.append({"value_json": r, "value_parsed": parsed,
+                                "support": support, "of": n,
+                                "stringified_artifact": True})
+        else:
+            merged_rows.append({"value": r, "support": support, "of": n,
+                                "stringified_artifact": False})
+    block["clauses"]["row_selectors"] = {
+        "merged_rows": merged_rows, "absent": row_absent,
+        "candidates": _rank_votes(row_votes, n)}
+
+    # --- best: the strongest clause value the gate can actually use --------
+    cands = []
+    if t_m is not None:
+        cands.append(("trigger", t_m, t_support))
+    for r in merged_rows:
+        if not r["stringified_artifact"]:
+            cands.append(("row_selectors", r["value"], r["support"]))
+    if cands and n >= 2:
+        clause, value, support = max(cands, key=lambda c: c[2])
+        block["best"] = {"clause": clause, "value": value,
+                         "support": support, "of": n}
+    block["gate_visible"] = bool(cands)
+    if n >= 2 and not cands and block["reason"] is None:
+        # NAME THE RIGHT CAUSE. `merge_drafts` stringifies every list leaf, so a
+        # row-only site's merged rows are ALWAYS an artifact and `best` is
+        # always None -- reporting that as "no gate visible evidence" is
+        # affirmatively false when `candidates` two lines below shows the rows
+        # corroborated in every capture. That population is not marginal: it is
+        # the modal page shape, which is the shape the operator confirmed.
+        artifact_only = bool(merged_rows) and all(
+            r["stringified_artifact"] for r in merged_rows)
+        block["reason"] = ("merge_artifact_only" if artifact_only
+                           else "no_gate_visible_evidence")
+
+    # Section 0's assertion-first rule: the three counters must PARTITION the
+    # denominator. Written before the verdict is emitted rather than after,
+    # because that is the only thing that reliably catches an author who has
+    # just convinced themselves the arithmetic is right.
+    #
+    # EXTRACTED so it can be driven, for the reason @984's `_reliability` guard
+    # was: a check that today's control flow cannot violate is asserted by the
+    # code and constrained by nothing, and its mutant escapes a green band.
+    if not _partition_ok(block["clauses"]["trigger"], n):
+        block["reason"] = "inconsistent"
+        block["best"] = None
+    return block
+
+
+def _partition_ok(clause, n):
+    """support + disagree + absent must equal the denominator.
+
+    They are three disjoint answers to "what did this capture say about the
+    value the template ships": it agreed, it said something else, or it said
+    nothing. A total that misses `n` means one of them is being double-counted
+    or dropped, and every downstream ratio is then arithmetic over a set that
+    does not exist.
+    """
+    return (clause.get("support", 0) + clause.get("disagree", 0)
+            + clause.get("absent", 0) + clause.get("unattributed", 0)) == n
+
+
+def _reliability(n_drafts, gate_support):
+    """Three states, and `unknown` is the one that matters.
+
+    A site with fewer than TWO drafts has nothing to corroborate against: its
+    support reads 1 of 1, arithmetically identical to a selector every capture
+    agreed on. `swarm-template-merge` refuses to merge a single draft for exactly
+    that reason, and this refuses to grade one.
+
+    Extracted from `mode_templates` because the n<2 guard was UNREACHABLE where
+    it sat -- a single-capture site never produces a merged draft, so the
+    `gate_support is None` branch answered first and a mutation removing the
+    guard changed nothing observable. It escaped its battery. The rule is only
+    defensive if nothing can reach it; as a function it is testable, and the
+    day something merges a lone draft it will still refuse to call 1 of 1
+    corroboration.
+    """
+    if n_drafts < 2 or gate_support is None:
+        return "unknown"
+    best = gate_support.get("best")
+    if not best:
+        return "unknown"
+    return ("corroborated" if (best.get("support") or 0) > 1
+            else "single_witness")
+
+
+def _blocking(a):
+    """Which of the gate's clauses failed, in the gate's own words. 'missing
+    resolutions' is actionable where a score out of 100 is not."""
+    if a is None:
+        return ["no_draft"]
+    out = []
+    # READ the gate's verdict; never re-derive it. `assess` judges
+    # (trigger|rows|button) and reports neither the boolean nor `button`, so
+    # reconstructing it from the two clauses it does report drops one of three.
+    # It agreed with the gate only because `_map_selectors` happens to collapse
+    # button into trigger -- a coincidence, and a silent wrong answer the day it
+    # stops holding.
+    if "gate_selector" not in a:
+        out.append("gate_unassessed")      # a failing third state, not a guess
+    elif not a["gate_selector"]:
+        out.append("gate_selector")
+    if not a.get("resolutions"):
+        out.append("resolutions")
+    if a.get("blocked_terms"):
+        out.append("blocked_terms")
+    return out
+
+
+def _verdict_blocking(verdict, ready_a, merged_a, best):
+    """What is blocking THE THING THE VERDICT IS ABOUT.
+
+    Two sites on the operator's 158 printed `green_from_one` beside
+    `blocking: ["gate_selector"]`: the verdict came from a green single capture
+    while `blocking` was read off the MERGED draft, which was not ready. One row
+    cannot answer the same question both ways -- and it inflated the
+    gate_selector_blocked rollup by two sites that are not blocked at all.
+
+    A green verdict names the assessment that MADE it green; anything else falls
+    back to the merged draft, then to the best single, as before.
+    """
+    if verdict.startswith("green") and ready_a is not None:
+        return _blocking(ready_a)
+    return _blocking(merged_a or best)
+
+
+def _gate_blocked_rollup(sites):
+    """Decompose "blocked on gate_selector" into causes that imply DIFFERENT
+    work.
+
+    A bare count cannot: the v3.66.984 run reported 77 such sites and they were
+    described to the operator as a capture-side gap needing re-capture. That was
+    wrong -- the captures carry the download control and the normalizer discards
+    it for not being modal-scoped. Re-capturing 77 sites would have fixed none of
+    them. The two causes are separated here structurally, from the per-draft
+    counters, never from a warning string.
+
+    `other` is a real residual, not a rounding bucket: the causes must partition
+    the blocked sites, and a cause nobody anticipated has to be visible rather
+    than folded into whichever neighbour looks closest.
+    """
+    by = {"download_control_discarded_by_normalizer": 0,
+          "no_download_evidence_in_any_draft": 0,
+          "other": 0}
+    blocked = [s for s in sites if "gate_selector" in (s.get("blocking") or [])]
+    for s in blocked:
+        gaps = ((s.get("gate_support") or {}).get("capture_gaps") or {})
+        if gaps.get("evidence_dropped_by_pipeline") or gaps.get("dropped_rows"):
+            by["download_control_discarded_by_normalizer"] += 1
+        elif gaps.get("no_download_evidence"):
+            by["no_download_evidence_in_any_draft"] += 1
+        else:
+            by["other"] += 1
+    return {"sites": len(blocked), "by_cause": by,
+            "note": ("discarded means the capture HAD a download control and "
+                     "the pipeline dropped it -- a normalizer question, not a "
+                     "re-capture")}
+
+
+def _progress(on, done, total, label):
+    """Position with its DENOMINATOR, on stderr. `--json` owns stdout, and a
+    progress line there would break every machine consumer -- a worse defect
+    than having no progress at all, which is the state this replaces."""
+    if not on:
+        return
+    sys.stderr.write("  %s %d/%d  %s\n" % (label, done, total, ""))
+    sys.stderr.flush()
+
+
+def _build_one(args):
+    """One capture -> (index, raw draft or None). Runs in a POOL WORKER.
+
+    THE CATCH LIVES HERE, NOT IN THE CALLER, and that is the whole point.
+    `build_template` raises SystemExit for a wacz with no capture.json -- the
+    box's corpus has five such archives out of 742. A SystemExit escaping a
+    worker kills it and the executor raises BrokenProcessPool, aborting a run
+    the serial version completes. `BaseException` rather than `Exception`
+    because SystemExit is not an Exception.
+    """
+    idx, path = args
+    fns, _assess, _label = _template_builder()
+    if not fns:
+        return idx, None
+    build, _normalize = fns
+    try:
+        return idx, build(pathlib.Path(path))
+    except BaseException:
+        return idx, None
+
+
+def _resolve_jobs(n):
+    """0 -> auto; anything else clamped to at least 1.
+
+    Default 1 (serial) is set by argparse, not here: parallelism is opted into.
+    A default of auto would spawn one process per core under a caller that asked
+    for none of it."""
+    if n == 0:
+        return max(1, os.cpu_count() or 1)
+    return max(1, n)
+
+
+def _reassemble(n, pairs):
+    """[(index, value)] in ANY order -> a list in index order.
+
+    Extracted so the ordering property is testable. `ProcessPoolExecutor.map`
+    happens to yield in input order today, which made a mutant that indexed by
+    COMPLETION order behaviourally identical -- it escaped a green band. The
+    index is only decorative while that holds; the day anything switches to
+    `as_completed`, it is the whole contract. A rule nothing can exercise is a
+    rule nothing protects.
+    """
+    out = [None] * n
+    for idx, value in pairs:
+        out[idx] = value
+    return out
+
+
+def _build_all(paths, jobs, progress):
+    """[(path, raw draft or None)] in the SAME ORDER as `paths`.
+
+    Order is restored by index rather than by completion, because workers finish
+    out of order by definition and two runs of one corpus must not disagree.
+    """
+    items = list(enumerate(str(p) for p in paths))
+    out = [None] * len(items)
+    if jobs <= 1:
+        for i, (idx, sp) in enumerate(items, 1):
+            out[idx] = _build_one((idx, sp))[1]
+            _progress(progress, i, len(items), "build")
+        return list(zip(paths, out))
+    import concurrent.futures as _cf
+    pairs = []
+    with _cf.ProcessPoolExecutor(max_workers=jobs) as ex:
+        for pair in ex.map(_build_one, items, chunksize=1):
+            pairs.append(pair)
+            if len(pairs) % 25 == 0 or len(pairs) == len(items):
+                _progress(progress, len(pairs), len(items), "build")
+    return list(zip(paths, _reassemble(len(items), pairs)))
+
+
+def mode_templates(files, jobs=1, progress=False):
+    """Per site: can ONE capture make a green template, can the COMBINATION, or
+    neither -- and is the answer corroborated across that site's captures.
+
+    Four verdicts, and `unbuildable` is a third state rather than a failure:
+    an archive that yields no draft answers NOTHING about the site, and folding
+    it into `not_green` would report a measurement nobody took.
+
+    RELIABILITY IS THREE-STATE, and `unknown` is the one a plausible
+    implementation gets wrong. A lone capture reports support 1 of 1, which is
+    arithmetically identical to a selector every capture agrees on --
+    `swarm-template-merge` refuses to merge a single draft for exactly that reason.
+    Calling it corroborated would be a verdict over a denominator that cannot
+    contain its subject.
+    """
+    fns, assess, label = _template_builder()
+    build, normalize = fns if fns else (None, None)
+    merge, _merge_err = _merge_fn()
+    jobs = _resolve_jobs(jobs)
+    placed, _attempted, _parser = _place_by_host(files)
+
+    # PER CAPTURE, not per site. A task per site is bounded by the largest site
+    # -- 62 of the box's 742 captures sit under one host, capping site-level
+    # parallelism near 12x however many cores exist. Per-capture tasks have a
+    # tail of one capture.
+    built = dict(_build_all([p for p, _h, _m, _r in placed], jobs, progress)) \
+        if build is not None else {}
+
+    buckets = {}
+    for p, host, method, _reason in placed:
+        buckets.setdefault((method == "unknown", host), []).append(p)
+
+    sites, verdicts, unbuildable_total = [], {}, 0
+    for (is_unknown, host), paths in sorted(buckets.items()):
+        paths = sorted(paths, key=lambda x: x.name)
+        drafts, normed, names, unbuildable = [], [], [], 0
+        for p in paths:
+            raw = built.get(p) if build is not None else None
+            if raw is None:
+                # Includes the builder being unavailable, an unreadable archive,
+                # and the SystemExit a wacz with no capture.json provokes -- all
+                # already caught inside the worker.
+                unbuildable += 1
+                continue
+            try:
+                normed.append(normalize(raw))
+                drafts.append(raw)
+                names.append(p.name)
+            except BaseException:
+                unbuildable += 1
+        unbuildable_total += unbuildable
+
+        singles = [assess(d, source=n) for d, n in zip(normed, names)] if assess else []
+        ready = [(a, n) for a, n in zip(singles, names) if a["promotion_ready"]]
+        best = max(singles, key=lambda a: (a["promotion_ready"],
+                                           a["completeness_score"]),
+                   default=None)
+
+        merged = merged_a = normed_merged = None
+        if len(drafts) >= 2 and merge is not None:
+            try:
+                # merge consumes RAW drafts (its own docstring: it feeds the
+                # draft -> normalize -> promote pipeline). ONE binding of
+                # normalize(merged), fed to BOTH the gate and the support
+                # attribution: @987's defect was those two judging different
+                # objects, so a second normalize call here would reopen it.
+                merged = merge(drafts, names)
+                normed_merged = normalize(merged)
+                merged_a = assess(normed_merged, source="MERGED")
+            except Exception:
+                merged = merged_a = normed_merged = None
+
+        if not drafts:
+            verdict = "unbuildable"
+        elif ready:
+            verdict = "green_from_one"
+        elif merged_a is not None and merged_a["promotion_ready"]:
+            verdict = "green_only_merged"
+        else:
+            verdict = "not_green"
+        verdicts[verdict] = verdicts.get(verdict, 0) + 1
+
+        gs = _gate_support(normed_merged, normed, drafts,
+                           captures=len(paths), unbuildable=unbuildable)
+        reliability = _reliability(len(drafts), gs)
+
+        sites.append({
+            "host": host,
+            "resolved_host": not is_unknown,
+            "captures": len(paths),
+            "drafts_built": len(drafts),
+            "unbuildable": unbuildable,
+            "verdict": verdict,
+            "green_capture": ready[0][1] if ready else None,
+            "best_single_ready": bool(ready),
+            "best_single_score": best["completeness_score"] if best else 0,
+            "merged_ready": bool(merged_a and merged_a["promotion_ready"]),
+            "merge_inputs": names if len(drafts) >= 2 else [],
+            "blocking": _verdict_blocking(
+                verdict, ready[0][0] if ready else None, merged_a, best),
+            "reliability": reliability,
+            "gate_support": gs,
+            # The SAME subject `blocking` describes. Reporting the merged
+            # draft's missing list beside a blocking read off the green single
+            # capture is the mixed-subject shape `_verdict_blocking` exists to
+            # remove, one field over.
+            "missing": ((ready[0][0] if (ready and verdict.startswith("green"))
+                         else (merged_a or best)) or {}).get("missing", []),
+        })
+
+    return {"examined": len(files),
+            "denominator": ("all *.wacz under root, grouped by the same host "
+                            "tiering --hosts reports; green is "
+                            "template_inventory.assess, the promote gate's own "
+                            "mirror, never a second definition"),
+            "template_builder": label,
+            "jobs": jobs,
+            "sites": len(sites) and sites or [],
+            "site_count": len(sites),
+            "verdicts": verdicts,
+            "unbuildable_captures": unbuildable_total,
+            "gate_selector_blocked": _gate_blocked_rollup(sites),
+            "reliability_note": ("support is across a site's captures; a lone "
+                                 "capture is 1 of 1, indistinguishable from a "
+                                 "universal, and is reported unknown. Support "
+                                 "is attributed to values read out of the "
+                                 "NORMALIZED merged draft -- the object the "
+                                 "gate judges -- so a selector normalize "
+                                 "discarded can never read as corroborated"),
+            "green_means_note": ("green is the promote gate: a download "
+                                 "selector, a non-empty resolution list, and "
+                                 "no blocked terms. It does NOT test that a "
+                                 "resolution can be SELECTED -- quality."
+                                 "open_menu and quality.resolution_option are "
+                                 "score components, not gate clauses, and the "
+                                 "resolution list can be satisfied entirely "
+                                 "from the WIRE (resolutions_seen) by a "
+                                 "capture whose page offers no choice at all. "
+                                 "A green site is a site whose download "
+                                 "control was found, not one whose "
+                                 "highest-resolution step is proven"),
+            }
+
+
+def mode_pairs(files):
+    raws = {_base(p): p for p in files if not _is_redacted(p)}
+    reds = {_base(p): p for p in files if _is_redacted(p)}
+    entries = []
+    for b, r in sorted(raws.items()):
+        if b in reds:
+            rb, db = r.stat().st_size, reds[b].stat().st_size
+            entries.append({"base": b, "raw_bytes": rb, "redacted_bytes": db,
+                            "ratio": round(db / rb, 4) if rb else None})
+    ratios = [e["ratio"] for e in entries if e["ratio"] is not None]
+    return {"examined": len(files),
+            "denominator": "all *.wacz under root, split raw vs .redacted",
+            "paired": len(entries),
+            "unpaired_raw": sum(1 for b in raws if b not in reds),
+            "unpaired_redacted": sum(1 for b in reds if b not in raws),
+            "median_ratio": (sorted(ratios)[len(ratios) // 2] if ratios else None),
+            "entries": entries}
+
+
+def mode_health(files):
+    ok = unreadable = no_payload = 0
+    detail = []
+    for p in files:
+        try:
+            with zipfile.ZipFile(p) as z:
+                bad = z.testzip()
+                if bad is not None:
+                    unreadable += 1
+                    detail.append({"file": p.name, "state": "crc_failed", "member": bad})
+                    continue
+                names = z.namelist()
+        except Exception as exc:
+            unreadable += 1
+            detail.append({"file": p.name, "state": "unreadable",
+                           "reason": type(exc).__name__})
+            continue
+        if not any(".warc" in n.lower() for n in names):
+            no_payload += 1
+            detail.append({"file": p.name, "state": "no_warc_payload",
+                           "members": len(names)})
+            continue
+        ok += 1
+    return {"examined": len(files),
+            "denominator": "all *.wacz under root",
+            "ok": ok, "unreadable": unreadable, "no_payload": no_payload,
+            "detail": detail}
+
+
+def mode_scrub(files):
+    clean = with_findings = unreadable = 0
+    unscannable_members = 0
+    detail = []
+    for p in files:
+        hits, unscannable = 0, 0
+        try:
+            with zipfile.ZipFile(p) as z:
+                for n in z.namelist():
+                    if n.endswith("/"):
+                        continue
+                    try:
+                        data = z.read(n)
+                    except Exception:
+                        unscannable += 1
+                        continue
+                    # CONTENT, not extension -- the whole point of @859.
+                    if not sec.should_scan(n, data):
+                        unscannable += 1
+                        continue
+                    hits += len(_KV.findall(data))
+        except Exception as exc:
+            unreadable += 1
+            detail.append({"file": p.name, "state": "unreadable",
+                           "reason": type(exc).__name__})
+            continue
+        unscannable_members += unscannable
+        if hits:
+            with_findings += 1
+            detail.append({"file": p.name, "state": "findings", "hits": hits,
+                           "unscannable_members": unscannable})
+        elif unscannable:
+            # NOT clean. The scan's denominator excluded members it could not
+            # read, so "no hits" here is a statement about the part it saw.
+            detail.append({"file": p.name, "state": "inconclusive",
+                           "unscannable_members": unscannable})
+        else:
+            clean += 1
+    return {"examined": len(files),
+            "denominator": "all *.wacz under root; per-member content sniffed",
+            "clean": clean,
+            "with_findings": with_findings,
+            "inconclusive": len(files) - clean - with_findings - unreadable,
+            "unreadable": unreadable,
+            "unscannable_members": unscannable_members,
+            "screen_only": ("this is a SCREEN, not the canonical floor "
+                            "(capture_artifact_redact.scan_floor_secrets); a "
+                            "clean result here shortlists, it does not clear"),
+            "detail": detail}
+
+
+def _sha256(path, _buf=1 << 20):
+    h = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(_buf), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def mode_dupes(files):
+    """Two-stage: size groups first, hash ONLY inside them.
+
+    Stage one exists to avoid reading the corpus. Measured on the box: 429
+    collision groups cover 1000 of 1251 files and 1.73 GB, so hashing every file
+    would read 4.04 GB to answer a question 1.71 GB settles.
+
+    Two OUTPUTS, deliberately not one. Identical copies of the same artifact are
+    a disk question. A DERIVATIVE byte-identical to its source is not -- it means
+    the scrubber returned its input unchanged, and @971 established that path
+    could pass binary members through untouched. Counting that as "reclaimable"
+    would invite deleting the evidence that redaction never happened.
+    """
+    by_size = {}
+    for p in files:
+        try:
+            by_size.setdefault(p.stat().st_size, []).append(p)
+        except OSError:
+            pass
+    candidates = [p for v in by_size.values() if len(v) > 1 for p in v]
+
+    digests = {}
+    unreadable = 0
+    for p in candidates:
+        try:
+            digests[p] = _sha256(p)
+        except OSError:
+            unreadable += 1
+
+    by_hash = {}
+    for p, h in digests.items():
+        by_hash.setdefault(h, []).append(p)
+
+    groups, noop, reclaimable = [], [], 0
+    for h, members in sorted(by_hash.items()):
+        if len(members) < 2:
+            continue
+        bases = {_base(m) for m in members}
+        raws = [m for m in members if not _is_redacted(m)]
+        derivs = [m for m in members if _is_redacted(m)]
+        # Same source AND a raw sibling identical to a derivative -> the scrub
+        # was a no-op. Evidence, not disk.
+        if len(bases) == 1 and raws and derivs:
+            noop.append({"base": sorted(bases)[0], "sha256": h[:16],
+                         "source": raws[0].name,
+                         "identical_derivatives": sorted(d.name for d in derivs)})
+            continue
+        size = members[0].stat().st_size
+        reclaimable += size * (len(members) - 1)
+        groups.append({"sha256": h[:16], "bytes_each": size,
+                       "copies": len(members),
+                       "reclaimable_bytes": size * (len(members) - 1),
+                       "files": sorted(m.name for m in members)})
+
+    groups.sort(key=lambda g: -g["reclaimable_bytes"])
+    return {"examined": len(files),
+            "denominator": ("all *.wacz under root; hashed only those sharing a "
+                            "size with another file"),
+            "size_collision_candidates": len(candidates),
+            "hashed": len(digests),
+            "unreadable": unreadable,
+            "duplicate_groups": len(groups),
+            "reclaimable_bytes": reclaimable,
+            # Counts DERIVATIVE FILES, not groups: the question is "how many
+            # redaction outputs were a no-op", and one source with three
+            # identical derivatives is three failed scrubs, not one.
+            "noop_derivatives": sum(len(n["identical_derivatives"]) for n in noop),
+            "noop_groups": len(noop),
+            "noop_detail": noop,
+            "report_only": ("nothing is deleted or modified; a no-op derivative "
+                            "is a REDACTION finding, never reclaimable disk"),
+            "groups": groups}
+
+
+_MODES = {"group": mode_group, "hosts": mode_hosts, "templates": mode_templates,
+          "pairs": mode_pairs, "health": mode_health, "scrub": mode_scrub,
+          "dupes": mode_dupes}
+
+# sweep: probe-args --all
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="read-only WACZ corpus survey")
+    ap.add_argument("--root", required=True)
+    for m in _MODES:
+        ap.add_argument("--" + m, action="store_true")
+    ap.add_argument("--all", action="store_true")
+    ap.add_argument("--json", action="store_true")
+    # DEFAULT 1 -- serial, so an existing invocation is byte-for-byte unchanged.
+    # Parallelism is opted into: an `auto` default would spawn one process per
+    # core under a caller that asked for none of it. 0 means auto.
+    ap.add_argument("--jobs", "-j", type=int, default=1, metavar="N",
+                    help="worker processes for --templates (default 1 = serial, "
+                         "0 = one per core)")
+    ap.add_argument("--progress", action="store_true",
+                    help="position with its denominator, on STDERR (stdout "
+                         "belongs to --json)")
+    a = ap.parse_args()
+
+    chosen = [m for m in _MODES if getattr(a, m)] or (list(_MODES) if a.all else [])
+    if a.all:
+        chosen = list(_MODES)
+    if not chosen:
+        # Derived from _MODES rather than spelled: the hand-written version of
+        # this line had already gone stale, omitting --dupes.
+        ap.error("pick at least one of %s, or --all"
+                 % "/".join("--" + m for m in _MODES))
+
+    root = pathlib.Path(a.root).expanduser()
+    guard = sec.corpus_guard(str(root), min_files=1, label="--root",
+                             patterns=("*" + _WACZ,))
+    if isinstance(guard, sec.Refusal):
+        # The tool's own why-based --json UNKNOWN document is the landed
+        # contract; corpus_guard() supplies the classification (F-1's ABSENT
+        # vs EMPTY) without pre-empting it. The shared "CANNOT-EVALUATE ...
+        # reason=X" line still reaches stderr, so swarm-tool-lint's runtime
+        # probe recognizes this as guarded; stdout keeps its own shape.
+        sys.stderr.write(guard.text() + "\n")
+        why = ("root does not exist: %s" % root
+               if guard.reason == sec.REASON_ABSENT
+               else "no *.wacz found under root: %s" % root)
+        out = {"status": "unknown", "root": str(root),
+               "denominator": {"wacz_files": 0}, "reason": why,
+               "modes": {}}
+        print(json.dumps(out, indent=2) if a.json
+              else "UNKNOWN  %s\n         nothing was examined, so this is not "
+                   "a clean result." % why)
+        return EXIT_UNKNOWN
+    files, why = enumerate_corpus(root)
+    if why:
+        out = {"status": "unknown", "root": str(root),
+               "denominator": {"wacz_files": 0}, "reason": why,
+               "modes": {}}
+        print(json.dumps(out, indent=2) if a.json
+              else "UNKNOWN  %s\n         nothing was examined, so this is not "
+                   "a clean result." % why)
+        return EXIT_UNKNOWN
+
+    modes = {}
+    for m in chosen:
+        if m == "templates":
+            modes[m] = mode_templates(files, jobs=a.jobs, progress=a.progress)
+        else:
+            modes[m] = _MODES[m](files)
+    findings = (modes.get("health", {}).get("unreadable", 0)
+                + modes.get("health", {}).get("no_payload", 0)
+                # An archive tier 2 could not OPEN is a finding; one that opened
+                # and carries no URL is a corpus property and deliberately is not.
+                + modes.get("hosts", {}).get("unreadable", 0)
+                + modes.get("scrub", {}).get("with_findings", 0)
+                + modes.get("scrub", {}).get("inconclusive", 0)
+                + modes.get("scrub", {}).get("unreadable", 0)
+                + modes.get("templates", {}).get("unbuildable_captures", 0)
+                + modes.get("dupes", {}).get("noop_derivatives", 0))
+    status = "findings" if findings else "ok"
+    out = {"status": status, "root": str(root),
+           "denominator": {"wacz_files": len(files)}, "modes": modes}
+
+    if a.json:
+        print(json.dumps(out, indent=2))
+    else:
+        print("swarm-wacz-corpus  root=%s  wacz_files=%d" % (root, len(files)))
+        for m in chosen:
+            d = modes[m]
+            print("  %-7s examined=%s  %s" % (
+                m, d["examined"],
+                " ".join("%s=%s" % (k, v) for k, v in d.items()
+                         if k not in ("examined", "detail", "entries", "groups",
+                                      "denominator", "screen_only"))))
+            print("          over: %s" % d["denominator"])
+        print("STATUS %s" % status.upper())
+    return EXIT_FINDINGS if findings else EXIT_OK
+
+
+if __name__ == "__main__":
+    sys.exit(main())

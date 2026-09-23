@@ -1,0 +1,458 @@
+#!/usr/bin/env python3
+"""swarm-ladder -- find the file that breaks a later test, by concurrent prefixes.
+
+THE TECHNIQUE, which is the reason this is a tool and not a scratch script.
+Cross-file state leaks live in ONE pytest process's module state, so each probe
+must run its files serially in a single process -- but the probes are
+independent of one another, so they can all run AT THE SAME TIME. Probe k is
+`chain[0:k]` followed by the guard test. The smallest k whose guard FAILS
+brackets the culprit between rung k-1 and rung k.
+
+Measured at v3.66.1034 on item 48: replaying one xdist worker's real 232-file
+chain as 34 concurrent rungs gave a clean monotonic 183 ok / 184 BROKEN in two
+rounds. The sequential bisect it replaced would have been eight rounds of four
+minutes, and the leak reproduces in 2 files and 1.4 seconds once named.
+
+TWO THINGS IT REFUSES TO DO, both learned the hard way:
+
+  * A rung whose guard did not RUN is UNKNOWN, never `ok`. The scratch version
+    graded on "the guard is absent from the FAILED lines", which reads a
+    collection error, an internal error, or a timeout as a clean rung -- and a
+    clean rung is what tells you to search higher up the chain. Unknown is a
+    third state and it stops the search.
+  * It will not name a culprit from a NON-MONOTONIC ladder. If any rung above
+    the first BROKEN one comes back ok, the effect is not a simple prefix
+    property and the bracket is meaningless; it says so and prints the ladder
+    rather than a number somebody would then go and act on.
+"""
+import argparse
+import concurrent.futures
+import os
+import pathlib
+import re
+import stat
+import subprocess
+import sys
+import tempfile
+
+
+REGISTERED = "REGISTERED"
+REGISTRATION_FAILED = "REGISTRATION FAILED"
+NO_REGISTRAR = "NO REGISTRAR IN THIS TREE"
+_REGISTRATION_STATE_PREFIX = "BD-PYTEST REGISTRATION STATE: "
+_PYTEST_REGISTRATION_REPOSITORY_ROOT = pathlib.Path(__file__).resolve().parents[2]
+
+_PYTEST_REGISTRATION_BOOTSTRAP = r'''\
+import os
+import runpy
+import shlex
+import subprocess
+import sys
+
+state, jobs, anchor, proof, purpose, *pytest_args = sys.argv[1:]
+if state == "REGISTERED":
+    command = shlex.join([sys.executable, "-m", "pytest", *pytest_args])
+    try:
+        registration = subprocess.run(
+            [sys.executable, jobs, "register", "--pid", str(os.getpid()),
+             "--purpose", purpose, "--cmd", command],
+            capture_output=True, text=True,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        print("BD-PYTEST REGISTRATION STATE: REGISTRATION FAILED: "
+              f"anchor={anchor}; registrar={jobs}; {type(exc).__name__}: {exc}",
+              file=sys.stderr)
+        raise SystemExit(3)
+    if registration.returncode:
+        detail = (registration.stdout + registration.stderr).strip()
+        print("BD-PYTEST REGISTRATION STATE: REGISTRATION FAILED: "
+              f"anchor={anchor}; registrar={jobs}; exit={registration.returncode}"
+              + (f"; {detail}" if detail else ""), file=sys.stderr)
+        raise SystemExit(3)
+    print("BD-PYTEST REGISTRATION STATE: REGISTERED: "
+          f"anchor={anchor}; registrar={jobs}", file=sys.stderr)
+elif state == "NO REGISTRAR IN THIS TREE":
+    print("BD-PYTEST REGISTRATION STATE: NO REGISTRAR IN THIS TREE: "
+          f"anchor={anchor}; {proof}", file=sys.stderr)
+else:
+    print("BD-PYTEST REGISTRATION UNKNOWN: invalid internal state "
+          f"{state!r}; anchor={anchor}; nothing ran", file=sys.stderr)
+    raise SystemExit(3)
+
+sys.argv[:] = ["pytest", *pytest_args]
+runpy.run_module("pytest", run_name="__main__", alter_sys=True)
+'''
+
+
+class PytestRegistrationRefused(RuntimeError):
+    """Owned pytest could not start because registry evidence refused."""
+
+
+def _registration_refusal(output):
+    for raw_line in str(output).splitlines():
+        line = raw_line.strip()
+        if (line.startswith(_REGISTRATION_STATE_PREFIX + REGISTRATION_FAILED + ":")
+                or line.startswith("BD-PYTEST REGISTRATION UNKNOWN:")):
+            return line
+    return None
+
+
+def _raise_if_registration_refused(output):
+    detail = _registration_refusal(output)
+    if detail:
+        raise PytestRegistrationRefused(detail)
+
+
+def _registration_unknown(anchor, detail):
+    raise PytestRegistrationRefused(
+        "BD-PYTEST REGISTRATION UNKNOWN: anchor=%s; %s; nothing ran"
+        % (anchor, detail))
+
+
+def _resolve_pytest_registrar(repository_root=None):
+    """Resolve only the explicit repository anchor; never ambient candidates."""
+    raw_anchor = (repository_root if repository_root is not None
+                  else _PYTEST_REGISTRATION_REPOSITORY_ROOT)
+    try:
+        anchor = pathlib.Path(raw_anchor).resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        _registration_unknown(raw_anchor, "anchor is unavailable: %s" % exc)
+    if not anchor.is_dir():
+        _registration_unknown(anchor, "anchor is not a directory")
+
+    registrar = anchor / "toolchain" / "bin" / "swarm-jobs"
+    registrar_present = True
+    for owned_dir in (anchor / "toolchain", anchor / "toolchain" / "bin"):
+        try:
+            owned_info = owned_dir.lstat()
+        except FileNotFoundError:
+            registrar_present = False
+            break
+        except OSError as exc:
+            _registration_unknown(
+                anchor, "registrar metadata is unavailable: %s" % exc)
+        if stat.S_ISLNK(owned_info.st_mode):
+            _registration_unknown(
+                anchor, "registrar parent is a symlink: %s" % owned_dir)
+        if not stat.S_ISDIR(owned_info.st_mode):
+            _registration_unknown(
+                anchor, "registrar parent is not a directory: %s" % owned_dir)
+    if registrar_present:
+        try:
+            registrar_info = registrar.lstat()
+        except FileNotFoundError:
+            registrar_present = False
+        except OSError as exc:
+            _registration_unknown(
+                anchor, "registrar metadata is unavailable: %s" % exc)
+        else:
+            if stat.S_ISLNK(registrar_info.st_mode):
+                _registration_unknown(anchor, "registrar is a symlink: %s" % registrar)
+            if not stat.S_ISREG(registrar_info.st_mode):
+                _registration_unknown(
+                    anchor, "registrar is not a regular file: %s" % registrar)
+
+    try:
+        (anchor / ".git").lstat()
+    except FileNotFoundError:
+        if registrar_present:
+            proof = ("anchor has no .git repository metadata; untracked "
+                     "toolchain/bin/swarm-jobs is not a registrar")
+        else:
+            proof = ("anchor has no .git repository metadata and no "
+                     "toolchain/bin/swarm-jobs")
+        return NO_REGISTRAR, None, proof
+    except OSError as exc:
+        _registration_unknown(anchor, "repository metadata is unavailable: %s" % exc)
+
+    try:
+        top = subprocess.run(
+            ["git", "-C", str(anchor), "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as exc:
+        _registration_unknown(anchor, "repository-root measurement failed: %s" % exc)
+    if top.returncode != 0 or not top.stdout.strip():
+        _registration_unknown(
+            anchor, "repository-root measurement returned exit %d: %s"
+            % (top.returncode, (top.stdout + top.stderr).strip()))
+    try:
+        measured_root = pathlib.Path(top.stdout.strip()).resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        _registration_unknown(anchor, "measured repository root is unavailable: %s" % exc)
+    if measured_root != anchor:
+        _registration_unknown(
+            anchor, "anchor is not the measured repository root %s" % measured_root)
+
+    try:
+        tracked = subprocess.run(
+            ["git", "-C", str(anchor), "ls-files", "--error-unmatch", "--",
+             "toolchain/bin/swarm-jobs"],
+            capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as exc:
+        _registration_unknown(anchor, "tracked-registrar measurement failed: %s" % exc)
+    if tracked.returncode == 0:
+        if not registrar_present:
+            _registration_unknown(
+                anchor, "tracked toolchain/bin/swarm-jobs is absent or not a file")
+        return REGISTERED, registrar, "tracked toolchain/bin/swarm-jobs"
+    if tracked.returncode == 1:
+        proof = "Git proves toolchain/bin/swarm-jobs is not tracked under this anchor"
+        if registrar_present:
+            proof += "; the untracked path is not trusted"
+        return NO_REGISTRAR, None, proof
+    _registration_unknown(
+        anchor, "tracked-registrar measurement returned exit %d: %s"
+        % (tracked.returncode, (tracked.stdout + tracked.stderr).strip()))
+
+
+def _registered_pytest_argv(python, purpose, *pytest_args, repository_root=None):
+    """Return a same-PID register-before-import pytest command."""
+    raw_anchor = (repository_root if repository_root is not None
+                  else _PYTEST_REGISTRATION_REPOSITORY_ROOT)
+    state, registrar, proof = _resolve_pytest_registrar(raw_anchor)
+    anchor = pathlib.Path(raw_anchor).resolve(strict=True)
+    return [
+        str(python), "-c", _PYTEST_REGISTRATION_BOOTSTRAP,
+        state, str(registrar or ""), str(anchor), proof, str(purpose),
+        *[str(arg) for arg in pytest_args],
+    ]
+
+
+OK, BROKEN, UNKNOWN = "ok", "BROKEN", "UNKNOWN"
+
+# ANSI IS IN THE DENOMINATOR OF EVERY LINE-ANCHORED MATCH, and whether it is
+# there depends on who launched you: this environment exports FORCE_COLOR=3, so
+# pytest colourises even into a pipe, while the same tool run over ssh from a
+# nohup shell gets plain text. MEASURED at v3.66.1046 on the pre-fix code:
+# swarm-ab's failure parser returned an EMPTY SET for a coloured FAILED line, and
+# swarm-ab's entire output is failure counts -- it would have compared zeros and
+# reported NOT DISTINGUISHED. Neutralised at the source (the child env below)
+# AND stripped defensively, because either one alone leaves the other launcher.
+_ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def strip_ansi(text):
+    return _ANSI.sub("", text)
+
+
+def plain_env(base=None):
+    """A child environment that will not colourise."""
+    env = dict(base if base is not None else os.environ)
+    env.pop("FORCE_COLOR", None)
+    env.pop("PY_COLORS", None)
+    env["NO_COLOR"] = "1"
+    return env
+
+
+def read_chain(path):
+    lines = [ln.strip() for ln in pathlib.Path(path).read_text().splitlines()]
+    return [ln for ln in lines if ln and not ln.startswith("#")]
+
+
+def default_rungs(n, count=16):
+    """Evenly spaced rungs over 1..n, always including n itself."""
+    if n <= count:
+        return list(range(1, n + 1))
+    step = n / float(count)
+    rungs = sorted({max(1, int(round(step * i))) for i in range(1, count + 1)})
+    if rungs[-1] != n:
+        rungs.append(n)
+    return rungs
+
+
+def grade(output, guard):
+    """Grade ONE rung's pytest output. The guard is the only verdict."""
+    output = strip_ansi(output)
+    node = os.path.basename(guard).split("::")[0]
+    if re.search(r"^FAILED .*%s" % re.escape(node), output, re.M):
+        return BROKEN
+    if re.search(r"^ERROR .*%s" % re.escape(node), output, re.M):
+        return UNKNOWN            # errored, not passed -- do not read as clean
+    if not re.search(r"^=*\s*\d+ (?:failed|passed|error)", output, re.M):
+        # No summary at all: killed, timed out, or died during collection.
+        return UNKNOWN
+    return OK
+
+
+def bracket(results):
+    """(verdict, detail) for the whole ladder. results: {k: verdict}."""
+    ks = sorted(results)
+    if any(results[k] == UNKNOWN for k in ks):
+        bad = [k for k in ks if results[k] == UNKNOWN]
+        return None, ("rung(s) %s are UNKNOWN -- the guard did not run there, so "
+                      "no bracket can be trusted. Re-run those rungs alone."
+                      % ", ".join(str(k) for k in bad))
+    broken = [k for k in ks if results[k] == BROKEN]
+    if not broken:
+        return None, "no rung broke: the guard survives the whole chain."
+    first = broken[0]
+    if any(results[k] == OK for k in ks if k > first):
+        return None, ("the ladder is NOT MONOTONIC -- rung(s) above %d came back "
+                      "ok. A prefix bracket does not describe this effect; read "
+                      "the ladder itself." % first)
+    below = [k for k in ks if k < first]
+    lo = below[-1] if below else 0
+    return first, ("culprit is in chain[%d:%d] -- rung %d is ok, rung %d is BROKEN"
+                   % (lo, first, lo, first))
+
+
+def probe(chain, k, guard, logdir, extra, timeout):
+    files = chain[:k] + [guard]
+    log = pathlib.Path(logdir) / ("rung_%d.log" % k)
+    cmd = _registered_pytest_argv(
+        sys.executable, "swarm-ladder rung %d" % k, *files, "-q", "-p",
+        "no:randomly", *extra,
+        repository_root=_PYTEST_REGISTRATION_REPOSITORY_ROOT)
+    env = plain_env()
+    env.setdefault("SWARM_DISABLE_KEEPALIVE", "1")
+    env.pop("SWARM_INSTALL_DIR", None)
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, env=env,
+                           timeout=timeout)
+        out = r.stdout + r.stderr
+    except subprocess.TimeoutExpired as exc:
+        out = "TIMEOUT after %ss\n%s" % (timeout, exc.stdout or "")
+    log.write_text(out, encoding="utf-8")
+    return k, grade(out, guard), str(log)
+
+
+def run(args):
+    try:
+        chain = read_chain(args.chain)
+    except OSError as exc:
+        print("swarm-ladder: REFUSED: cannot read chain: %s" % exc, file=sys.stderr)
+        return 2
+    if not chain:
+        print("swarm-ladder: REFUSED: %s lists no files. A ladder over an empty "
+              "chain would report 'no rung broke' -- a clean verdict over "
+              "nothing." % args.chain, file=sys.stderr)
+        return 2
+    if not pathlib.Path(args.guard.split("::")[0]).exists():
+        print("swarm-ladder: REFUSED: guard %s does not exist" % args.guard,
+              file=sys.stderr)
+        return 2
+
+    rungs = ([int(x) for x in args.rungs.split()] if args.rungs
+             else default_rungs(len(chain), args.count))
+    too_big = [k for k in rungs if k > len(chain)]
+    if too_big:
+        print("swarm-ladder: REFUSED: rung(s) %s exceed the %d-file chain"
+              % (too_big, len(chain)), file=sys.stderr)
+        return 2
+
+    logdir = pathlib.Path(args.logdir or tempfile.mkdtemp(prefix="swarm-ladder-"))
+    logdir.mkdir(parents=True, exist_ok=True)
+    # LINE BUFFERING, because the way this tool is actually used is
+    # `swarm-ladder ... > /tmp/out 2>&1` on another host, and block buffering means
+    # a 25-minute run shows an EMPTY file the whole time. Measured on its first
+    # real use: eleven rungs in flight, nothing on disk to say so.
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+    except AttributeError:
+        pass
+    print("swarm-ladder: %d rungs over a %d-file chain, guard=%s, logs in %s"
+          % (len(rungs), len(chain), args.guard, logdir))
+
+    results = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
+        futures = [pool.submit(probe, chain, k, args.guard, logdir,
+                               args.extra or [], args.timeout) for k in rungs]
+        for fut in concurrent.futures.as_completed(futures):
+            k, verdict, log = fut.result()
+            results[k] = verdict
+            print("  rung %-5d %s" % (k, verdict))
+
+    print("=== ladder ===")
+    for k in sorted(results):
+        print("  %-5d %s" % (k, results[k]))
+    first, detail = bracket(results)
+    print("=== %s ===" % ("BRACKET" if first else "NO BRACKET"))
+    print("  " + detail)
+    return 0 if first else 1
+
+
+def selftest(_args):
+    failures = []
+
+    if grade("1 passed in 0.1s\n", "tests/g.py") != OK:
+        failures.append("a clean rung was not graded ok")
+    if grade("\x1b[31mFAILED tests/g.py::x\x1b[0m - b\n\x1b[31m1 failed\x1b[0m "
+             "in 1s\n", "tests/g.py") != BROKEN:
+        failures.append("a COLOURED broken rung graded as something else -- "
+                        "under FORCE_COLOR the ladder can never bracket")
+    if plain_env({"FORCE_COLOR": "3"}).get("FORCE_COLOR") is not None:
+        failures.append("plain_env left FORCE_COLOR set in the child")
+    if grade("FAILED tests/g.py::x - boom\n1 failed in 1s\n",
+             "tests/g.py") != BROKEN:
+        failures.append("a failing guard was not graded BROKEN")
+    # THE ONE THE SCRATCH VERSION GOT WRONG: no summary at all.
+    if grade("INTERNALERROR> something exploded\n", "tests/g.py") != UNKNOWN:
+        failures.append("a run with no summary was not graded UNKNOWN -- it "
+                        "would read as a clean rung and send the search the "
+                        "wrong way")
+    if grade("ERROR tests/g.py - collection failed\n1 error in 1s\n",
+             "tests/g.py") != UNKNOWN:
+        failures.append("a guard that errored during collection was not UNKNOWN")
+
+    first, _ = bracket({8: OK, 16: OK, 24: BROKEN, 32: BROKEN})
+    if first != 24:
+        failures.append("a monotonic ladder did not bracket at the first BROKEN")
+    first, detail = bracket({8: OK, 16: BROKEN, 24: OK})
+    if first is not None or "NOT MONOTONIC" not in detail:
+        failures.append("a non-monotonic ladder still produced a bracket")
+    first, detail = bracket({8: OK, 16: UNKNOWN})
+    if first is not None or "UNKNOWN" not in detail:
+        failures.append("an UNKNOWN rung did not block the bracket")
+    first, detail = bracket({8: OK, 16: OK})
+    if first is not None or "no rung broke" not in detail:
+        failures.append("an all-clean ladder claimed a bracket")
+
+    if default_rungs(4) != [1, 2, 3, 4]:
+        failures.append("a short chain did not get one rung per file")
+    r = default_rungs(200, 10)
+    if r[-1] != 200 or len(set(r)) != len(r):
+        failures.append("default rungs did not end at the chain length, or "
+                        "repeated a rung")
+
+    with tempfile.TemporaryDirectory() as td:
+        empty = pathlib.Path(td) / "empty.txt"
+        empty.write_text("# only a comment\n")
+        ns = argparse.Namespace(chain=str(empty), guard="x", rungs=None,
+                                count=16, jobs=1, logdir=td, extra=[],
+                                timeout=10)
+        if run(ns) != 2:
+            failures.append("an empty chain was not refused")
+
+    for f in failures:
+        print("SELFTEST FAIL: %s" % f, file=sys.stderr)
+    if failures:
+        return 1
+    print("SELFTEST PASS: grading incl. UNKNOWN, monotonicity, rung spacing, "
+          "empty-chain refusal")
+    return 0
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(
+        description="concurrent prefix ladder over a test-file chain")
+    p.add_argument("--chain", help="file listing the chain, one path per line")
+    p.add_argument("--guard", help="the test that fails once the leak happened")
+    p.add_argument("--rungs", help='explicit rungs, e.g. "8 16 24"')
+    p.add_argument("--count", type=int, default=16,
+                   help="how many rungs to space over the chain (default 16)")
+    p.add_argument("--jobs", type=int, default=min(16, (os.cpu_count() or 4)),
+                   help="concurrent rungs (default: min(16, cores))")
+    p.add_argument("--logdir", help="where rung logs go (default: a temp dir)")
+    p.add_argument("--timeout", type=int, default=1800)
+    p.add_argument("--extra", nargs="*", help="extra pytest args")
+    p.add_argument("--selftest", action="store_true")
+    args = p.parse_args(argv)
+    if args.selftest:
+        return selftest(args)
+    if not args.chain or not args.guard:
+        p.error("--chain and --guard are required")
+    return run(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,438 @@
+#!/usr/bin/env python3
+"""swarm-ab -- compare one file's two versions over REPEATED suite samples.
+
+WHY REPEATED, AND WHY THIS IS A TOOL. The single most expensive mistake of the
+v3.66.1031-1041 session was reading one full-suite run as a measurement. On an
+unchanged tree the failure count ranged 1..8 on an idle box and 18..29 with four
+suites sharing it -- so "19 failures after the fix" and "27 before it" are the
+same number, and a prediction made from one sample had to be retracted. Machine
+load dominates the signal. One run tells you almost nothing.
+
+So this tool refuses to take one sample, and it refuses to call a difference
+that its own samples do not support: overlapping ranges are reported as NOT
+DISTINGUISHED, in those words, however much the means differ.
+
+THE SECOND TRAP IS CONCURRENCY. The scratch version ran four samples at once to
+save wall-clock, which is the load confound being measured, manufactured on
+purpose. Samples are SERIAL by default here; --jobs above 1 prints a warning
+that says so, because the number it produces is not comparable with a serial one.
+
+A = the file's content at a git revision.  B = the working tree as it stands.
+Everything else is held identical, the working tree is restored in a finally,
+and the restore is verified by reading the file back -- a harness that leaves a
+tree modified after a crash is worse than no harness.
+"""
+import argparse
+import collections
+import os
+import pathlib
+import re
+import stat
+import subprocess
+import sys
+import tempfile
+
+
+REGISTERED = "REGISTERED"
+REGISTRATION_FAILED = "REGISTRATION FAILED"
+NO_REGISTRAR = "NO REGISTRAR IN THIS TREE"
+_REGISTRATION_STATE_PREFIX = "BD-PYTEST REGISTRATION STATE: "
+_PYTEST_REGISTRATION_REPOSITORY_ROOT = pathlib.Path(__file__).resolve().parents[2]
+
+_PYTEST_REGISTRATION_BOOTSTRAP = r'''\
+import os
+import runpy
+import shlex
+import subprocess
+import sys
+
+state, jobs, anchor, proof, purpose, *pytest_args = sys.argv[1:]
+if state == "REGISTERED":
+    command = shlex.join([sys.executable, "-m", "pytest", *pytest_args])
+    try:
+        registration = subprocess.run(
+            [sys.executable, jobs, "register", "--pid", str(os.getpid()),
+             "--purpose", purpose, "--cmd", command],
+            capture_output=True, text=True,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        print("BD-PYTEST REGISTRATION STATE: REGISTRATION FAILED: "
+              f"anchor={anchor}; registrar={jobs}; {type(exc).__name__}: {exc}",
+              file=sys.stderr)
+        raise SystemExit(3)
+    if registration.returncode:
+        detail = (registration.stdout + registration.stderr).strip()
+        print("BD-PYTEST REGISTRATION STATE: REGISTRATION FAILED: "
+              f"anchor={anchor}; registrar={jobs}; exit={registration.returncode}"
+              + (f"; {detail}" if detail else ""), file=sys.stderr)
+        raise SystemExit(3)
+    print("BD-PYTEST REGISTRATION STATE: REGISTERED: "
+          f"anchor={anchor}; registrar={jobs}", file=sys.stderr)
+elif state == "NO REGISTRAR IN THIS TREE":
+    print("BD-PYTEST REGISTRATION STATE: NO REGISTRAR IN THIS TREE: "
+          f"anchor={anchor}; {proof}", file=sys.stderr)
+else:
+    print("BD-PYTEST REGISTRATION UNKNOWN: invalid internal state "
+          f"{state!r}; anchor={anchor}; nothing ran", file=sys.stderr)
+    raise SystemExit(3)
+
+sys.argv[:] = ["pytest", *pytest_args]
+runpy.run_module("pytest", run_name="__main__", alter_sys=True)
+'''
+
+
+class PytestRegistrationRefused(RuntimeError):
+    """Owned pytest could not start because registry evidence refused."""
+
+
+def _registration_refusal(output):
+    for raw_line in str(output).splitlines():
+        line = raw_line.strip()
+        if (line.startswith(_REGISTRATION_STATE_PREFIX + REGISTRATION_FAILED + ":")
+                or line.startswith("BD-PYTEST REGISTRATION UNKNOWN:")):
+            return line
+    return None
+
+
+def _raise_if_registration_refused(output):
+    detail = _registration_refusal(output)
+    if detail:
+        raise PytestRegistrationRefused(detail)
+
+
+def _registration_unknown(anchor, detail):
+    raise PytestRegistrationRefused(
+        "BD-PYTEST REGISTRATION UNKNOWN: anchor=%s; %s; nothing ran"
+        % (anchor, detail))
+
+
+def _resolve_pytest_registrar(repository_root=None):
+    """Resolve only the explicit repository anchor; never ambient candidates."""
+    raw_anchor = (repository_root if repository_root is not None
+                  else _PYTEST_REGISTRATION_REPOSITORY_ROOT)
+    try:
+        anchor = pathlib.Path(raw_anchor).resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        _registration_unknown(raw_anchor, "anchor is unavailable: %s" % exc)
+    if not anchor.is_dir():
+        _registration_unknown(anchor, "anchor is not a directory")
+
+    registrar = anchor / "toolchain" / "bin" / "swarm-jobs"
+    registrar_present = True
+    for owned_dir in (anchor / "toolchain", anchor / "toolchain" / "bin"):
+        try:
+            owned_info = owned_dir.lstat()
+        except FileNotFoundError:
+            registrar_present = False
+            break
+        except OSError as exc:
+            _registration_unknown(
+                anchor, "registrar metadata is unavailable: %s" % exc)
+        if stat.S_ISLNK(owned_info.st_mode):
+            _registration_unknown(
+                anchor, "registrar parent is a symlink: %s" % owned_dir)
+        if not stat.S_ISDIR(owned_info.st_mode):
+            _registration_unknown(
+                anchor, "registrar parent is not a directory: %s" % owned_dir)
+    if registrar_present:
+        try:
+            registrar_info = registrar.lstat()
+        except FileNotFoundError:
+            registrar_present = False
+        except OSError as exc:
+            _registration_unknown(
+                anchor, "registrar metadata is unavailable: %s" % exc)
+        else:
+            if stat.S_ISLNK(registrar_info.st_mode):
+                _registration_unknown(anchor, "registrar is a symlink: %s" % registrar)
+            if not stat.S_ISREG(registrar_info.st_mode):
+                _registration_unknown(
+                    anchor, "registrar is not a regular file: %s" % registrar)
+
+    try:
+        (anchor / ".git").lstat()
+    except FileNotFoundError:
+        if registrar_present:
+            proof = ("anchor has no .git repository metadata; untracked "
+                     "toolchain/bin/swarm-jobs is not a registrar")
+        else:
+            proof = ("anchor has no .git repository metadata and no "
+                     "toolchain/bin/swarm-jobs")
+        return NO_REGISTRAR, None, proof
+    except OSError as exc:
+        _registration_unknown(anchor, "repository metadata is unavailable: %s" % exc)
+
+    try:
+        top = subprocess.run(
+            ["git", "-C", str(anchor), "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as exc:
+        _registration_unknown(anchor, "repository-root measurement failed: %s" % exc)
+    if top.returncode != 0 or not top.stdout.strip():
+        _registration_unknown(
+            anchor, "repository-root measurement returned exit %d: %s"
+            % (top.returncode, (top.stdout + top.stderr).strip()))
+    try:
+        measured_root = pathlib.Path(top.stdout.strip()).resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        _registration_unknown(anchor, "measured repository root is unavailable: %s" % exc)
+    if measured_root != anchor:
+        _registration_unknown(
+            anchor, "anchor is not the measured repository root %s" % measured_root)
+
+    try:
+        tracked = subprocess.run(
+            ["git", "-C", str(anchor), "ls-files", "--error-unmatch", "--",
+             "toolchain/bin/swarm-jobs"],
+            capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as exc:
+        _registration_unknown(anchor, "tracked-registrar measurement failed: %s" % exc)
+    if tracked.returncode == 0:
+        if not registrar_present:
+            _registration_unknown(
+                anchor, "tracked toolchain/bin/swarm-jobs is absent or not a file")
+        return REGISTERED, registrar, "tracked toolchain/bin/swarm-jobs"
+    if tracked.returncode == 1:
+        proof = "Git proves toolchain/bin/swarm-jobs is not tracked under this anchor"
+        if registrar_present:
+            proof += "; the untracked path is not trusted"
+        return NO_REGISTRAR, None, proof
+    _registration_unknown(
+        anchor, "tracked-registrar measurement returned exit %d: %s"
+        % (tracked.returncode, (tracked.stdout + tracked.stderr).strip()))
+
+
+def _registered_pytest_argv(python, purpose, *pytest_args, repository_root=None):
+    """Return a same-PID register-before-import pytest command."""
+    raw_anchor = (repository_root if repository_root is not None
+                  else _PYTEST_REGISTRATION_REPOSITORY_ROOT)
+    state, registrar, proof = _resolve_pytest_registrar(raw_anchor)
+    anchor = pathlib.Path(raw_anchor).resolve(strict=True)
+    return [
+        str(python), "-c", _PYTEST_REGISTRATION_BOOTSTRAP,
+        state, str(registrar or ""), str(anchor), proof, str(purpose),
+        *[str(arg) for arg in pytest_args],
+    ]
+
+
+_FAILLINE = re.compile(r"^FAILED .*$", re.M)
+
+# ANSI IS IN THE DENOMINATOR OF EVERY LINE-ANCHORED MATCH, and whether it is
+# there depends on who launched you: this environment exports FORCE_COLOR=3, so
+# pytest colourises even into a pipe, while the same tool run over ssh from a
+# nohup shell gets plain text. MEASURED at v3.66.1046 on the pre-fix code:
+# swarm-ab's failure parser returned an EMPTY SET for a coloured FAILED line, and
+# swarm-ab's entire output is failure counts -- it would have compared zeros and
+# reported NOT DISTINGUISHED. Neutralised at the source (the child env below)
+# AND stripped defensively, because either one alone leaves the other launcher.
+_ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def strip_ansi(text):
+    return _ANSI.sub("", text)
+
+
+def plain_env(base=None):
+    """A child environment that will not colourise."""
+    env = dict(base if base is not None else os.environ)
+    env.pop("SWARM_INSTALL_DIR", None)
+    env.pop("FORCE_COLOR", None)
+    env.pop("PY_COLORS", None)
+    env["NO_COLOR"] = "1"
+    return env
+
+
+def failures(text):
+    """The set of failing node ids, message suffix stripped."""
+    return {ln.split(" - ")[0].strip()
+            for ln in _FAILLINE.findall(strip_ansi(text))}
+
+
+def compare(a_counts, b_counts):
+    """Verdict over two lists of failure counts. Pure, therefore testable.
+
+    Returns (distinguished, sentence). The bar is deliberately crude and
+    deliberately conservative: if the ranges touch at all, the samples do not
+    separate the conditions, and no amount of arithmetic on four numbers is
+    going to change that honestly.
+    """
+    if not a_counts or not b_counts:
+        return False, "one condition produced no samples -- nothing to compare."
+    alo, ahi = min(a_counts), max(a_counts)
+    blo, bhi = min(b_counts), max(b_counts)
+    span = "A %d..%d (n=%d), B %d..%d (n=%d)" % (alo, ahi, len(a_counts),
+                                                 blo, bhi, len(b_counts))
+    if ahi < blo:
+        return True, "B fails MORE than A in every sample: %s" % span
+    if bhi < alo:
+        return True, "B fails FEWER than A in every sample: %s" % span
+    return False, ("NOT DISTINGUISHED -- the ranges overlap: %s. Whatever the "
+                   "means say, these samples do not separate the two "
+                   "conditions. Take more samples or reduce the noise." % span)
+
+
+def _git_show(rev, path):
+    r = subprocess.run(["git", "show", "%s:%s" % (rev, path)],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        return None
+    return r.stdout
+
+
+def sample(pytest_args, log):
+    env = plain_env()
+    env.setdefault("SWARM_DISABLE_KEEPALIVE", "1")
+    r = subprocess.run(_registered_pytest_argv(
+                           sys.executable, "swarm-ab sample", *pytest_args,
+                           repository_root=_PYTEST_REGISTRATION_REPOSITORY_ROOT),
+                       capture_output=True, text=True, env=env)
+    out = r.stdout + r.stderr
+    pathlib.Path(log).write_text(out, encoding="utf-8")
+    _raise_if_registration_refused(out)
+    return out
+
+
+def run(args):
+    if args.samples < 2:
+        print("swarm-ab: REFUSED: --samples %d. One sample of a full suite is not "
+              "a measurement -- the unchanged-tree failure count on this "
+              "hardware ranges 1..8 idle and 18..29 loaded. Use 3 or more."
+              % args.samples, file=sys.stderr)
+        return 2
+
+    path = pathlib.Path(args.file)
+    if not path.is_file():
+        print("swarm-ab: REFUSED: %s is not a file" % path, file=sys.stderr)
+        return 2
+    a_text = _git_show(args.rev, args.file)
+    if a_text is None:
+        print("swarm-ab: REFUSED: git show %s:%s failed -- condition A has no "
+              "content" % (args.rev, args.file), file=sys.stderr)
+        return 2
+    b_text = path.read_text(encoding="utf-8")
+    if a_text == b_text:
+        print("swarm-ab: REFUSED: %s is IDENTICAL at %s and in the working tree. "
+              "There is no A/B here, and running it would burn the samples to "
+              "measure noise." % (args.file, args.rev), file=sys.stderr)
+        return 2
+
+    if args.jobs > 1:
+        print("swarm-ab: WARNING: --jobs %d runs samples concurrently. Concurrent "
+              "suites inflate failure counts on this hardware (measured 1..8 "
+              "idle vs 18..29 with four sharing a box), so these numbers are "
+              "not comparable with serial ones." % args.jobs)
+
+    logdir = pathlib.Path(args.dir or tempfile.mkdtemp(prefix="swarm-ab-"))
+    logdir.mkdir(parents=True, exist_ok=True)
+    counts = collections.defaultdict(list)
+    sets = {"A": set(), "B": set()}
+    pytest_args = list(args.pytest_args or [])
+    if pytest_args and pytest_args[0] == "--":
+        pytest_args = pytest_args[1:]
+
+    try:
+        for i in range(1, args.samples + 1):
+            for cond, text in (("A", a_text), ("B", b_text)):
+                path.write_text(text, encoding="utf-8")
+                log = logdir / ("%s_%d.log" % (cond, i))
+                out = sample(pytest_args, log)
+                found = failures(out)
+                counts[cond].append(len(found))
+                sets[cond] |= found
+                print("  %s sample %d: %d failures  (%s)" % (cond, i, len(found), log))
+    except PytestRegistrationRefused as exc:
+        print("swarm-ab: REFUSED: %s" % exc, file=sys.stderr)
+        return 2
+    finally:
+        path.write_text(b_text, encoding="utf-8")
+        # VERIFY THE RESTORE. A harness that silently leaves the tree modified
+        # turns a measurement into a source change nobody made on purpose.
+        if path.read_text(encoding="utf-8") != b_text:
+            print("swarm-ab: THE WORKING TREE WAS NOT RESTORED -- %s differs from "
+                  "what it held when this started. Fix it before doing anything "
+                  "else." % path, file=sys.stderr)
+            return 3
+
+    print("=== counts ===")
+    for cond in ("A", "B"):
+        print("  %s: %s" % (cond, " ".join(str(c) for c in counts[cond])))
+    distinguished, sentence = compare(counts["A"], counts["B"])
+    print("=== verdict ===\n  " + sentence)
+    print("=== failures unique to a condition (union across samples) ===")
+    for label, diff in (("only in B (candidate regressions)", sets["B"] - sets["A"]),
+                        ("only in A (candidate fixes)", sets["A"] - sets["B"])):
+        print("  --- %s: %d ---" % (label, len(diff)))
+        for node in sorted(diff):
+            print("      " + node)
+    print("  logs: %s" % logdir)
+    return 0 if distinguished else 1
+
+
+def selftest(_args):
+    failures_ = []
+
+    if failures("FAILED tests/a.py::x - boom\nFAILED tests/b.py::y\n") != {
+            "FAILED tests/a.py::x", "FAILED tests/b.py::y"}:
+        failures_.append("failure-line parsing dropped or mangled a node id")
+    if failures("\x1b[31mFAILED tests/a.py::x\x1b[0m - boom\n") != {
+            "FAILED tests/a.py::x"}:
+        failures_.append("a COLOURED failed line was invisible -- this tool "
+                         "reports nothing but failure counts, so it would have "
+                         "compared zeros")
+    if plain_env({"FORCE_COLOR": "3"}).get("FORCE_COLOR") is not None:
+        failures_.append("plain_env left FORCE_COLOR set in the child")
+
+    ok, sentence = compare([1, 2, 3], [10, 11])
+    if not ok or "MORE" not in sentence:
+        failures_.append("cleanly separated samples were not distinguished")
+    ok, sentence = compare([10, 11], [1, 2])
+    if not ok or "FEWER" not in sentence:
+        failures_.append("the FEWER direction was not detected")
+    # THE POINT OF THE TOOL: means differ, ranges touch, verdict is no.
+    ok, sentence = compare([1, 30], [2, 29])
+    if ok or "NOT DISTINGUISHED" not in sentence:
+        failures_.append("overlapping ranges produced a verdict -- this is the "
+                         "single mistake the tool exists to prevent")
+    ok, _ = compare([], [1, 2])
+    if ok:
+        failures_.append("an empty condition was treated as a comparison")
+
+    with tempfile.TemporaryDirectory() as td:
+        f = pathlib.Path(td) / "x.py"
+        f.write_text("b\n")
+        ns = argparse.Namespace(samples=1, file=str(f), rev="HEAD", jobs=1,
+                                dir=td, pytest_args=[])
+        if run(ns) != 2:
+            failures_.append("a single sample was not refused")
+
+    for f in failures_:
+        print("SELFTEST FAIL: %s" % f, file=sys.stderr)
+    if failures_:
+        return 1
+    print("SELFTEST PASS: parsing, both directions, overlap refusal, empty "
+          "condition, single-sample refusal")
+    return 0
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(
+        description="A/B one file's two versions over repeated suite samples")
+    p.add_argument("--file", help="the file that differs between conditions")
+    p.add_argument("--rev", default="HEAD", help="condition A revision (default HEAD)")
+    p.add_argument("--samples", type=int, default=3,
+                   help="samples PER CONDITION (minimum 2, default 3)")
+    p.add_argument("--jobs", type=int, default=1,
+                   help="concurrent samples (default 1 -- see the warning)")
+    p.add_argument("--dir", help="log directory (default: a temp dir)")
+    p.add_argument("--selftest", action="store_true")
+    p.add_argument("pytest_args", nargs=argparse.REMAINDER)
+    args = p.parse_args(argv)
+    if args.selftest:
+        return selftest(args)
+    if not args.file:
+        p.error("--file is required")
+    return run(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

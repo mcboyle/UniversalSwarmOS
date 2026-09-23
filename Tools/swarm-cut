@@ -1,0 +1,2752 @@
+#!/usr/bin/env python3
+"""swarm-cut -- codify the proven GUI-parity wire-cut finalize so it can't drift.
+
+Run AFTER you've edited frontend/src (the wiring). swarm-cut does the mechanical,
+error-prone steps in order and ABORTS LOUD on the first failure:
+
+  1. tsc --noEmit                          (typecheck; abort on error)
+  2. vite build                            (offline, deterministic)
+  3. regen gui_parity_inventory            (+ prints spa_wired delta vs baseline)
+  4. 3-part version bump                   (__init__ L26 + slice4 pin + CHANGELOG)
+  5. auto-derive --approved-frontend       (diff work frontend/ vs baseline zip)
+  6. build_release --skip-tests --baseline --approved-frontend <derived>
+  7. extract built zip to a PRISTINE dir   (never band the work dir -- pyc lies)
+  8. run the band from the extracted zip   (targeted suites; Failed:0 required)
+  9. verify_release --zip, gate on TRUE $? (not a piped tail)
+ 10. MAX-style summary                      (guards, namelist, change surface)
+
+This does NOT auto-approve anything destructive silently: it prints the derived
+approved-frontend list and the change surface for you to eyeball, and it never
+deploys. The human still owns the CUT/NO-CUT call.
+
+Usage (wrap in `bd` for PATH/Flask):
+    bd python3 swarm-cut --version 3.66.186 \
+        --baseline /mnt/user-data/uploads/${TARGET_REPO_PATH}_v3_66_185.zip \
+        --changelog "GUI parity: T19a (start_all + supervisor/configure + extract_login)" \
+        --suites tests/test_gui_parity.py tests/test_contracts.py tests/test_settings_center_slice4.py
+
+Flags:
+    --version V        new semver (omit to skip the bump -- e.g. a dry typecheck+build)
+    --baseline ZIP     prior release zip (for approved-frontend derivation + gate)
+    --changelog MSG    one-line CHANGELOG body (required with --version)
+    --suites ...       band suites (default: gui_parity, contracts,
+                       parity_method_aware, slice4)
+    --work DIR         the checkout to cut (default: derived from this file's
+                       location via bdtools_sec.DEFAULT_WORK -- follows a
+                       relocated tree; no sandbox path is assumed)
+    --out DIR          build output dir (default <work>/out, gitignored)
+    --no-build         stop after step 3 (typecheck + build + inventory only)
+"""
+import argparse
+import ctypes
+import errno
+import glob
+import hashlib
+import os
+import platform
+import re
+import shutil
+import stat
+import subprocess
+import sys
+import tempfile
+import time
+import zipfile
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import bdtools_sec as sec  # @807 (R1): the ONE guard-set derivation
+import bd_cut_quality as cut_quality
+
+# --- 702: --selftest delegates to the tool's own swarm-coretest fault-injection case.
+# These are the RELEASE-GATING MUTATORS: they edit the tree and gate a cut, and they
+# had NO selftest at their own entry point (swarm-tool-lint: 10/10 untested). The teeth
+# already existed in swarm-coretest -- they were just unreachable from the tool itself.
+# Delegating (not re-asserting) keeps ONE source of truth for what "correct" means.
+def _selftest_via_coretest():
+    import subprocess as _sp, sys as _sys, os as _os
+    _me = _os.path.basename(_os.path.realpath(__file__))
+    _ct = _os.path.join(_os.path.dirname(_os.path.realpath(__file__)), "swarm-coretest")
+    if not _os.path.isfile(_ct):
+        print("SELFTEST FAIL -- swarm-coretest not found (cannot verify teeth)")
+        return 2
+    _cp = _sp.run([_sys.executable, _ct, "--only", _me], capture_output=True, text=True, timeout=900)
+    for _ln in _cp.stdout.splitlines():
+        if _ln.startswith(_me) or _ln.strip().startswith("["):
+            print(_ln)
+    print("SELFTEST PASS" if _cp.returncode == 0 else "SELFTEST FAIL")
+    return _cp.returncode
+
+
+if "--selftest" in sys.argv:
+    sys.exit(_selftest_via_coretest())
+
+
+C = "\033[36m"
+R, G, Y, DIM, RST = "\033[31m", "\033[32m", "\033[33m", "\033[2m", "\033[0m"
+# @807 (R1): DERIVED from STATE (guards_full_sha256), not re-typed here.
+# An operator-declared guard-set change now reaches the cut driver; the literal
+# survives inside sec as a VISIBLE fallback (sec.guard_source()).
+GUARDS = list(sec.guard_paths())
+DEFAULT_SUITES = ["tests/test_gui_parity.py", "tests/test_contracts.py",
+                  "tests/test_parity_method_aware.py",
+                  "tests/test_settings_center_slice4.py"]
+# Suites that only become meaningful AFTER a version bump: they read the
+# regenerated PIN_INDEX / the KB query layer (tools/bd_kb.what_pins), which
+# resolves the *live* __version__. Auto-unioned into the band whenever
+# --version is set (see main), so a bump can never again ship with a stale
+# PIN_INDEX. This is the v3.66.364 footgun: swarm-cut bumped __init__ but never
+# regenerated PIN_INDEX.json, so test_pin_index_in_sync AND
+# test_kb_golden_questions (what_pins(__version__) -> nothing) both failed
+# on-stash, invisible to the sandbox band because they weren't in --suites.
+VERSION_COUPLED_SUITES = ["tests/test_pin_index_in_sync.py",
+                          "tests/test_kb_golden_questions.py"]
+# Regenerable runtime DBs that must never ride a release zip -- their presence in
+# the work tree trips diff_release_zips' forbidden-artifact gate (the v3.66.364
+# footgun, where video_hashes.db slipped into the build baseline). check_runtime_db
+# refuses (or, with --rm-runtime-db, clears) them before build_release.
+RUNTIME_DB_GLOBS = ["video_hashes.db", "downloader_history.db",
+                    "downloader_history.db-wal", "downloader_history.db-shm",
+                    "downloader_history.db-journal"]
+_T0 = time.monotonic()
+
+
+def die(msg):
+    print(f"{R}ABORT{RST} {msg}")
+    sys.exit(1)
+
+
+def step(n, msg):
+    print(f"\n{G}== step {n} =={RST} {msg}  {DIM}[+{time.monotonic()-_T0:.0f}s]{RST}")
+
+
+def python_for(work):
+    """Resolve the interpreter that actually carries BD's dependencies.
+
+    NOT `python3`. Bare python3 resolves to the system 3.11 here, which has no
+    flask -- so tools/gui_parity_inventory.py cannot import the app, silently
+    degrades to the ENDPOINT_CATALOG.md fallback, and EXITS 0. That is how a
+    1248-route parity inventory got overwritten with 252 routes on a cut that
+    looked green: the returncode gate could not see the degradation.
+
+    Same resolver shape as swarm-regen-order.python_for -- deliberately one idea and
+    not two -- with a $SWARM_PYTHON operator override in front, and the work tree's
+    own environment ahead of whatever launched swarm-cut. `os.access(X_OK)` matters:
+    a present-but-not-executable venv/bin/python must be skipped, not selected.
+    """
+    candidates = []
+    override = os.environ.get("SWARM_PYTHON")
+    if override:
+        candidates.append(override)
+    for environment in ("venv", ".venv"):
+        candidates.append(os.path.join(work, environment, "bin", "python"))
+    for candidate in candidates:
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return sys.executable
+
+
+def run(cmd, cwd=None, env=None, timeout=None, pass_fds=()):
+    # pass_fds (v3.66.1151): keep a descriptor open, at the same number, in the
+    # child. That is what lets a SUBPROCESS consumer be bound to the snapshot's
+    # inode too -- it reads its own /proc/self/fd/N, which resolves to the same
+    # file however the directory entry is renamed or replaced meanwhile.
+    # subprocess clears CLOEXEC for these, so no extra handling is needed here.
+    # timeout bounds the hang-prone steps (vitest / vite / build_release / band /
+    # verify). On expiry we return a synthetic rc=124 result carrying the partial
+    # output + a clear TIMEOUT line, so the caller's `if r.returncode != 0: die`
+    # fires loudly instead of the session hanging silently (the run_tests
+    # whole-dir / test_perf_lab hang footgun).
+    #
+    # P4 (regen-env self-sufficiency): when the caller passes NO explicit env,
+    # default one that puts the work root (cwd) on PYTHONPATH. This makes swarm-cut's
+    # regen/build subprocesses (gui_parity, the in-sync index regens,
+    # build_release, verify_release) resolve `bulk_downloader`/`tools` no matter
+    # how swarm-cut itself was launched -- no more mandatory `export PYTHONPATH` or
+    # `bd` wrapper. Callers that pass env explicitly (the band, step 8) are
+    # unaffected, and a caller-set PYTHONPATH is preserved (appended after).
+    #
+    # v3.66.855 port: the prestaged site-packages leg (/tmp/prestaged_site_packages)
+    # is DROPPED. That directory belonged to the retired sandbox; it does not exist
+    # in a git checkout, and the third-party deps it used to supply now come from
+    # the work tree's venv, which python_for() already selects as the interpreter.
+    # A PYTHONPATH entry that does not exist is not harmless here: it was the only
+    # documented source of httpx for the parity/route regens, so leaving it in
+    # advertised a dependency route that silently resolves to nothing.
+    if env is None:
+        env = dict(os.environ)
+        _prev = env.get("PYTHONPATH", "")
+        _pp = cwd or ""
+        if _pp and _prev:
+            env["PYTHONPATH"] = f"{_pp}:{_prev}"
+        elif _pp:
+            env["PYTHONPATH"] = _pp
+    try:
+        return subprocess.run(cmd, cwd=cwd, env=env, capture_output=True,
+                              text=True, timeout=timeout, pass_fds=pass_fds)
+    except subprocess.TimeoutExpired as e:
+        out, err = e.stdout or "", e.stderr or ""
+        if isinstance(out, bytes): out = out.decode("utf-8", "replace")
+        if isinstance(err, bytes): err = err.decode("utf-8", "replace")
+        msg = f"TIMEOUT: '{' '.join(map(str, cmd))}' exceeded {timeout}s"
+        return subprocess.CompletedProcess(cmd, 124, out, (err + "\n" + msg).strip())
+
+
+VERBOSE = False
+
+
+def sha(b):
+    return hashlib.sha256(b).hexdigest()
+
+
+def fe(work):
+    return os.path.join(work, "frontend")
+
+
+def precut(work, baseline):
+    """Step 0: predict the release gates BEFORE the bump, so a cut never surprises
+    you with a regen or a stale pin. Informational -- never aborts (build_release +
+    verify_release stay authoritative). Runs three advisory checks:
+      (a) precut_check.py       -- baseline gate prediction (only with --baseline)
+      (b) swarm-band-derive        -- what must I regen/band? (works without a baseline;
+          the 12-of-40 desync-footgun preventer: maps changed files -> required
+          regens + suites via TOUCHED_FILE_TO_TEST.md)
+      (c) graph --check-hash    -- recompute-and-compare the KNOWLEDGE_GRAPH.db
+          content pin when the graph db is present (gives the @533 P2 gate teeth)."""
+    step(0, "precut gate prediction (advisory)")
+    # (a) baseline prediction
+    if baseline:
+        tool = os.path.join(work, "tools", "precut_check.py")
+        if os.path.isfile(tool):
+            r = run([sys.executable, tool, "--baseline", baseline, "--root", work])
+            for line in ((r.stdout or "") + (r.stderr or "")).rstrip().splitlines():
+                print("  " + line)
+        else:
+            print("  (tools/precut_check.py not found -- baseline prediction skipped)")
+    else:
+        print("  (no --baseline -- baseline prediction skipped)")
+    # (b) swarm-touched: regen/band prediction (the desync-footgun preventer)
+    bdt = shutil.which("swarm-band-derive")
+    if bdt:
+        print("  -- swarm-band-derive (regen/band prediction) --")
+        r = run([bdt], cwd=work)
+        for line in ((r.stdout or "") + (r.stderr or "")).rstrip().splitlines():
+            print("    " + line)
+    else:
+        print("  (swarm-band-derive not on PATH -- regen/band prediction skipped; "
+              "install it via setup.sh)")
+    # (c) graph content-hash recompute-and-compare (P2 @533).
+    #
+    # v3.66.723 -- THIS CHECK HAS NEVER RUN, and it was dead in THREE ways:
+    #   1. WRONG PATH. The db ships in the audit_state pack at audit_state/artifacts/,
+    #      but this looked only under review/artifacts/. Fixed below (all 3 candidates).
+    #   2. NO PIN SHIPS. The guard needs <db>.sha256, and no .sha256 is in the pack -- so
+    #      the AND could never be true even with the db in the right place. A
+    #      recompute-and-compare with nothing to compare against cannot run, ever.
+    #   3. ADVISORY ANYWAY. Even on a hit, the returncode is not gated on.
+    # It printed "(skipped)" on every run for cuts on end -- a check that always skips is
+    # a check that lies by omission. It now says NOT CHECKED and says WHY, because an
+    # unverified thing is UNKNOWN, not OK. Making it real needs an operator decision:
+    # provide a KNOWLEDGE_GRAPH.db.sha256 pin, then decide gate-or-advise.
+    gtool = os.path.join(work, "tools", "graph_build.py")
+    gdb = gpin = None
+    # v3.66.855 port: the four /home/claude/{review,audit_state,as,audit_carry}
+    # candidates are gone -- that sandbox is retired and none of those paths can
+    # exist in a git checkout, so they only padded the denominator. What survives is
+    # the IN-TREE pair: the audit_state pack restores to <work>/audit_carry/ (the
+    # @760 FG-AUDIT-STATE-IN-WORK-TREE relocation) and the older review/ location.
+    # NOTE FOR THE OPERATOR: capture.sh step [2b] pins the graph OUT of tree at
+    # /var/lib/bulkdownloader/validation/KNOWLEDGE_GRAPH.content.sha256, which is a
+    # DIFFERENT pin scheme (<db>.sha256 beside the db). Unifying the two is a policy
+    # call, not a port, so this list is left in-tree only and still reports UNKNOWN.
+    _cands = (os.path.join(work, "review", "artifacts", "KNOWLEDGE_GRAPH.db"),
+              os.path.join(work, "audit_carry", "artifacts", "KNOWLEDGE_GRAPH.db"),
+              os.path.join(work, "audit_state", "artifacts", "KNOWLEDGE_GRAPH.db"))
+    _db_seen = None
+    for cand in _cands:
+        if os.path.isfile(cand):
+            _db_seen = _db_seen or cand
+            if os.path.isfile(cand + ".sha256"):
+                gdb, gpin = cand, cand + ".sha256"
+                break
+    if gdb and os.path.isfile(gtool):
+        print("  -- graph --check-hash (P2 content pin) --")
+        r = run([sys.executable, gtool, "--db", gdb, "--hash-pin", gpin, "--check-hash"])
+        for line in ((r.stdout or "") + (r.stderr or "")).rstrip().splitlines():
+            print("    " + line)
+        if r.returncode != 0:
+            print("    NOTE: graph content pin drifted -- re-pin with "
+                  "`graph_build.py --write-hash` if the change is intended (advisory).")
+    elif _db_seen:
+        print(f"  {Y}graph content pin: NOT CHECKED{RST} -- db found ({_db_seen}) but NO "
+              f"{DIM}.sha256{RST}{Y} pin ships beside it, so there is nothing to compare "
+              f"against.{RST}")
+        print(f"  {DIM}    -> generate one (graph_build.py --write-hash) and have "
+              f"the graph producer write it. UNKNOWN, not OK.{RST}")
+    else:
+        print(f"  {Y}graph content pin: NOT CHECKED{RST} -- no KNOWLEDGE_GRAPH.db present "
+              f"(it lives in the audit_state pack; extract it to enable).")
+        print(f"  {DIM}    -> this is UNKNOWN, not OK. The check has never run.{RST}")
+    # advisory only: show output, do not gate on returncode
+    print("  (advisory -- proceeding to typecheck)")
+
+
+
+def regen_order(work):
+    """v3.66.722: regenerate the derived artifacts in THE ONE CORRECT ORDER, BEFORE the
+    ~3-minute FE chain -- not after it.
+
+    build_release runs the in-sync GATES only after tsc+vitest+vite and ABORTS on a stale
+    doc, so a one-line staleness cost a full re-cut. Worse, the ORDER is load-bearing and
+    lived only in footguns: gui_parity must precede ROUTE_INDEX (ROUTE_INDEX joins against
+    the parity inventory, and swarm-cut regenerates that inventory itself at step 3 -- so an
+    index built earlier goes stale under it; that is the @717 abort). Wiring a FRONTEND
+    control also flips spa_wired, which IS a ROUTE_INDEX change even though url_map is
+    untouched -- that is the @714 stash RED.
+
+    swarm-regen-order owns the chain; this calls it so there is ONE copy of the order.
+    It deliberately does NOT re-freeze the frozen baselines (route_map SHA, import_graph):
+    those are DECLARATIONS of intent, and a tool that re-froze them silently would defeat
+    the gates that exist to make an accidental surface/edge change impossible.
+    """
+    step(0.5, "regen derived docs (swarm-regen-order)")
+    # Resolve the regenerator FROM THE WORK TREE being cut -- not from PATH, and not
+    # from a /home/claude/bin fallback that does not exist on this host. A PATH hit
+    # can be a different checkout's copy; a miss used to print a warning and RETURN,
+    # so a release cut with stale derived docs and nothing failed. Absent is NO-CUT.
+    exe = os.path.join(work, "toolchain", "bin", "swarm-regen-order")
+    if not os.path.isfile(exe):
+        die("swarm-regen-order missing from release work tree (NO-CUT): " + exe)
+    r = run([python_for(work), exe, "--work", work])
+    out = (r.stdout or "") + (r.stderr or "")
+    for line in out.strip().splitlines():
+        print("  " + line)
+    if r.returncode != 0:
+        die("regen failed -- fix before the FE chain (NO-CUT):\n" + out[-800:])
+
+
+def _fe_src_touched(work, baseline):
+    """How many frontend/src files differ from the baseline zip? DERIVED, not asserted.
+
+    --skip-fe used to print "(backend-only cut)" -- an INTENT it never checked. If
+    frontend/src really did change, that line was a lie and the edits shipped
+    untypechecked. Returns 0 when we cannot tell (no baseline) -- and the caller must
+    treat 0 as "no evidence of change", never as "verified clean".
+    """
+    if not baseline or not os.path.isfile(baseline):
+        return 0
+    n = 0
+    try:
+        with zipfile.ZipFile(baseline) as zf:
+            zmem = {i.filename: i for i in zf.infolist()}
+            src = os.path.join(fe(work), "src")
+            for dp, dn, fns in os.walk(src):
+                dn[:] = [d for d in dn if d != "node_modules"]
+                for fn in fns:
+                    p = os.path.join(dp, fn)
+                    rel = os.path.relpath(p, work)
+                    if rel not in zmem:
+                        n += 1
+                        continue
+                    try:
+                        if zf.read(rel) != open(p, "rb").read():
+                            n += 1
+                    except Exception:  # why: one member unreadable; count as unchanged-skip, the rest still compare
+                        continue
+    except Exception as _e:  # why: a crash here previously returned 0 (== 'no changes'), a false-clean count
+        sys.stderr.write("swarm-cut: changed-file walk failed (%s); treating as UNKNOWN\n" % _e)
+        return None
+    return n
+
+
+def typecheck(work):
+    step(1, "tsc --noEmit")
+    r = run(["node_modules/.bin/tsc", "--noEmit", "-p", "tsconfig.json"], cwd=fe(work))
+    if r.returncode != 0 or "error TS" in (r.stdout + r.stderr):
+        die("typecheck failed:\n" + (r.stdout + r.stderr)[-1200:])
+    print("  tsc clean")
+
+
+def vitest(work):
+    # jsdom behavioral gate. node_modules lives in the sandbox only (the
+    # deploy zip excludes it), so this runs at cut time, NOT on-stash.
+    step("1b", "vitest run (jsdom behavioral gate)")
+    r = run(["node_modules/.bin/vitest", "run"], cwd=fe(work), timeout=300)
+    if r.returncode != 0:
+        die("vitest failed:\n" + (r.stdout + r.stderr)[-1500:])
+    for ln in (r.stdout + r.stderr).splitlines():
+        if "Test Files" in ln or ln.strip().startswith("Tests "):
+            print("  " + ln.strip())
+
+
+def _mount_id(fd):
+    """Return Linux's mount identity for an open descriptor, or fail UNKNOWN."""
+    with open(f"/proc/self/fdinfo/{fd}", encoding="ascii") as info:
+        for line in info:
+            if line.startswith("mnt_id:"):
+                return int(line.split(":", 1)[1].strip())
+    raise OSError(errno.ENODATA, f"no mnt_id for descriptor {fd}")
+
+
+def _read_nonempty_regular(fd, label):
+    """Prove an already-open output file is regular, nonempty, and readable."""
+    st = os.fstat(fd)
+    if not stat.S_ISREG(st.st_mode) or st.st_size == 0:
+        die(f"current build attempt {label} is not a non-empty regular file; "
+            "frontend/dist remains absent")
+    try:
+        first = os.read(fd, 1)
+    except OSError as e:
+        die(f"current build attempt {label} is unreadable ({e}); "
+            "frontend/dist remains absent")
+    if not first:
+        die(f"current build attempt {label} became empty while being read; "
+            "frontend/dist remains absent")
+    return st
+
+
+def _remove_previous_dist(frontend, dist):
+    """Remove the old published subject before authorizing a new build."""
+    try:
+        old = os.lstat(dist)
+    except FileNotFoundError:
+        return
+    except OSError as e:
+        die(f"frontend/dist identity could not be read ({e}); refusing to "
+            "build against an unknown old output")
+    if not stat.S_ISDIR(old.st_mode):
+        kind = "symlink" if stat.S_ISLNK(old.st_mode) else "non-directory"
+        die(f"frontend/dist is a {kind}; refusing to touch it")
+    try:
+        old_fd = os.open(dist, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except OSError as e:
+        die(f"frontend/dist could not be bound for removal ({e})")
+    try:
+        bound = os.fstat(old_fd)
+        old_ident = (bound.st_dev, bound.st_ino)
+        if old_ident != (old.st_dev, old.st_ino):
+            die("frontend/dist changed identity before removal; refusing "
+                "to touch either object")
+        parent_check_fd = os.open(
+            frontend, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            parent_mount = _mount_id(parent_check_fd)
+            dist_mount = _mount_id(old_fd)
+            parent_st = os.fstat(parent_check_fd)
+        except OSError as e:
+            die(f"frontend/dist mount identity is unknown ({e}); refusing "
+                "removal")
+        finally:
+            os.close(parent_check_fd)
+        if dist_mount != parent_mount or bound.st_dev != parent_st.st_dev:
+            die("frontend/dist is on a different mount or device; refusing "
+                "to empty a mounted filesystem")
+        removed, reason = _remove_owned_dir(dist, old_ident, old_fd)
+    finally:
+        os.close(old_fd)
+    if not removed:
+        die("frontend/dist removal failed; Vite was NOT invoked: " + str(reason))
+
+
+def build(work):
+    step(2, "vite build")
+    frontend = fe(work)
+    dist = os.path.join(frontend, "dist")
+    _remove_previous_dist(frontend, dist)
+    attempt = _owned_tempdir("bdcut_build_", directory=frontend)
+    published = False
+    try:
+        # The output directory is empty, unique to this invocation, and held by
+        # descriptor from creation.  A name surviving in the live dist can
+        # therefore never satisfy this attempt's postcondition.
+        r = run(["node_modules/.bin/vite", "build", "--outDir", attempt,
+                 "--emptyOutDir"], cwd=frontend, timeout=600)
+        if r.returncode != 0:
+            die("vite build failed after verified frontend/dist removal; "
+                "no new bundle was published:\n" +
+                ((r.stdout or "") + (r.stderr or ""))[-1000:])
+
+        held = _TEMPDIR_FD.get(attempt)
+        ident = _TEMPDIR_IDENT.get(attempt)
+        if held is None or ident is None:
+            die("current build attempt has no creation identity; refusing to "
+                "publish unbound output")
+        now = os.fstat(held)
+        if (now.st_dev, now.st_ino) != ident:
+            die("current build attempt changed identity while Vite ran; refusing "
+                "to publish foreign output")
+        try:
+            named_attempt = os.lstat(attempt)
+        except OSError as e:
+            die(f"current build attempt name is unreadable ({e}); refusing to "
+                "publish output not bound to the creation descriptor")
+        if (not stat.S_ISDIR(named_attempt.st_mode) or
+                (named_attempt.st_dev, named_attempt.st_ino) != ident):
+            die("current build attempt name changed identity while Vite ran; "
+                "refusing to publish foreign output")
+
+        index_fd = assets_fd = None
+        try:
+            index_fd = os.open("index.html", os.O_RDONLY | os.O_NOFOLLOW,
+                               dir_fd=held)
+            _read_nonempty_regular(index_fd, "index.html")
+            assets_fd = os.open("assets", os.O_RDONLY | os.O_DIRECTORY |
+                                os.O_NOFOLLOW, dir_fd=held)
+            js = []
+            for entry in os.scandir(assets_fd):
+                if not entry.name.endswith(".js"):
+                    continue
+                asset_fd = None
+                try:
+                    asset_fd = os.open(entry.name, os.O_RDONLY | os.O_NOFOLLOW,
+                                       dir_fd=assets_fd)
+                    _read_nonempty_regular(asset_fd,
+                                           f"assets/{entry.name}")
+                    js.append(entry.name)
+                except OSError as e:
+                    die(f"current build attempt asset {entry.name!r} is unreadable "
+                        f"or unsafe ({e}); frontend/dist remains absent")
+                finally:
+                    if asset_fd is not None:
+                        os.close(asset_fd)
+        except OSError as e:
+            missing = "index.html" if index_fd is None else "assets directory"
+            die(f"current build attempt output {missing} is missing or unreadable ({e}); "
+                "frontend/dist remains absent")
+        finally:
+            if assets_fd is not None:
+                os.close(assets_fd)
+            if index_fd is not None:
+                os.close(index_fd)
+        js.sort()
+        if not js:
+            die("current build attempt produced no non-empty regular JavaScript "
+                "assets; frontend/dist remains absent")
+
+        try:
+            named_attempt = os.lstat(attempt)
+        except OSError as e:
+            die(f"current build attempt name vanished before publication ({e})")
+        if (not stat.S_ISDIR(named_attempt.st_mode) or
+                (named_attempt.st_dev, named_attempt.st_ino) != ident):
+            die("current build attempt name changed identity before publication; "
+                "refusing to publish foreign output")
+
+        parent_fd = os.open(frontend, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            guaranteed = _rename_noclobber(
+                os.path.basename(attempt), "dist", parent_fd,
+                allow_fallback=False)
+            if guaranteed is not True:
+                die("current build output publication did not provide the required "
+                    "no-clobber guarantee")
+            try:
+                published_st = os.stat(
+                    "dist", dir_fd=parent_fd, follow_symlinks=False)
+            except OSError as e:
+                die(f"frontend/dist publication identity is unknown ({e}); "
+                    "refusing build success")
+            if (not stat.S_ISDIR(published_st.st_mode) or
+                    (published_st.st_dev, published_st.st_ino) != ident):
+                die("frontend/dist publication identity does not match the "
+                    "authorized build output; refusing build success")
+        except OSError as e:
+            die(f"current build output could not be published without replacing "
+                f"a concurrent frontend/dist ({type(e).__name__}: {e})")
+        finally:
+            os.close(parent_fd)
+        published = True
+        _forget_tempdir(attempt)
+        print(f"  built bundle: {js[0]}")
+        return js
+    finally:
+        if not published and not _discard_tempdir(attempt):
+            _report_undeleted(attempt)
+
+
+def _inv_counts(path_or_zip, member=None):
+    import json
+    if member:
+        with zipfile.ZipFile(path_or_zip) as zf:
+            d = json.loads(zf.read(member))
+    else:
+        d = json.loads(open(path_or_zip).read())
+    return d["counts"]["gui_gated_endpoints"]
+
+
+_LIVE_ROUTE_SOURCE = "live url_map"
+
+
+def assert_live_inventory(work):
+    """READ THE REGENERATED INVENTORY BACK; refuse a degraded one.
+
+    tools/gui_parity_inventory.py records route_source == "live url_map" when it
+    walked the real Flask url_map, and "ENDPOINT_CATALOG.md (fallback)" when it
+    could not import the app. The fallback path EXITS 0, so the regen step's
+    returncode structurally cannot see it -- the gate could not see its own
+    subject, and reported OK while writing a drastically reduced route set over a
+    good one. The only way to know which happened is to read the file.
+
+    Unreadable, absent, or unlabelled is UNKNOWN, and UNKNOWN is NO-CUT.
+    """
+    import json
+    path = os.path.join(work, "reports", "gui_parity_inventory.json")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            src = json.load(fh).get("route_source")
+    except Exception as e:  # why: absent/truncated/not-JSON -- all UNKNOWN, none OK
+        die(f"parity inventory unreadable after regen ({path}: {e}) -- route_source "
+            f"cannot be confirmed, and UNKNOWN is not OK (NO-CUT)")
+        return
+    if src != _LIVE_ROUTE_SOURCE:
+        die(f"parity inventory regenerated with route_source={src!r}, expected "
+            f"{_LIVE_ROUTE_SOURCE!r} -- the interpreter could not import the app, so "
+            f"the route set is DEGRADED and would overwrite the good one (NO-CUT).\n"
+            f"      interpreter used: {python_for(work)}\n"
+            f"      fix the environment (set $SWARM_PYTHON, or provision "
+            f"{os.path.join(work, 'venv', 'bin', 'python')}) and re-run.")
+        return
+    print(f"  route_source={src} (live)")
+
+
+def regen_inventory(work, baseline):
+    step(3, "regen gui_parity_inventory + spa_wired delta")
+    r = run([python_for(work), "tools/gui_parity_inventory.py", "--root", "."], cwd=work)
+    if r.returncode != 0:
+        die("inventory regen failed:\n" + r.stderr[-800:])
+    assert_live_inventory(work)
+    new = _inv_counts(os.path.join(work, "reports/gui_parity_inventory.json"))
+    old = None
+    if baseline:
+        try:
+            old = _inv_counts(baseline, "reports/gui_parity_inventory.json")
+        except Exception:  # why: baseline inventory absent; leave old=None so the delta is skipped, not invented
+            pass
+    if old:
+        print(f"  spa_wired {old['spa_wired']} -> {new['spa_wired']} "
+              f"(+{new['spa_wired']-old['spa_wired']}); "
+              f"operator_facing_unwired {old['operator_facing_unwired']} -> "
+              f"{new['operator_facing_unwired']}")
+    else:
+        print(f"  spa_wired={new['spa_wired']} "
+              f"operator_facing_unwired={new['operator_facing_unwired']}")
+
+
+def bump(work, version, changelog):
+    step(4, f"3-part version bump -> {version}")
+    if not changelog:
+        die("--changelog is required with --version")
+    # __init__.py
+    initp = os.path.join(work, "bulk_downloader/__init__.py")
+    t = open(initp).read()
+    cur = re.search(r'__version__ = "([0-9.]+)"', t)
+    if cur and cur.group(1) == version:
+        print(f"  {Y}already at {version}{RST} -- bump no-op (safe re-run after a "
+              f"partial/timed-out cut; __init__/pins/CHANGELOG left as-is)")
+        return
+    t2 = re.sub(r'__version__ = "[0-9.]+"', f'__version__ = "{version}"', t, count=1)
+    if t == t2:
+        die("could not find __version__ in __init__.py")
+    open(initp, "w").write(t2)
+    # Old version (the value we are bumping FROM). We rewrite test pins
+    # ONLY where they hold this exact value, so synthetic version-like
+    # fixture strings (e.g. the _mktree pins in test_release_hygiene_gates
+    # that are DATA, not real pins -- 3.66.169 / 3.66.168) are never
+    # clobbered. The previous blanket "[0-9.]+" replace corrupted them,
+    # and the "_mktree in rel" guard never fired because _mktree is in the
+    # file CONTENT, not the filename.
+    oldm = re.search(r'__version__ = "([0-9.]+)"', t)
+    old_ver = oldm.group(1) if oldm else None
+    # slice4 pin(s) -- scan, don't assume one
+    hits = run(["grep", "-rlE", r'__version__ *== *"3\.66\.', "tests/"], cwd=work).stdout.split()
+    updated = []
+    for rel in hits:
+        p = os.path.join(work, rel)
+        s = open(p).read()
+        if old_ver:
+            s2 = re.sub(rf'(__version__ *== *)"{re.escape(old_ver)}"',
+                        rf'\1"{version}"', s)
+        else:
+            s2 = re.sub(r'(__version__ *== *)"[0-9.]+"', rf'\1"{version}"', s)
+        if s2 != s:
+            open(p, "w").write(s2)
+            updated.append(rel)
+            print(f"  pin updated: {rel}")
+    # CHANGELOG prepend anchored on the first '## v' header
+    clp = os.path.join(work, "CHANGELOG.md")
+    c = open(clp).read()
+    m = re.search(r'^## v[0-9]', c, re.M)
+    if not m:
+        die("no '## v' header in CHANGELOG.md")
+    entry = f"## v{version} -- {changelog}\n\n"
+    open(clp, "w").write(c[:m.start()] + entry + c[m.start():])
+    print(f"  __init__ + CHANGELOG + {len(updated)} pin(s) updated")
+
+
+def regen_version_indexes(work):
+    """4b: regenerate PIN_INDEX.json + ROUTE_INDEX.json AFTER the bump.
+
+    bump() rewrites __version__ / test pins / CHANGELOG, but PIN_INDEX.json and
+    ROUTE_INDEX.json are *derived* artifacts that their build_*.py tools must
+    re-emit; the KB query layer (tools/bd_kb.what_pins) reads PIN_INDEX live.
+    A bump without this step leaves PIN_INDEX stale and fails
+    test_pin_index_in_sync + test_kb_golden_questions on-stash (the v3.66.364
+    footgun). Run unconditionally on a --version run so a *resumed* partial cut
+    (where bump() hit its 'already at VERSION' no-op) still refreshes the
+    indexes, and run it BEFORE build_release so the built zip carries them.
+    Both builders take no args and write to the repo root; plain run = regen."""
+    step("4b", "regen PIN_INDEX + ROUTE_INDEX (post-bump)")
+    for tool, art in (("tools/build_pin_index.py", "PIN_INDEX.json"),
+                      ("tools/build_route_index.py", "ROUTE_INDEX.json")):
+        r = run([python_for(work), tool], cwd=work)
+        if r.returncode != 0:
+            die(f"{tool} failed -- {art} not regenerated (NO-CUT)\n{r.stderr.strip()}")
+        print(f"  {r.stdout.strip() or (art + ' regenerated')}")
+
+
+def approved_frontend(work, baseline):
+    """Derive the changed/missing/added frontend/* paths vs the baseline zip."""
+    if not baseline:
+        return []
+    with zipfile.ZipFile(baseline) as zf:
+        bz = {n: sha(zf.read(n)) for n in zf.namelist()
+              if n.startswith("frontend/") and not n.endswith("/")}
+    wt = {}
+    for root, _, files in os.walk(fe(work)):
+        for f in files:
+            full = os.path.join(root, f)
+            rel = os.path.relpath(full, work)
+            if "node_modules" in rel.split("/"):
+                continue
+            with open(full, "rb") as fh:
+                wt[rel] = sha(fh.read())
+    changed = [k for k in (set(bz) & set(wt)) if bz[k] != wt[k]]
+    missing = [k for k in bz if k not in wt]      # removed (old bundle)
+    added = [k for k in wt if k not in bz]         # new bundle
+    return sorted(set(changed + missing + added))
+
+
+def check_runtime_db(work, auto_rm):
+    """Refuse to build with regenerable runtime DBs in the tree -- they trip
+    diff_release_zips' forbidden-artifact gate (v3.66.364).
+
+    NON-DESTRUCTIVE BY DEFAULT -- and that exact sentence sat in this docstring
+    from v3.66.702 to v3.66.1149 while `--rm-runtime-db` defaulted to True, so
+    the prose described the opposite of the shipped behaviour and was read as
+    authority. RUNTIME_DB_GLOBS names downloader_history.db and its
+    -wal/-shm/-journal companions. The service's DB_PATH is RELATIVE and
+    systemd's WorkingDirectory is the checkout, so on test5 -- where the
+    deployed tree and the working tree are the same directory -- that glob
+    resolves to the LIVE database. An ordinary cut deleted production state by
+    default, with no backup, no prompt, and a `git status` that stayed clean
+    because the file is gitignored.
+
+    Now the default DIES with the exact rm, and --rm-runtime-db is an explicit
+    opt-in that names every file it destroyed ON STDERR before destroying it.
+    A deletion nobody can prove happened is indistinguishable from one that did
+    not, which is the same argument --no-gate's banner rests on.
+    """
+    hits = []
+    for pat in RUNTIME_DB_GLOBS:
+        hits += glob.glob(os.path.join(work, pat))
+    if not hits:
+        return
+    rels = [os.path.relpath(h, work) for h in hits]
+    if auto_rm:
+        _banner = ("!!! --rm-runtime-db: DELETING RUNTIME DATABASE(S) FROM THE "
+                   "WORK TREE !!!")
+        print("\n" + "!" * len(_banner), file=sys.stderr)
+        print(_banner, file=sys.stderr)
+        for _r in rels:
+            print(f"!!!   {os.path.join(work, _r)}", file=sys.stderr)
+        print("!" * len(_banner) + "\n", file=sys.stderr)
+        for h in hits:
+            os.remove(h)
+        print(f"  {Y}removed runtime DB(s){RST} from tree: {', '.join(rels)}")
+        return
+    die("runtime DB artifact(s) in work tree would trip the diff-gate (NO-CUT): "
+        f"{', '.join(rels)}\n"
+        f"      clear them first:  rm {' '.join('/'.join([work, r]) for r in rels)}\n"
+        f"      (or re-run swarm-cut with --rm-runtime-db, which DELETES them --\n"
+        f"       on a host where the service runs from this checkout, "
+        f"downloader_history.db is the LIVE database)")
+
+
+def build_release(work, out, baseline):
+    step(5, "derive --approved-frontend")
+    approved = approved_frontend(work, baseline)
+    for p in approved:
+        print(f"  approve: {p}")
+    step(6, "build_release --skip-tests")
+    cmd = [python_for(work), "tools/build_release.py", "--out", out, "--skip-tests"]
+    if baseline:
+        cmd += ["--baseline", baseline]
+    if approved:
+        cmd += ["--approved-frontend", *approved]
+    r = run(cmd, cwd=work, timeout=900)
+    print(r.stdout[-1500:])
+    # Tier-2 (702), footgun #16: build_release's STDERR was swallowed -- only stdout
+    # was printed, so "build_release failed (see above)" could show NOTHING useful
+    # and the real traceback was lost. On failure, surface stderr too.
+    if r.returncode != 0:
+        err = (r.stderr or "").rstrip()
+        if err:
+            print("\n--- build_release STDERR (was previously swallowed) ---")
+            print(err[-3000:])
+        die("build_release failed rc=%d (stdout+stderr above)" % r.returncode)
+    if VERBOSE and (r.stderr or "").strip():
+        print("--- build_release stderr (non-fatal) ---")
+        print(r.stderr[-1500:])
+    # locate the produced zip
+    zips = [f for f in os.listdir(out) if re.match(r"${TARGET_REPO_PATH}_v.*\.zip$", f)]
+    if not zips:
+        die("no release zip produced")
+    return os.path.join(out, sorted(zips)[-1])
+
+
+def _tree_vs_zip_source_hash(work, zippath):
+    """The single sha of every bulk_downloader/ + tests/ .py in a tree, so the WORK
+    TREE and the BUILT ZIP can be compared for SOURCE equality. Byte content only --
+    never mtime."""
+    import hashlib as _h
+
+    def _sig(root_open, names):
+        h = _h.sha256()
+        for name in sorted(names):
+            h.update(name.encode())
+            h.update(b"\0")
+            h.update(root_open(name))
+        return h.hexdigest()
+
+    # work tree
+    wt_names, wt = [], {}
+    for base in ("bulk_downloader", "tests"):
+        d = os.path.join(work, base)
+        for dp, _, fns in os.walk(d):
+            if "__pycache__" in dp:
+                continue
+            for f in fns:
+                if f.endswith(".py"):
+                    rel = os.path.relpath(os.path.join(dp, f), work)
+                    wt_names.append(rel)
+                    wt[rel] = open(os.path.join(dp, f), "rb").read()
+    with zipfile.ZipFile(zippath) as zf:
+        zp_names = [n for n in zf.namelist()
+                    if (n.startswith("bulk_downloader/") or n.startswith("tests/"))
+                    and n.endswith(".py")]
+        zp = {n: zf.read(n) for n in zp_names}
+    return (_sig(lambda n: wt[n], wt_names),
+            _sig(lambda n: zp[n], zp_names),
+            sorted(set(wt_names) ^ set(zp.keys())))
+
+
+def band(zippath, suites, work, extracted=None):
+    step(7, "extract built zip to a pristine dir")
+    # Decided FIRST: the stale-zip handler below branches on it.
+    _preextracted = extracted is not None
+    # STALE-ZIP GATE (702->703 lesson): the band runs from the ZIP, which is correct
+    # -- but --resume/--resume-zip can hand it a zip built BEFORE the current edits, so
+    # the band tests OLD code and reports GREEN while the tree has the fix. That is a
+    # false-GREEN hole in the release path (it silently banded a stale 703 zip this
+    # session). Assert the zip's SOURCE matches the work tree before trusting the band.
+    try:
+        wt_sig, zp_sig, diff = _tree_vs_zip_source_hash(work, zippath)
+        if wt_sig != zp_sig:
+            print(f"  {R}STALE ZIP -- the built zip's source does NOT match the work tree.{RST}")
+            print(f"  The band would test the ZIP's (older) code, not your edits -> a")
+            print(f"  false GREEN. {len(diff)} file(s) differ or are missing on one side.")
+            for f in diff[:8]:
+                print(f"    ~ {f}")
+            die("stale zip -- rebuild (delete the zip; do NOT --resume onto a stale artifact)")
+        print(f"  {G}zip source == work tree{RST} (content-hash match)")
+    except SystemExit:
+        raise
+    except Exception as e:
+        # FAIL CLOSED when the subject came from an archive (v3.66.1148). A
+        # "skipped" stale-zip check converts UNKNOWN into continuation, which is
+        # the same defect as step 0's old exit-2-is-a-pass. On a plain build the
+        # work tree IS the subject and the check is advisory, so it stays a note.
+        if _preextracted:
+            raise RuntimeError(
+                f"stale-zip check could not evaluate ({type(e).__name__}: {e}) "
+                "-- refusing rather than banding an unverified archive")
+        print(f"  {Y}(stale-zip check skipped: {e}){RST}")
+    # SINGLE EXTRACTION (v3.66.1147). When the caller has already extracted and
+    # ATTESTED the archive, band runs against that exact directory -- the same
+    # object step 0 certified. Extracting a second copy here would recreate the
+    # certify-one-tree-test-another split this cut exists to remove.
+    d = extracted if _preextracted else _owned_tempdir("bdcut_verify_")
+    with zipfile.ZipFile(zippath) as zf:
+        if not _preextracted:
+            zf.extractall(d)
+    print(f"  extracted -> {d}")
+    # PRE-FLIGHT: a --suites entry that doesn't exist in the extracted zip is a
+    # stale/typo'd suite name. Left unchecked, run_tests.py falls back to a broad
+    # run -> '(no summary)' + a multi-minute timeout that ABORTS the cut for a
+    # non-source reason (the test_spa_wired_join_is_faithful ghost, 513). Drop &
+    # warn loudly so the band runs the real suites and fails fast on a bad name.
+    present, missing = [], []
+    for s in suites:
+        (present if os.path.isfile(os.path.join(d, s)) else missing).append(s)
+    for s in missing:
+        print(f"  {Y}SKIP (not in zip -- stale suite name?): {s}{RST}")
+    if not present:
+        die("no band suites present in the zip -- NO-CUT (check --suites names)")
+    # rev-797: SUBPROCESS-PER-FILE band when the zip's runner supports
+    # `--isolate` (run_tests.py >= v3.66.797). This matches stash's
+    # `--workers` file-per-process execution model, so cross-file state leaks
+    # (env / sys.modules globals / SWARM_HOME collisions) structurally cannot
+    # happen and the band is an ABSOLUTE signal -- no more differential
+    # "same failure names as baseline" reads. Support is detected FROM THE
+    # EXTRACTED ZIP (never the work tree): an older zip's runner would treat
+    # the unknown flag as a file path and silently run single-boot while this
+    # tool claimed isolation -- a band asserting a model it is not using. If
+    # unsupported, degrade to single-boot LOUDLY so the operator knows the
+    # result must be read differentially.
+    _runner_src = ""
+    try:
+        with open(os.path.join(d, "run_tests_core.py"), encoding="utf-8") as fh:
+            _runner_src = fh.read()
+    except OSError:
+        pass
+    _iso_ok = '"--isolate"' in _runner_src
+    if _iso_ok:
+        step(8, f"band from extracted zip ({len(present)} suite(s), "
+                f"subprocess-per-file)")
+        _band_args = [*present, "--isolate"]
+        # Per-file interpreter boot replaces the single shared boot; the
+        # runner's own _FILE_TIMEOUT_S bounds any one file, this bounds the sum.
+        _band_timeout = 120 + 45 * len(present)
+    else:
+        step(8, f"band from extracted zip ({len(present)} suite(s), "
+                f"single boot)")
+        print(f"  {Y}WARN: zip's run_tests.py predates --isolate -- "
+              f"SINGLE-BOOT band. Cross-file leaks are possible; read the "
+              f"result DIFFERENTIALLY against the previous release.{RST}")
+        _band_args = list(present)
+        _band_timeout = 90 + 25 * len(present)
+    # v3.66.855 port: the band env used to CLOBBER PYTHONPATH with the retired
+    # prestaged site-packages and PIN PLAYWRIGHT_BROWSERS_PATH to a sandbox cache.
+    # Both are gone. PYTHONPATH is no longer set at all (the extracted zip's own
+    # root is cwd, and python_for(work) supplies the deps); PLAYWRIGHT_BROWSERS_PATH
+    # is INHERITED from os.environ -- hardcoding it pointed the band at a browser
+    # pool that does not exist, and CLAUDE.md s5 warns that two pools with different
+    # chromium revisions is already a live confounder. Absent in the environment ==
+    # playwright's own default, which is the correct fallback.
+    env = dict(os.environ)
+    env.pop("SWARM_INSTALL_DIR", None)
+    env.update(SWARM_HOME=_owned_tempdir("bdcut_bdhome_"), SWARM_DISABLE_KEEPALIVE="1")
+    # The band runs the EXTRACTED ZIP's tests, but under the WORK TREE's interpreter:
+    # the zip carries no venv, and bare python3 has no deps -- the band would collapse
+    # into import errors that read as source failures.
+    r = run([python_for(work), "run_tests.py", *_band_args], cwd=d, env=env,
+            timeout=_band_timeout)
+    out = r.stdout + r.stderr
+    # Echo per-suite headers, the final total, and every FAIL line for triage.
+    for ln in out.splitlines():
+        st = ln.strip()
+        if st.startswith("--- ") or st.startswith("FAIL") or "Total:" in st:
+            print("  " + st)
+    summary = next((l for l in reversed(out.splitlines()) if "Total:" in l), "")
+    if r.returncode != 0 or "Failed: 0" not in summary:
+        die("band has failures -- NO-CUT")
+    print(f"  {G}band OK{RST} ({len(present)} suite(s), "
+          f"{'subprocess-per-file' if _iso_ok else 'one boot'})")
+    return d
+
+
+def verify(work, zippath, pass_fds=()):
+    step(9, "verify_release --zip (gate on true $?)")
+    # pass_fds carries the snapshot's descriptor into the child, so a
+    # /proc/self/fd/N zippath resolves there to the same inode this process
+    # holds -- the subprocess consumer is bound like the in-process ones
+    # rather than trusting a name for the length of a 300s verify.
+    r = run([python_for(work), "tools/verify_release.py", "--zip", zippath],
+            cwd=work, timeout=300, pass_fds=pass_fds)
+    print(r.stdout[-900:])
+    if r.returncode != 0:
+        die(f"verify_release exit {r.returncode} -- NO-CUT")
+    print("  verify_release exit 0")
+
+
+def max_summary(zippath, baseline):
+    step(10, "MAX-style summary")
+    with zipfile.ZipFile(zippath) as zf:
+        names = set(zf.namelist())
+        print("  guard SHAs:")
+        for g in GUARDS:
+            h = sha(zf.read(g))[:8] if g in names else "MISSING"
+            print(f"    {h}  {g}")
+        forbidden = [n for n in names if "__pycache__" in n or n.endswith((".pyc", ".db", ".log"))]
+        print(f"  namelist: {'clean' if not forbidden else R+str(len(forbidden))+' forbidden!'+RST} "
+              f"({len(names)} entries)")
+        if baseline:
+            with zipfile.ZipFile(baseline) as bz:
+                bn = set(bz.namelist())
+            added = sorted(names - bn)
+            removed = sorted(bn - names)
+            print(f"  change surface vs baseline: +{len(added)} -{len(removed)} files")
+            for a in added:   print(f"    {G}+{RST} {a}")
+            for rm in removed: print(f"    {R}-{RST} {rm}")
+    print(f"\n  {Y}Review the surface above, then make the CUT/NO-CUT call. "
+          f"swarm-cut never deploys.{RST}")
+
+
+
+def plan(work, version):
+    """--plan (702): what does THIS cut actually need? Answered BEFORE the bump,
+    from the diff -- never from memory.
+
+    I assembled this by hand for 701 and 702 and STILL missed the count-coupled
+    suites at 702 (the cut went RED on stash). Every input now exists as a tool, so
+    the cut can just ask them:
+
+      swarm-band-derive  -> the exact suites this diff must band (incl. count-coupling)
+      swarm-footguns     -> which lessons are armed and whether any is already violated
+      swarm-ratchet      -> would this cut REGRESS a pinned metric (and thus block)?
+      swarm-bump         -> every version pin site that will move
+      swarm-decomp       -> if the diff touches the monolith, the extraction's gates
+
+    It writes nothing. It is the checklist the operator otherwise reconstructs from
+    memory, which is exactly where the misses come from."""
+    import json
+    here = os.path.dirname(os.path.realpath(__file__))
+
+    def _t(name, args, timeout=300):
+        exe = os.path.join(here, name)
+        if not os.path.isfile(exe):
+            return None
+        try:
+            return subprocess.run([sys.executable, exe, *args], cwd=work,
+                                  capture_output=True, text=True, timeout=timeout)
+        except Exception:  # why: sub-tool crashed/timed out; None = inconclusive to the caller, not success
+            return None
+
+    print(f"{C}swarm-cut --plan{RST}  (nothing is written; this is the checklist)\n")
+
+    # v3.66.789: consume --json, not --emit. The band line alone is exactly the
+    # plan that missed the 302/729 regen obligations at 789 -- the flags ARE part
+    # of the plan.
+    r = _t("swarm-band-derive", ["--work", work, "--json"])
+    band, rflags = "(no band derived)", []
+    if r and r.stdout.strip():
+        try:
+            j = json.loads(r.stdout)
+            band = j.get("band_cmd") or band
+            rflags = j.get("regen_flags") or []
+        except ValueError:
+            band = r.stdout.strip().splitlines()[-1]
+    print(f"{Y}1. BAND -- the suites this diff must run{RST}")
+    print(f"   {band}\n")
+    if rflags:
+        print(f"{Y}1b. REGEN / GATE OBLIGATIONS (from the same diff){RST}")
+        for fl in rflags:
+            print(f"   - {fl}")
+        print("   (run plain `swarm-band-derive` for each flag's full action line)\n")
+
+    r = _t("swarm-footguns", ["--check", "--tree", work], timeout=600)
+    if r:
+        viol = [l for l in r.stdout.splitlines() if "VIOLATION" in l]
+        armed = len([l for l in r.stdout.splitlines() if "[PASS" in l])
+        print(f"{Y}2. FOOTGUNS -- {armed} armed{RST}")
+        for l in viol:
+            print(f"   {R}{l.strip()}{RST}")
+        print("   " + ("all pass" if not viol else
+                       f"{R}{len(viol)} ALREADY VIOLATED -- fix before cutting{RST}") + "\n")
+
+    r = _t("swarm-ratchet", ["--check", "--tree", work], timeout=300)
+    if r:
+        bad = [l for l in r.stdout.splitlines() if "REGRESSED" in l]
+        print(f"{Y}3. RATCHETS -- would this cut be blocked?{RST}")
+        for l in bad:
+            print(f"   {R}{l.strip()}{RST}")
+        print("   " + ("no metric regressed" if not bad else
+                       f"{R}BLOCKED: a metric regressed{RST}") + "\n")
+
+    if version:
+        r = _t("swarm-bump", [version, "--work", work], timeout=120)
+        if r and r.stdout:
+            print(f"{Y}4. VERSION PINS that will move -> {version}{RST}")
+            for l in r.stdout.splitlines():
+                if l.strip().startswith("-"):
+                    print("   " + l.strip())
+            print()
+
+    print(f"{Y}5. RUN{RST}")
+    print(f"   swarm-precut --gate && swarm-cut --version {version or '<N>'} "
+          f"--changelog <file> --suites <the band above>")
+    return 0
+
+
+_TEMPDIRS = []
+
+
+def _owned_tempdir(prefix, directory=None):
+    """Every temporary directory this tool creates goes through here.
+
+    CLAUDE.md section 0: creating a path is a promise to remove it, and nothing
+    gates that promise. Before v3.66.1148 swarm-cut leaked THREE families -- the
+    band's bdcut_verify_*, the SWARM_HOME it hands the band (default /tmp/tmp*
+    prefix, so a bdcut_* sweep could not even see it), and the step-0 subject.
+    Registration here is what makes main()'s finally able to remove them all.
+    """
+    d = tempfile.mkdtemp(prefix=prefix, dir=directory)
+    _TEMPDIRS.append(d)
+    try:
+        fd = os.open(d, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except OSError:
+        return d                  # unidentifiable: cleanup will REFUSE it
+    _TEMPDIR_FD[d] = fd
+    # THE IDENTITY COMES FROM THE DESCRIPTOR WE KEEP, not from a separate
+    # lstat of the same name. Two lookups of one path are two chances to be
+    # told about different objects, and the fd is the thing the removal will
+    # actually act through.
+    _st = os.fstat(fd)
+    _TEMPDIR_IDENT[d] = (_st.st_dev, _st.st_ino)
+    return d
+
+
+# Why a map and not a return value: _discard_tempdir answers a yes/no question
+# and every caller branches on that, but the ERRNO is what tells an operator
+# whether they are looking at "Directory not empty" (a stray process still
+# writing) or "Permission denied" (a mode problem). v3.66.1150's first
+# implementation dropped it and main() printed a bare "not removed", which is
+# CLAUDE.md section 0's "say so" honoured in form only -- and that exact
+# distinction is what parked test4's service in the v3.66.1035 deploy failure.
+# swarm-cut answers 1 for every die() and 3 for every step-0 refusal, so a cleanup
+# failure needs a code of its own -- a test asserting merely "nonzero" passes
+# when any other guard fires (CLAUDE.md section 10: four mutants escaped that
+# way in swarm-jobs and swarm-ab).
+EXIT_CLEANUP_FAILED = 4
+
+_LAST_DISCARD_ERROR = {}
+
+# Descriptors held open so a consumer is bound to an inode rather than to a
+# directory entry (v3.66.1151). main()'s finally closes them; an fd held for
+# the life of the process is a leak with a different name.
+_OPEN_FDS = []
+
+# (st_dev, st_ino) of every directory _owned_tempdir created, so cleanup can
+# tell OUR directory from a stranger's that now sits at the same path. The
+# PATH is precisely the thing that stopped being trustworthy: after a
+# rename+recreate the recorded name holds someone else's directory, and
+# v3.66.1150 deleted THAT while the real sealed snapshot leaked under its new
+# name with nothing reporting it.
+_TEMPDIR_IDENT = {}
+
+# A DESCRIPTOR HELD FROM CREATION, one per owned directory (v3.66.1154). It is
+# what makes the removal answerable about the OBJECT: `st_nlink == 0` on this
+# fd says our directory was unlinked, where `lexists(path)` only ever said
+# something about a name. Measured at 63be0464, both directions wrong at once:
+# a tree RENAMED AWAY reported success (nothing at the name), and a correct
+# removal whose freed name an unrelated object reused reported failure.
+# Closed in _reap, after the discards -- unlike _OPEN_FDS, which is closed
+# first because it serves the snapshot rather than ownership.
+_TEMPDIR_FD = {}
+
+
+def _forget_tempdir(d):
+    """Drop every record, closing only a descriptor still bound to our inode."""
+    if d in _TEMPDIRS:
+        _TEMPDIRS.remove(d)
+    ident = _TEMPDIR_IDENT.pop(d, None)
+    fd = _TEMPDIR_FD.pop(d, None)
+    if fd is not None:
+        try:
+            st = os.fstat(fd)
+        except OSError:
+            return
+        if ident is not None and (st.st_dev, st.st_ino) == ident:
+            os.close(fd)
+
+
+def _where(fd):
+    """Where the object behind `fd` lives NOW -- so a rename-away is
+    recoverable rather than merely reported."""
+    try:
+        return os.readlink("/proc/self/fd/%d" % fd)
+    except OSError:
+        return "its new location could not be read"
+
+
+# ---------------------------------------------------------------------------
+# DESTRUCTIVE PRIMITIVES (v3.66.1154). THREE NEAR-IDENTICAL COPIES OF THIS
+# BLOCK EXIST -- here, in tests/_tmproot.py and in toolchain/bin/swarm-footguns --
+# because _tmproot may import nothing from the repo and the swarm-* tools are
+# standalone scripts. tests/test_v3_66_1154_the_object_not_the_name.py runs ONE
+# behavioural matrix against ALL THREE, so a drift between the copies is red
+# rather than a fourth implementation nobody compares.
+# ---------------------------------------------------------------------------
+
+# Refusal CODES. CLAUDE.md section 10: when every refusal shares an exit code
+# or a vague phrase, a test asserting "it refused" passes whichever guard
+# fired, and four swarm-jobs mutants escaped exactly that way. These name WHICH.
+R_RENAMED = "[renamed-away]"
+R_FOREIGN = "[foreign-object]"
+R_UNPROVEN = "[not-proven]"
+R_NO_IDENT = "[no-identity]"
+R_TOO_DEEP = "[too-deep]"
+
+_RENAME_NOREPLACE = 1 << 0
+_SYS_renameat2 = {"x86_64": 316, "aarch64": 276}.get(platform.machine())
+try:
+    _LIBC = ctypes.CDLL(None, use_errno=True)
+    _LIBC.syscall.restype = ctypes.c_long
+except OSError:                                    # no libc: fall back below
+    _LIBC = None
+
+
+class _Refused(Exception):
+    """A removal that must not proceed.
+
+    DELIBERATELY NOT AN OSError. The OSError handlers around the walk exist to
+    convert KERNEL failures into refusals; a refusal raised by our own identity
+    logic must not be caught by them and re-described as an errno.
+    """
+
+    def __init__(self, code, detail):
+        super().__init__("%s %s" % (code, detail))
+        self.code, self.detail = code, detail
+
+    @property
+    def reason(self):
+        return "%s %s" % (self.code, self.detail)
+
+
+def _rename_noclobber(old, new, dir_fd, allow_fallback=True):
+    """Rename inside `dir_fd`, REFUSING to replace an existing `new`.
+
+    `os.rename` replaces silently, and one caller of this is the path where a
+    FOREIGN object has to be put back at a name a third party may since have
+    re-created. Measured: a plain rename undo DESTROYS an empty directory
+    standing at the restored name -- the exact act we just refused to perform,
+    reintroduced inside the error handler that exists to be safe.
+
+    `renameat2(RENAME_NOREPLACE)` turns that into EEXIST. It is reached through
+    ctypes because `os` does not expose it; measured working on this kernel for
+    xfs and tmpfs. Where the flag is rejected (ENOSYS on an old kernel, EINVAL
+    or EOPNOTSUPP on a filesystem that does not implement it) the fallback is
+    `os.rename`, and the return value says which ran -- "we guaranteed it" and
+    "we could not guarantee it" must not look the same to a caller.
+    """
+    if _LIBC is not None and _SYS_renameat2 is not None:
+        ctypes.set_errno(0)
+        rc = _LIBC.syscall(ctypes.c_long(_SYS_renameat2),
+                           ctypes.c_int(dir_fd), ctypes.c_char_p(os.fsencode(old)),
+                           ctypes.c_int(dir_fd), ctypes.c_char_p(os.fsencode(new)),
+                           ctypes.c_uint(_RENAME_NOREPLACE))
+        if rc == 0:
+            return True
+        _eno = ctypes.get_errno()
+        if _eno not in (errno.ENOSYS, errno.EINVAL, errno.EOPNOTSUPP):
+            raise OSError(_eno, os.strerror(_eno), old)
+    if not allow_fallback:
+        # THE UNDO MAY NOT FALL BACK. `os.rename` replaces silently, and the
+        # only caller that passes allow_fallback=False is the one restoring a
+        # FOREIGN object to a name a third party may have re-created -- where
+        # replacing is exactly the destruction being refused. The syscall table
+        # here has two architectures in it and any filesystem may answer
+        # EINVAL, so this is reachable, and leaving the object under its
+        # private name with a report is strictly better than destroying
+        # something to tidy up.
+        raise OSError(errno.EOPNOTSUPP,
+                      "kernel no-clobber rename is unavailable on this platform", old)
+    os.rename(old, new, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
+    return False
+
+
+def _private_name(base):
+    """The name the destructive syscall uses instead of the well-known one.
+
+    KEEPS THE CALLER'S OWN PREFIX. A run killed between the rename and the
+    removal leaves this on disk, and a dot-prefixed random name would be
+    invisible to the `bdcut_*`, `bdfg_sbx_*` and `swarm-testrun-*` sweeps this
+    project's whole leak accounting is built on -- turning a recognisable leak
+    into an unrecognisable one, in the cut whose subject is leaks.
+
+    TRUNCATED IN BYTES, NOT CHARACTERS (v3.66.1154, found by adversarial
+    review). NAME_MAX is 255 BYTES; a character slice let 117 two-byte UTF-8
+    characters (234 bytes) plus the 22-byte suffix reach 256, so the rename
+    got ENAMETOOLONG and the remover REFUSED a removal it had to perform --
+    a green pytest run turned red and leaked its whole per-run root, on a
+    filename any program is free to create. Over-sensitivity is a soundness
+    bug (CLAUDE.md section 0), and this one was a regression against the
+    version it replaced.
+
+    A byte slice can split a multi-byte sequence; `os.fsdecode` keeps the
+    stray bytes as surrogates and `os.fsencode` puts them back unchanged, so
+    the name round-trips to the same bytes the kernel sees. Two long names can
+    therefore truncate to the same prefix -- which is why the 64 random bits
+    are appended AFTER the truncation, and why every rename that uses this
+    name refuses to clobber rather than replacing.
+    """
+    suffix = ".bdrm-%s" % os.urandom(8).hex()
+    raw = os.fsencode(base)[:255 - len(suffix)]
+    return os.fsdecode(raw) + suffix
+
+
+def _put_back(priv, name, fd):
+    """Compatibility diagnostic; automatic pathname put-back is forbidden."""
+    return (" -- automatic put-back is unsafe and was not attempted; the "
+            "private entry %r was left untouched" % priv)
+
+
+def _add_note(error, note):
+    add = getattr(error, "add_note", None)
+    if add is not None: add(note)
+
+
+def _recover_private(priv, name, fd, error, expected=None, held=None, extra=""):
+    """Report failed private-name work without a racy pathname put-back."""
+    controls = (KeyboardInterrupt, SystemExit, MemoryError)
+    propagating = error if isinstance(error, controls) else None
+    if getattr(error, "__notes__", None): extra += " -- " + " -- ".join(error.__notes__)
+    location = "unavailable"; held_path = parent_path = None
+    if held is not None:
+        try:
+            hst = os.fstat(held); held_ident = (hst.st_dev, hst.st_ino)
+            if expected is None: expected = held_ident
+            elif held_ident != expected: extra += " -- held descriptor identity %r does not match expected %r" % (held_ident, expected)
+            else:
+                held_path = os.readlink("/proc/self/fd/%d" % held); parent_path = os.readlink("/proc/self/fd/%d" % fd); location = repr(held_path)
+        except BaseException as e:
+            extra += " -- held identity/location unavailable (%s: %s)" % (type(e).__name__, e)
+            if propagating is None and isinstance(e, controls): propagating = e
+    try: pst = os.stat(priv, dir_fd=fd, follow_symlinks=False)
+    except BaseException as e:
+        diagnostic = " -- expected owned identity %r; private identity could not be verified (%s); owned object location is %s" % (expected, e, location)
+        if propagating is None and isinstance(e, controls): propagating = e
+    else:
+        diagnostic = (" -- expected owned identity %r; verified owned object remains at private name %r" % (expected, priv) if expected is not None and (pst.st_dev, pst.st_ino) == expected else " -- expected owned identity %r; private name %r is a foreign identity; it was left untouched; owned object location is %s" % (expected, priv, location))
+    if propagating is not None:
+        try:
+            if propagating is not error: _add_note(propagating, "primary cleanup failure (%s: %s)" % (type(error).__name__, error))
+            _add_note(propagating, "private-name recovery: %s%s" % (diagnostic.lstrip(), extra))
+        except BaseException:
+            if isinstance(error, controls): raise error
+            raise
+        raise propagating
+    code = error.code if isinstance(error, _Refused) else R_UNPROVEN
+    detail = error.detail if isinstance(error, _Refused) else "%s: %s" % (type(error).__name__, error)
+    raise _Refused(code, "%s%s%s" % (detail, diagnostic, extra)) from error
+
+
+def _walk_failed(e):
+    """A walk that could not finish is INCOMPLETE, not finished-and-clean.
+
+    The reason names the exception TYPE deliberately: a broad `except
+    Exception` fails closed, which is right, but it also converts a genuine
+    remover bug (TypeError, AttributeError) into something that reads like
+    routine leakage. Naming the type is what keeps the two distinguishable.
+
+    RecursionError is the measured case at depth ~1400, and on a host with a
+    small RLIMIT_NOFILE the same walk dies of EMFILE first, so this must not be
+    narrowed to RecursionError alone.
+    """
+    return ("%s the tree could not be walked to completion (%s: %s) -- the "
+            "removal is INCOMPLETE and what remains is unknown"
+            % (R_TOO_DEEP, type(e).__name__, e))
+
+
+def _max_walk_depth():
+    """How deep this walk may go before it refuses.
+
+    NOT a taste question: at the interpreter's own recursion limit the
+    UNWINDING calls fail too, so the handler that puts a foreign object back
+    under its real name cannot run and the tree is left holding a private
+    `.bdrm-*` name -- measured by review at depth 497 in all three removers,
+    with `_put_back`'s own comment promising it could not happen. Refusing
+    early leaves the stack the recovery needs.
+    """
+    return max(50, (sys.getrecursionlimit() - 100) // 3)
+
+
+def _rmtree_fd_legacy_disabled(fd, dev, depth=0):
+    """Delete everything UNDER an open directory descriptor.
+
+    READ ONCE, THEN ACT. Renaming entries while a readdir cursor is open is
+    unspecified, and it is not theoretical here: measured on this host's XFS,
+    renaming during the walk re-yielded 38 of 5000 entries under their new
+    names. `list()` completes the readdir before anything moves. Anything
+    created after that listing is not ours; the terminal rmdir will refuse with
+    ENOTEMPTY and that is REPORTED rather than swallowed.
+
+    EVERY ENTRY IS BOUND TO THE INODE THE READDIR REPORTED, and the destructive
+    syscall never names it. The entry is first renamed to a private name that
+    cannot clobber, then identified, and only then removed -- so an adversary
+    who swaps the well-known name is detected after the no-clobber private
+    rename and cleanup refuses without further pathname mutation. Linux has
+    no inode-bound unlinkat: substitution after the final private-name identity
+    check remains a terminal namespace race, and the held descriptor proves
+    only whether our inode reached its required postcondition.
+
+    v3.66.1153 opened every child BY NAME with nothing carried from the entry
+    it had just read, so a directory renamed onto a child pathname mid-walk was
+    entered and recursively emptied -- measured, victim inode nlink 0.
+    """
+    raise RuntimeError("superseded unsafe remover must not be called")
+    if depth > _max_walk_depth():
+        raise _Refused(R_TOO_DEEP,
+                       "the tree is deeper than this walk may safely recurse "
+                       "(%d levels); refusing while there is still stack to "
+                       "undo with" % depth)
+    for entry in list(os.scandir(fd)):
+        want = (dev, entry.inode())
+        priv = _private_name(entry.name)
+        try:
+            _rename_noclobber(entry.name, priv, fd)
+        except FileNotFoundError:
+            continue          # listed, then vanished: not ours to account for
+        try:
+            st = os.stat(priv, dir_fd=fd, follow_symlinks=False)
+        except BaseException as e:
+            anchor = None
+            try: anchor = os.open(priv, os.O_PATH | os.O_NOFOLLOW, dir_fd=fd)
+            except OSError: pass
+            try: _recover_private(priv, entry.name, fd, e, want, anchor)
+            finally:
+                if anchor is not None: os.close(anchor)
+        if (st.st_dev, st.st_ino) != want:
+            raise _Refused(R_FOREIGN,
+                           "%r is not the object this walk listed there%s"
+                           % (entry.name, _put_back(priv, entry.name, fd)))
+        if not stat.S_ISDIR(st.st_mode):
+            anchor = os.open(priv, os.O_PATH | os.O_NOFOLLOW, dir_fd=fd)
+            try: os.unlink(priv, dir_fd=fd)
+            except BaseException as e: _recover_private(priv, entry.name, fd, e, want, anchor)
+            finally: os.close(anchor)
+            continue
+        anchor = child = None
+        relaxed = False
+        try:
+            anchor = os.open(priv, os.O_PATH | os.O_DIRECTORY | os.O_NOFOLLOW,
+                             dir_fd=fd)
+            ast = os.fstat(anchor)
+            if (ast.st_dev, ast.st_ino) != want:
+                raise _Refused(R_FOREIGN,
+                               "%r changed identity between the rename and "
+                               "the anchor" % entry.name)
+            was = stat.S_IMODE(ast.st_mode)
+            bound = "/proc/self/fd/%d" % anchor
+            try:
+                child = os.open(bound, os.O_RDONLY | os.O_DIRECTORY)
+            except PermissionError:
+                relaxed = True
+                os.chmod(bound, 0o700)
+                child = os.open(bound, os.O_RDONLY | os.O_DIRECTORY)
+            cst = os.fstat(child)
+            if (cst.st_dev, cst.st_ino) != want:
+                raise _Refused(R_FOREIGN,
+                               "%r changed identity between the anchor and "
+                               "the readable descriptor" % entry.name)
+        except BaseException as e:
+            if relaxed and anchor is not None:
+                try:
+                    os.chmod("/proc/self/fd/%d" % anchor, was)
+                except OSError:
+                    pass
+            notes = ""
+            for close_fd in (child, anchor):
+                if close_fd is not None:
+                    try: os.close(close_fd)
+                    except OSError as ce: notes += " -- close failed (%s)" % ce
+            _recover_private(priv, entry.name, fd, e, want, child or anchor, notes)
+        try: os.close(anchor)
+        except BaseException as e:
+            notes = ""
+            try: os.close(child)
+            except OSError as ce: notes = " -- readable close failed (%s)" % ce
+            _recover_private(priv, entry.name, fd, e, want, child, notes)
+        try:
+            try:
+                try:
+                    _rmtree_fd(child, cst.st_dev, depth + 1)
+                except PermissionError:
+                    os.fchmod(child, 0o700)
+                    relaxed = True
+                    _rmtree_fd(child, cst.st_dev, depth + 1)
+                # INSIDE THE DESCRIPTOR'S LIFETIME. Until v3.66.1154 this rmdir
+                # sat after `finally: os.close(child)`, so when it failed there
+                # was no descriptor left to reseal through and the child stayed
+                # at 0o700 -- a directory reported as leaked, left less
+                # protected than it was found, on every path.
+                os.rmdir(priv, dir_fd=fd)
+                if os.fstat(child).st_nlink != 0:
+                    raise _Refused(R_UNPROVEN,
+                                   "the entry removed for %r was not the "
+                                   "object held open" % entry.name)
+            except BaseException as e:
+                restore_note = ""
+                if relaxed:
+                    try:
+                        os.fchmod(child, was)
+                    except OSError as re: restore_note = " -- mode restoration failed (%s)" % re
+                # PUT IT BACK UNDER ITS OWN NAME. The private name exists only
+                # for the duration of the destroy; a failure that leaves it in
+                # place renames a directory inside a tree we are about to
+                # report as leaked, so the report and the disk disagree.
+                _recover_private(priv, entry.name, fd, e, want, child, restore_note)
+        finally:
+            os.close(child)
+
+
+def _rmtree_fd(fd, dev, depth=0):
+    """Remove children through creation-bound descriptors, failing closed."""
+    if depth > _max_walk_depth():
+        raise _Refused(R_TOO_DEEP, "the tree is deeper than this walk may safely recurse")
+    for entry in list(os.scandir(fd)):
+        want = (dev, entry.inode())
+        priv = _private_name(entry.name)
+        anchor = child = None
+        relaxed, was = False, None
+
+        def close_once(value, label):
+            if value is None: return "", None
+            try:
+                os.close(value); return "", None
+            except BaseException as error:
+                return (" -- %s close failed; descriptor state is unknown (%s: %s)" %
+                        (label, type(error).__name__, error)), error
+
+        def held_location(value):
+            if value is None: return ""
+            try:
+                hst = os.fstat(value); got = (hst.st_dev, hst.st_ino)
+                if got != want:
+                    return " -- held identity %r does not match expected %r" % (got, want)
+                return " -- held owned object location is %r" % os.readlink("/proc/self/fd/%d" % value)
+            except OSError as error:
+                return " -- held owned-object location unavailable (%s)" % error
+
+        def close_then_raise(primary, value, label):
+            note, close_error = close_once(value, label)
+            if close_error is not None:
+                if isinstance(primary, (KeyboardInterrupt, SystemExit, MemoryError)):
+                    _add_note(primary, note.strip()); raise primary
+                if isinstance(close_error, (KeyboardInterrupt, SystemExit, MemoryError)):
+                    _add_note(close_error, "primary cleanup failure (%s: %s)" % (type(primary).__name__, primary)); raise close_error
+                if isinstance(primary, Exception): raise _Refused(R_UNPROVEN, "%s: %s%s" % (type(primary).__name__, primary, note)) from primary
+                _add_note(primary, note.strip())
+            raise primary
+
+        def abort(primary):
+            nonlocal anchor, child
+            notes = held_location(child if child is not None else anchor)
+            propagating = (primary if isinstance(
+                primary, (KeyboardInterrupt, SystemExit, MemoryError)) else None)
+            if relaxed:
+                restore_fd = child if child is not None else anchor
+                try:
+                    if child is not None: os.fchmod(child, was)
+                    elif anchor is not None: os.chmod("/proc/self/fd/%d" % anchor, was)
+                    if stat.S_IMODE(os.fstat(restore_fd).st_mode) != was:
+                        raise OSError(errno.EIO, "restored mode did not verify")
+                except BaseException as error:
+                    notes += " -- mode restoration failed (%s: %s)" % (type(error).__name__, error)
+                    if (propagating is None and isinstance(
+                            error, (KeyboardInterrupt, SystemExit, MemoryError))):
+                        propagating = error
+            value, child = child, None
+            note, close_error = close_once(value, "readable descriptor"); notes += note
+            if (propagating is None and isinstance(
+                    close_error, (KeyboardInterrupt, SystemExit, MemoryError))):
+                propagating = close_error
+            value, anchor = anchor, None
+            note, close_error = close_once(value, "anchor descriptor"); notes += note
+            if (propagating is None and isinstance(
+                    close_error, (KeyboardInterrupt, SystemExit, MemoryError))):
+                propagating = close_error
+            if propagating is not None and propagating is not primary:
+                notes += " -- primary cleanup failure (%s: %s)" % (
+                    type(primary).__name__, primary)
+            _recover_private(priv, entry.name, fd,
+                             propagating or primary, want, None, notes)
+
+        try:
+            anchor = os.open(entry.name, os.O_PATH | os.O_NOFOLLOW, dir_fd=fd)
+            ast = os.fstat(anchor)
+            if (ast.st_dev, ast.st_ino) != want:
+                raise _Refused(R_FOREIGN, "%r changed before an ownership anchor was acquired" % entry.name)
+        except FileNotFoundError:
+            continue
+        except BaseException as error:
+            value, anchor = anchor, None; close_then_raise(error, value, "anchor descriptor")
+        try:
+            _rename_noclobber(entry.name, priv, fd)
+        except FileNotFoundError:
+            value, anchor = anchor, None; note, error = close_once(value, "anchor descriptor")
+            if isinstance(error, (KeyboardInterrupt, SystemExit, MemoryError)): raise error
+            if error is not None: raise _Refused(R_UNPROVEN, note.strip()) from error
+            continue
+        except BaseException as error:
+            value, anchor = anchor, None; close_then_raise(error, value, "anchor descriptor")
+        try:
+            pst = os.stat(priv, dir_fd=fd, follow_symlinks=False)
+        except BaseException as error:
+            abort(error)
+        if (pst.st_dev, pst.st_ino) != want:
+            abort(_Refused(R_FOREIGN, "%r is not the object this walk listed there" % entry.name))
+        if not stat.S_ISDIR(ast.st_mode):
+            before_links = ast.st_nlink
+            try:
+                os.unlink(priv, dir_fd=fd); after = os.fstat(anchor)
+                if ((after.st_dev, after.st_ino) != want or
+                        after.st_nlink != before_links - 1):
+                    raise _Refused(R_UNPROVEN, "unlink did not remove the held object")
+            except BaseException as error:
+                abort(error)
+            value, anchor = anchor, None
+            note, error = close_once(value, "anchor descriptor")
+            if isinstance(error, (KeyboardInterrupt, SystemExit, MemoryError)): raise error
+            if error is not None: raise _Refused(R_UNPROVEN, note.strip()) from error
+            continue
+        was = stat.S_IMODE(ast.st_mode); bound = "/proc/self/fd/%d" % anchor
+        try:
+            try: child = os.open(bound, os.O_RDONLY | os.O_DIRECTORY)
+            except PermissionError:
+                relaxed = True; os.chmod(bound, 0o700)
+                child = os.open(bound, os.O_RDONLY | os.O_DIRECTORY)
+            cst = os.fstat(child)
+            if (cst.st_dev, cst.st_ino) != want:
+                raise _Refused(R_FOREIGN, "%r changed before readable acquisition" % entry.name)
+        except BaseException as error:
+            abort(error)
+        value, anchor = anchor, None
+        note, error = close_once(value, "anchor descriptor")
+        if error is not None:
+            _add_note(error, note.strip()); abort(error)
+        try:
+            try: _rmtree_fd(child, cst.st_dev, depth + 1)
+            except PermissionError:
+                relaxed = True; os.fchmod(child, 0o700)
+                _rmtree_fd(child, cst.st_dev, depth + 1)
+            os.rmdir(priv, dir_fd=fd)
+            if os.fstat(child).st_nlink != 0:
+                raise _Refused(R_UNPROVEN, "the entry removed for %r was not the object held open" % entry.name)
+        except BaseException as error:
+            abort(error)
+        value, child = child, None
+        note, error = close_once(value, "readable descriptor")
+        if isinstance(error, (KeyboardInterrupt, SystemExit, MemoryError)): raise error
+        if error is not None: raise _Refused(R_UNPROVEN, note.strip()) from error
+
+
+def _remove_owned_dir(d, ident, held_fd=None):
+    """Remove the directory whose identity is `ident`, or refuse.
+
+    Returns (True, None) or (False, reason). When the caller holds a
+    descriptor from creation it is used directly, so the owned path is never
+    re-resolved at all; only the PARENT is opened, and only because a rename
+    must name a directory to move within.
+
+    THE ONE IRREDUCIBLE STEP, stated rather than hidden: unlinking a directory
+    is `rmdir` of a NAME in its parent -- Linux has no funlinkat, so no call
+    says "remove the inode I am holding". What v3.66.1154 changes is WHICH
+    name: the directory is first renamed to an unguessable private one that
+    cannot clobber an existing entry, identified there, and only then removed.
+    A mismatch observed after the private rename is reported without further
+    mutation. Linux has no inode-bound rmdir: substitution after the final
+    private-name identity check remains a terminal namespace race, and
+    `st_nlink == 0` afterwards proves only that the held owned inode reached its
+    required postcondition, not which inode a pathname syscall targeted.
+
+    That last proof is REPORTING, not containment, and the distinction matters:
+    measured at 63be0464, a third party removing our directory under its new
+    name leaves nlink 0 -- true, and useless -- while our rmdir destroyed
+    someone else's object. Only moving the destructive call off the well-known
+    name closes that.
+    """
+    fd, ours = held_fd, False
+    if fd is None:
+        try:
+            fd = os.open(d, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        except OSError as e:
+            if e.errno in (errno.ELOOP, errno.ENOTDIR):
+                return False, ("%s the path is a symlink or is not a directory "
+                               "-- not the object swarm-cut created here" % R_FOREIGN)
+            if e.errno == errno.ENOENT:
+                return True, None
+            return False, "%s %s" % (R_UNPROVEN, e)
+        ours = True
+    was, relaxed = None, False
+    propagating = None
+
+    def _refuse(reason):
+        if relaxed and was is not None:
+            try:
+                os.fchmod(fd, was)
+                if stat.S_IMODE(os.fstat(fd).st_mode) != was: raise OSError(errno.EIO, "restored mode did not verify")
+            except (KeyboardInterrupt, SystemExit, MemoryError) as restore_error:
+                reason += " -- mode restoration failed (%s: %s)" % (type(restore_error).__name__, restore_error)
+                _add_note(restore_error, reason); raise
+            except Exception as restore_error: reason += " -- mode restoration failed (%s: %s)" % (type(restore_error).__name__, restore_error)
+        return False, reason
+    try:
+        st = os.fstat(fd)
+        if (st.st_dev, st.st_ino) != ident:
+            return False, ("%s the descriptor does not hold the directory "
+                           "recorded at creation" % R_FOREIGN)
+        was, relaxed = stat.S_IMODE(st.st_mode), False
+        try:
+            named = os.lstat(d)
+        except FileNotFoundError:
+            return _refuse("%s the owned directory is at %r, not its recorded "
+                           "name" % (R_RENAMED, _where(fd)))
+        except OSError as error:
+            return _refuse("%s the recorded directory name could not be "
+                           "identified (%s)" % (R_UNPROVEN, error))
+        if (named.st_dev, named.st_ino) != (st.st_dev, st.st_ino):
+            return _refuse("%s the recorded directory name is foreign and was "
+                           "left untouched; the owned directory is at %r"
+                           % (R_FOREIGN, _where(fd)))
+
+        parent_propagating = None
+        try:
+            _rmtree_fd(fd, st.st_dev)
+        except PermissionError:
+            # UNSEAL ONLY AS A RETRY, THROUGH THIS DESCRIPTOR -- never by name,
+            # because os.chmod follows symlinks and only a DIRECTORY is ever
+            # opened here, so an in-tree hard link to an outside file can never
+            # be reached by it.
+            try:
+                relaxed = True
+                os.fchmod(fd, 0o700)
+                _rmtree_fd(fd, st.st_dev)
+            except _Refused as r:
+                return _refuse(r.reason)
+            except OSError as e2:
+                return _refuse("%s %s" % (R_UNPROVEN, e2))
+            except (KeyboardInterrupt, SystemExit, MemoryError) as e2:
+                try:
+                    _, reason = _refuse("%s %s: %s" %
+                                        (R_UNPROVEN, type(e2).__name__, e2))
+                except (KeyboardInterrupt, SystemExit, MemoryError) as restore_error:
+                    if restore_error is not e2:
+                        _add_note(e2, "mode restoration control failure (%s: %s)" %
+                                  (type(restore_error).__name__, restore_error))
+                    reason = "%s %s: %s" % (R_UNPROVEN, type(e2).__name__, e2)
+                _add_note(e2, reason)
+                raise
+            except Exception as e2:
+                return _refuse(_walk_failed(e2))
+        except _Refused as r:
+            return _refuse(r.reason)
+        except OSError as e1:
+            return _refuse("%s %s" % (R_UNPROVEN, e1))
+        except (KeyboardInterrupt, SystemExit, MemoryError) as e1:
+            try:
+                _, reason = _refuse("%s %s: %s" %
+                                    (R_UNPROVEN, type(e1).__name__, e1))
+            except (KeyboardInterrupt, SystemExit, MemoryError) as restore_error:
+                if restore_error is not e1:
+                    _add_note(e1, "mode restoration control failure (%s: %s)" %
+                              (type(restore_error).__name__, restore_error))
+                reason = "%s %s: %s" % (R_UNPROVEN, type(e1).__name__, e1)
+            _add_note(e1, reason)
+            raise
+        except Exception as e1:
+            # NOT BaseException: KeyboardInterrupt must still be able to stop a
+            # reap, and SystemExit must not be swallowed. RecursionError is
+            # converted here at the shallow frame; MemoryError is handled above
+            # and propagated after accounting.
+            return _refuse(_walk_failed(e1))
+
+        parent, name = os.path.dirname(d) or ".", os.path.basename(d)
+        try:
+            pfd = os.open(parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        except OSError as e:
+            return _refuse("%s cannot open the parent directory (%s)"
+                           % (R_UNPROVEN, e))
+        try:
+            priv = _private_name(name)
+            try:
+                named = os.stat(name, dir_fd=pfd, follow_symlinks=False)
+            except OSError as e:
+                return _refuse("%s the recorded directory name could not be "
+                               "revalidated (%s)" % (R_UNPROVEN, e))
+            if (named.st_dev, named.st_ino) != ident:
+                return _refuse("%s the recorded directory name became foreign "
+                               "and was left untouched; the owned directory is "
+                               "at %r" % (R_FOREIGN, _where(fd)))
+            try:
+                _rename_noclobber(name, priv, pfd)
+            except OSError as e:
+                return _refuse("%s %s" % (R_UNPROVEN, e))
+            try:
+                ent = os.stat(priv, dir_fd=pfd, follow_symlinks=False)
+            except BaseException as e:
+                try: _recover_private(priv, name, pfd, e, ident, fd)
+                except (KeyboardInterrupt, SystemExit, MemoryError): raise
+                except Exception as recovered: return _refuse("%s %s" % (R_UNPROVEN, recovered))
+            if (ent.st_dev, ent.st_ino) != ident:
+                return _refuse("%s the private name %r is foreign; it was left "
+                               "untouched and the owned root location is %r"
+                               % (R_FOREIGN, priv, _where(fd)))
+            try:
+                os.rmdir(priv, dir_fd=pfd)
+            except BaseException as e:
+                try: _recover_private(priv, name, pfd, e, ident, fd)
+                except (KeyboardInterrupt, SystemExit, MemoryError): raise
+                except Exception as recovered: return _refuse("%s %s" % (R_UNPROVEN, recovered))
+        except BaseException as escaped:
+            parent_propagating = escaped
+            raise
+        finally:
+            if parent_propagating is not None and relaxed:
+                try:
+                    os.fchmod(fd, was)
+                    if stat.S_IMODE(os.fstat(fd).st_mode) != was: raise OSError(errno.EIO, "restored mode did not verify")
+                except BaseException as restore_error: _add_note(parent_propagating, "mode restoration failed (%s: %s)" % (type(restore_error).__name__, restore_error))
+            try: os.close(pfd)
+            except BaseException as close_error:
+                note = "parent descriptor close failed; state unknown (%s: %s)" % (type(close_error).__name__, close_error)
+                if parent_propagating is not None: _add_note(parent_propagating, note)
+                elif isinstance(close_error, (KeyboardInterrupt, SystemExit, MemoryError)): raise
+                elif isinstance(close_error, Exception): return _refuse("%s %s" % (R_UNPROVEN, note))
+                else: raise
+        if os.fstat(fd).st_nlink != 0:
+            return _refuse("%s the entry removed was not the directory swarm-cut "
+                           "held open" % R_UNPROVEN)
+        return True, None
+    except BaseException as escaped:
+        propagating = escaped
+        raise
+    finally:
+        if ours:
+            try: os.close(fd)
+            except BaseException as close_error:
+                note = "owned descriptor close failed; state unknown (%s: %s)" % (type(close_error).__name__, close_error)
+                if propagating is not None: _add_note(propagating, note)
+                elif isinstance(close_error, (KeyboardInterrupt, SystemExit, MemoryError)): raise
+                elif isinstance(close_error, Exception):
+                    # The close may have succeeded and the number may already
+                    # denote a foreign object. Never restore through it.
+                    relaxed = False
+                    return _refuse("%s %s" % (R_UNPROVEN, note))
+                else: raise
+
+
+def _same_object(path, ident):
+    """True only if `path` is still the exact directory we created there."""
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return False
+    if not stat.S_ISDIR(st.st_mode):
+        return False                       # a symlink or a file is not ours
+    return (st.st_dev, st.st_ino) == ident
+
+
+def _discard_tempdir(d):
+    """Remove a directory we own and say HONESTLY whether it went.
+
+    Returns True only if the path is gone. On failure the directory STAYS
+    registered in _TEMPDIRS, so main()'s finally still reports it.
+
+    v3.66.1149. The three cleanup paths this replaces all called
+    `shutil.rmtree(d, ignore_errors=True)` and then forgot the path --
+    extract_and_attest went further and removed it from _TEMPDIRS *before*
+    knowing whether the removal had worked. So a cleanup that FAILED became a
+    leak nothing could see or report: the flag suppresses the error, and the
+    unregistration destroys the only record that the directory ever existed.
+    CLAUDE.md section 0's rule that a check which cannot verify must SAY SO,
+    applied to teardown rather than to a gate.
+
+    v3.66.1150 fixes two things this function got wrong on its first outing.
+
+    UNSEAL FIRST. snapshot_archive seals its directory so nothing can unlink or
+    replace the snapshot at its pathname; removing it is the one legitimate
+    exception and it is ours to make. Without this, every --resume-zip run
+    ended by reporting its own snapshot as an unremovable leak.
+
+    A RAISED OSError IS NOT A SUCCESSFUL CLEANUP. This used to swallow it and
+    then consult os.path.exists(), so a removal that FAILED but happened to
+    leave nothing behind returned True and unregistered the directory. rmtree
+    is not atomic -- it can delete most of a tree and raise on one entry -- so
+    reading "gone" from a call that reported failure is a conclusion drawn from
+    a measurement that did not happen. Unknown is a third state and it fails.
+    """
+    # NEVER ACT ON A SYMLINK, AND NEVER ON A STRANGER'S DIRECTORY (v3.66.1151).
+    # os.chmod FOLLOWS symlinks, so handing this function a link meant chmod'ing
+    # its target -- anywhere on the filesystem, outside anything we own. And a
+    # recorded path is not proof of ownership: after a rename+recreate it holds
+    # a directory this tool never made.
+    #
+    # v3.66.1154 STOPS ASKING THE PATHNAME ANYTHING AT ALL when a descriptor
+    # was held from creation. Both of the questions below used to be `lexists`,
+    # and both were wrong, in opposite directions:
+    #
+    #   * asked FIRST, "nothing is here" meant success -- so a directory
+    #     RENAMED AWAY, payload intact, was reported clean and unregistered,
+    #     destroying the only record that it exists;
+    #   * asked LAST, "something is here" meant failure -- so a correct removal
+    #     whose freed name an unrelated object happened to reuse was reported
+    #     as a leak, which CLAUDE.md section 0 counts as a soundness bug rather
+    #     than a safe default.
+    #
+    # `st_nlink == 0` on the held descriptor answers both, about OUR inode.
+    # (Valid because the subject is a DIRECTORY: directories cannot be hard
+    # linked -- os.link on one is EPERM -- so there is no second link to
+    # confuse the count. Do not reuse this proof form for a file.)
+    fd = _TEMPDIR_FD.get(d)
+    _ident = _TEMPDIR_IDENT.get(d)
+    if fd is not None:
+        try:
+            _fd_stat = os.fstat(fd)
+        except OSError:
+            _fd_stat = None
+        if (_ident is None or _fd_stat is None or
+                (_fd_stat.st_dev, _fd_stat.st_ino) != _ident):
+            # The number is stale or recycled. It is not ours to close or use;
+            # detach only the bookkeeping and let the safe pathname reopen
+            # below re-establish the real owned directory from its identity.
+            if _TEMPDIR_FD.get(d) == fd:
+                _TEMPDIR_FD.pop(d, None)
+            fd = None
+        else:
+            _gone = _fd_stat.st_nlink == 0
+    if fd is not None:
+        if _gone:
+            _forget_tempdir(d)
+            return True
+        if not os.path.lexists(d):
+            _LAST_DISCARD_ERROR[d] = (
+                "%s the directory swarm-cut created here is still on disk under "
+                "another name (%s); it is unaccounted for and nothing else "
+                "will collect it" % (R_RENAMED, _where(fd)))
+            return False
+    elif not os.path.lexists(d):
+        if _ident is not None:
+            # A RECORDED IDENTITY WITH NO DESCRIPTOR IS UNKNOWN (v3.66.1154). Knowing enough to have owned it and not enough to prove it went are different states, and 'nothing is at the path' cannot tell removal from a rename-away without the descriptor. Reported clean before this -- measured on a hand-registered root, payload intact under its new name. Where NEITHER an identity nor a descriptor was recorded the answer stays success: that is a caller asking about a path this tool never created, and refusing it would fail every already-clean path.
+            _LAST_DISCARD_ERROR[d] = (
+                "%s an identity was recorded for this path but no descriptor, "
+                "so a removal and a rename-away cannot be told apart"
+                % R_RENAMED)
+            return False
+        _forget_tempdir(d)
+        return True
+    # A MISSING IDENTITY IS UNKNOWN, AND UNKNOWN REFUSES (v3.66.1152). This
+    # read `if _ident is not None and ...`, so a creation-time failure -- the
+    # one case where ownership genuinely cannot be proven -- PERMITTED the
+    # deletion, while the comment beside it said it would refuse.
+    if _ident is None:
+        _LAST_DISCARD_ERROR[d] = (
+            "%s no creation identity was recorded -- refusing to remove a "
+            "directory this tool cannot prove it created" % R_NO_IDENT)
+        return False
+    _ok, _why = _remove_owned_dir(d, _ident, fd)
+    if not _ok:
+        _LAST_DISCARD_ERROR[d] = _why
+        return False
+    _forget_tempdir(d)
+    return True
+
+
+def _report_undeleted(d):
+    """One phrasing for every site, so a grep for it finds them all."""
+    print(f"swarm-cut: TEMPORARY DIRECTORY NOT REMOVED: {d}", file=sys.stderr)
+
+
+def snapshot_archive(zippath):
+    """One OWNED, READ-ONLY copy of the archive, taken from ONE opened source.
+
+    Returns (path, identity). Everything downstream -- extraction, the
+    stale-zip source hash, the band, verify_release and the MAX summary --
+    consumes THIS path, so no later re-open of the operator's mutable file can
+    change what any of them saw.
+
+    WHY. Until v3.66.1149 --resume-zip re-opened the external archive five
+    separate times and identity-checked only the first. One check at the start
+    binds nothing about the later opens: a swap in between made the band test A
+    while verify reported on B, and an ABA swap that restored the original size
+    and mtime was invisible to any stat-based comparison. Owning the bytes
+    removes the window rather than narrowing it.
+
+    The identity comes from the SAME file descriptor the bytes are read through
+    (os.fstat, never os.stat on the path), so it cannot end up describing a
+    different inode than the one that was copied, and a short read against the
+    stat size is a refusal rather than a truncated snapshot.
+    """
+    d = _owned_tempdir("bdcut_archive_")
+    dst = os.path.join(d, os.path.basename(zippath) or "archive.zip")
+    h = hashlib.sha256()
+    try:
+        n = 0
+        with open(zippath, "rb") as src:
+            st = os.fstat(src.fileno())
+            with open(dst, "wb") as out:
+                for chunk in iter(lambda: src.read(1 << 20), b""):
+                    h.update(chunk)
+                    out.write(chunk)
+                    n += len(chunk)
+        if n != st.st_size:
+            raise RuntimeError(
+                f"{zippath} changed size while it was being copied "
+                f"({st.st_size} bytes at open, {n} read) -- refusing to "
+                "snapshot a file that is being written")
+        # Read-only: the snapshot is the one object the gate, the band and
+        # verify agree on, so nothing -- including this tool -- may edit it.
+        os.chmod(dst, 0o444)
+        # AND SEAL THE DIRECTORY (v3.66.1150). 0444 on the file was not the
+        # guarantee this code claimed. On POSIX the right to unlink or rename a
+        # NAME comes from the write bit on the directory that holds it, not
+        # from the mode of the file it points at -- so with the parent left
+        # 0700 anything running as this user could os.unlink the snapshot and
+        # os.replace a different archive at the same pathname. That is exactly
+        # the swap the snapshot exists to make impossible: 0444 prevents a
+        # rewrite THROUGH the path and says nothing about replacing the path.
+        #
+        # 0500 removes create/unlink/rename while keeping the directory
+        # readable and traversable, which the band, verify_release and the MAX
+        # summary all need. _discard_tempdir unseals (as a retry) before
+        # removing.
+        #
+        # WHAT THE SEAL DOES NOT DO, stated because the first version of this
+        # comment claimed otherwise. It does not bind the PATHNAME: this
+        # directory's own parent is still writable by the same uid, so the
+        # whole directory can be renamed away and a fresh one created at the
+        # same path holding an imposter. No mode bit can close that. The
+        # mechanism that does is `_snapshot_moved`, which re-hashes the
+        # snapshot against the identity recorded here before verify and again
+        # after the summary, and catches rename+recreate, unlink+replace and an
+        # in-place rewrite alike. The seal is defence in depth, not the proof.
+        #
+        # AND IT LEAVES RESIDUE AN ORDINARY SWEEP CANNOT CLEAR. If this process
+        # dies between here and main()'s finally -- SIGKILL, OOM, a hard reap --
+        # the directory survives at 0500 and `rm -rf /tmp/bdcut_*` fails on it.
+        # Recover with `chmod -R u+w <dir> && rm -rf <dir>`. This is a real
+        # cost and it is accepted deliberately: the in-suite half is handled by
+        # tests/_tmproot._force_rmtree, and a signal handler was NOT added,
+        # because CLAUDE.md section 6 records that a trap converts a reliable
+        # failure into a rare silent one and SIGKILL would defeat it anyway.
+        os.chmod(d, 0o500)
+        # BIND THE CONSUMERS TO AN INODE, NOT TO A NAME (v3.66.1151).
+        #
+        # v3.66.1150 answered the rename+recreate swap with a hash taken after
+        # the band and again after the summary. That cannot see a swap which is
+        # UNDONE: a consumer renames the real directory away, works against an
+        # imposter at the same pathname, and puts the original back before
+        # returning -- both post-stage hashes then sample the original and
+        # report clean, and the verdict is about bytes nobody judged. A hash
+        # samples a pathname at an instant; only an open descriptor names an
+        # inode for as long as it is held.
+        #
+        # So the path handed downstream is /proc/self/fd/N. Every in-process
+        # open of it resolves to THIS inode no matter what happens to the
+        # directory entry, and the subprocess consumer gets the same guarantee
+        # because run() passes the descriptor through (pass_fds) and the child
+        # reads its own /proc/self/fd/N. Verified: it survives unlinking the
+        # original name, and zipfile opens it in both processes.
+        fd = os.open(dst, os.O_RDONLY)
+        _OPEN_FDS.append(fd)
+    except BaseException:
+        if not _discard_tempdir(d):
+            _report_undeleted(d)
+        raise
+    return (f"/proc/self/fd/{fd}",
+            {"sha256": h.hexdigest(), "size": st.st_size,
+             "mtime_ns": st.st_mtime_ns},
+            fd)
+
+
+def archive_identity(zippath):
+    """sha256 + size + mtime of the ARCHIVE ITSELF.
+
+    Recorded at extraction and re-checked before verify/summary so an archive
+    swapped underneath the run cannot make the band test A while verify reports
+    on B. The extract is attested against the archive; this attests the archive
+    against itself over time.
+    """
+    st = os.stat(zippath)
+    h = hashlib.sha256()
+    with open(zippath, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return {"sha256": h.hexdigest(), "size": st.st_size, "mtime_ns": st.st_mtime_ns}
+
+
+def extract_and_attest(zippath):
+    """Extract the archive ONCE and prove the bytes on disk are the archive's.
+
+    Returns the directory. Raises RuntimeError on any mismatch, so the caller
+    fails CLOSED -- an extract we cannot vouch for is not a subject.
+
+    WHY. Until v3.66.1147 --resume-zip extracted TWICE: into bdcut_step0_* for
+    the gate and again into bdcut_verify_* inside band(). The thing CERTIFIED
+    and the thing TESTED were different objects, which is CLAUDE.md section 0's
+    core failure even when both come from one archive. And nothing checked what
+    landed on disk: the only hash compared the work tree against ZIP MEMBERS,
+    before extraction, over two directories, and failed open.
+    """
+    d = _owned_tempdir("bdcut_subject_")
+    try:
+        with zipfile.ZipFile(zippath) as archive:
+            archive.extractall(d)
+            for info in archive.infolist():
+                if info.is_dir():
+                    continue
+                target = os.path.join(d, info.filename)
+                if not os.path.isfile(target):
+                    raise RuntimeError(f"member not extracted: {info.filename}")
+                want = hashlib.sha256(archive.read(info)).hexdigest()
+                with open(target, "rb") as fh:
+                    got = hashlib.sha256(fh.read()).hexdigest()
+                if got != want:
+                    raise RuntimeError(
+                        f"extracted bytes differ from the archive for "
+                        f"{info.filename} (archive {want[:12]}, disk {got[:12]})")
+    except BaseException:
+        # BaseException, not Exception: KeyboardInterrupt and SystemExit are not
+        # Exception subclasses, and this runs before the caller has registered
+        # the directory anywhere, so an interrupt here would leak it silently.
+        #
+        # _discard_tempdir, not rmtree(ignore_errors=True) + unconditional
+        # unregister (v3.66.1149): the old pair removed `d` from _TEMPDIRS
+        # whether or not the directory had actually gone, so a failed cleanup
+        # left a directory on disk that main()'s finally could no longer see.
+        # The bare `raise` still re-raises the ORIGINAL exception, unchanged.
+        if not _discard_tempdir(d):
+            _report_undeleted(d)
+        raise
+    return d
+
+
+STEP0_TIMEOUT = 900
+STEP0_CHECKERS = ("swarm-footguns", "swarm-ratchet")
+# Named remedies, because a refusal without one gets overridden rather than fixed.
+STEP0_REMEDY = {
+    "swarm-ratchet": "run `swarm-ratchet --baseline` on this host "
+                  "(~/.bd_metrics_baseline.json is untracked and absent by default)",
+    "swarm-footguns": "run `swarm-footguns --check --tree <work>` and clear the violation",
+}
+
+
+def step0_gate(subject, checker_dir=None, timeout=STEP0_TIMEOUT):
+    """Run the step-0 checkers against `subject`. Return a list of refusals.
+
+    EMPTY LIST MEANS PROCEED, and only a measured exit 0 from every checker
+    produces one. Missing binary, exception, timeout, and every non-zero code
+    are refusals that name themselves -- all of them share the caller's exit 3,
+    so a test asserting the CODE alone would pass when any of them fires
+    (CLAUDE.md section 10: four mutants escaped exactly that way).
+    """
+    here = checker_dir or os.path.dirname(os.path.realpath(__file__))
+    out = []
+    # RESOLVE THE SUBJECT BEFORE ANY CHECKER LAUNCHES (v3.66.1149).
+    #
+    # This function chdirs into a sandbox it has just created, and it used to
+    # pass `subject` through unchanged. `swarm-cut --work .` is the ordinary
+    # spelling, so the checker resolved "." against the SANDBOX and certified an
+    # empty directory of the gate's own making -- reporting clean, truthfully,
+    # about the wrong tree. CLAUDE.md section 0: a gate whose denominator
+    # structurally excludes its subject reports OK, and that is worse than no
+    # gate. The sandboxing fix at v3.66.1147 is what introduced this: before
+    # then the checker inherited the caller's cwd and "." happened to work.
+    #
+    # UNKNOWN is a third state and it fails: a subject that does not resolve to
+    # a directory is refused here rather than handed to a checker that would
+    # resolve it somewhere else.
+    resolved = os.path.realpath(os.path.expanduser(str(subject)))
+    if not os.path.isdir(resolved):
+        return [f"NO-CUT: step-0 subject {subject!r} does not resolve to a "
+                f"directory (tried {resolved}) -- there is nothing to certify, "
+                f"so this cut is not authorized."]
+    subject = resolved
+    for name in STEP0_CHECKERS:
+        exe = os.path.join(here, name)
+        hint = STEP0_REMEDY.get(name, "")
+        if not os.path.isfile(exe):
+            out.append(f"NO-CUT: step-0 checker {name} is MISSING from {here} "
+                       f"-- cannot verify, so this cut is not authorized.")
+            continue
+        # ISOLATE THE CHECKER'S RUNTIME (v3.66.1147). MEASURED: swarm-footguns
+        # --check with SWARM_INSTALL_DIR unset and cwd inside the repo wrote a
+        # 7.5MB downloader_history.db into the WORKING TREE -- db._resolve_db_path
+        # falls back to a relative path resolved against CWD, and step 0 inherits
+        # whatever cwd the operator ran swarm-cut from. The same run with a neutral
+        # cwd produced zero artifacts and an identical verdict. A gate must not
+        # modify the thing it judges, nor the tree the operator is standing in.
+        # OWNED (v3.66.1149). A bare mkdtemp is invisible to main()'s finally,
+        # so a removal that failed could not be reported by anything.
+        sandbox = _owned_tempdir("bdcut_gate_")
+        env = dict(os.environ)
+        # BOTH, because they govern different paths: SWARM_INSTALL_DIR decides
+        # where db._resolve_db_path lands, SWARM_HOME decides where a checker's
+        # own state goes. Setting one and not the other still lets the checker
+        # write somewhere we do not own.
+        env["SWARM_INSTALL_DIR"] = sandbox
+        env["SWARM_HOME"] = sandbox
+        try:
+            rc = subprocess.run([sys.executable, exe, "--check", "--tree", subject],
+                                timeout=timeout, cwd=sandbox, env=env).returncode
+        except subprocess.TimeoutExpired:
+            out.append(f"NO-CUT: step-0 {name} TIMED OUT after {timeout}s "
+                       f"-- the gate did not complete, so it proved nothing.")
+            continue
+        except Exception as e:
+            out.append(f"NO-CUT: step-0 {name} RAISED {type(e).__name__}: {e} "
+                       f"-- the gate could not run.")
+            continue
+        finally:
+            if not _discard_tempdir(sandbox):
+                _report_undeleted(sandbox)
+        if rc == 0:
+            continue
+        if rc == 2:
+            out.append(f"NO-CUT: step-0 {name} could not evaluate (exit 2) "
+                       f"-- UNKNOWN is not OK. {hint}")
+        elif rc in (1, 3):
+            out.append(f"NO-CUT: step-0 {name} reported a VIOLATION (exit {rc}). {hint}")
+        else:
+            out.append(f"NO-CUT: step-0 {name} exited {rc}, which is not a "
+                       f"recognised verdict -- refusing rather than guessing.")
+    return out
+
+
+def _main_inner(argv, _cleanup):
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--version")
+    ap.add_argument("--baseline")
+    ap.add_argument("--changelog")
+    ap.add_argument("--suites", nargs="*", default=DEFAULT_SUITES)
+    # v3.66.855 port: both defaults were retired-sandbox literals. --work now
+    # derives from sec.DEFAULT_WORK, which walks up from this file to the checkout
+    # that owns it, so a relocated tree follows. --out defaults INSIDE that checkout
+    # at <work>/out, which .gitignore already covers ("out/"), rather than a
+    # per-machine path nobody can create.
+    ap.add_argument("--work","--tree", default=sec.DEFAULT_WORK)
+    ap.add_argument("--out", default=os.path.join(sec.DEFAULT_WORK, "out"))
+    ap.add_argument("--no-build", action="store_true")
+    ap.add_argument("--resume-zip",
+                    help="skip build; re-run band+verify+summary on an existing "
+                         "zip (fast retry after fixing/adding a suite, or a re-verify)")
+    ap.add_argument("--resume", action="store_true",
+                    help="compaction-safe recovery: auto-detect a half-finished cut "
+                         "(version already bumped, no zip yet) and continue FORWARD "
+                         "to build without re-bumping/re-prepending CHANGELOG. Safe to "
+                         "run after a compaction or a post-bump abort -- it inspects "
+                         "__version__ + CHANGELOG + out/ and does the right thing.")
+    # v3.66.1149: THE DEFAULT IS NON-DESTRUCTIVE, and it was not.
+    #
+    # 702 made auto-clean the default because "a stray downloader_history.db
+    # aborted the cut twice this session and the remedy was always the same rm".
+    # That reasoning holds only where the file is a stray. It is not: DB_PATH is
+    # relative, the unit's WorkingDirectory is the checkout, and on test5 the
+    # deployed tree IS the working tree -- so the glob resolves to live service
+    # state and an ordinary cut deleted it, silently, by default.
+    #
+    # Convenience that defaults to deleting the operator's database is not a
+    # default anyone would have chosen if asked. Deleting is now opt-in and loud.
+    ap.add_argument("--rm-runtime-db", action="store_true", default=False,
+                    help="EXPLICIT OPT-IN: DELETE video_hashes.db / "
+                         "downloader_history.db* (and -wal/-shm/-journal) from "
+                         "the work tree before build. On a host where the "
+                         "service runs from this checkout these are LIVE state. "
+                         "Names every file it removes on stderr.")
+    ap.add_argument("--keep-runtime-db", dest="rm_runtime_db", action="store_false",
+                    help="(DEFAULT, and the explicit spelling of it) abort with "
+                         "the exact rm instead of deleting anything")
+    ap.add_argument("--skip-fe", action="store_true",
+                    help="skip tsc + vitest + vite build and REUSE the existing "
+                         "frontend/dist. Use ONLY for a backend-only cut (no "
+                         "frontend/src change this cut) -- saves the ~2-3min FE "
+                         "chain. gui_parity regen still runs (routes can change "
+                         "in a backend-only cut).")
+    ap.add_argument("--detach", action="store_true",
+                    help="run the WHOLE cut under swarm-job, free of the ~230s exec window, "
+                         "so the REAL FE chain (tsc+vitest+vite) runs instead of being "
+                         "--skip-fe'd. Returns immediately; follow with `swarm-job tail cut`.")
+    ap.add_argument("--plan", action="store_true",
+                    help="print what THIS cut needs (band, armed footguns, ratchet "
+                         "risk, pin sites) and EXIT -- writes nothing")
+    ap.add_argument("--verbose", action="store_true",
+                    help="surface sub-tool stderr even when a step SUCCEEDS "
+                         "(footgun #16: it used to be swallowed entirely)")
+    ap.add_argument("--no-gate", action="store_true",
+                    help="skip the step-0 release gate (swarm-footguns + swarm-ratchet). LOUD: prints a "
+              "banner to stderr and writes STEP0_SKIPPED.txt into --out")
+    cut_quality.add_permit_argument(ap)
+    a = ap.parse_args(argv)
+    # ABSOLUTE ONCE, AT THE BOUNDARY (v3.66.1149). `--work .` is the ordinary
+    # spelling, and step0_gate chdirs into a sandbox before launching its
+    # checkers, so a relative work would resolve against that sandbox. The gate
+    # also resolves defensively -- both, deliberately: the gate's copy is what
+    # protects every OTHER caller of step0_gate, and this one is what keeps the
+    # rest of the driver (precut, band, verify, the runtime-DB glob) talking
+    # about the same directory the gate certified.
+    a.work = os.path.realpath(os.path.expanduser(a.work))
+    # @807: REFUSE over a tree that is not there -- the same hole swarm-band-derive
+    # had. Both entered the lint's corpus-guard population when the R1 sec import
+    # landed, and both came back UNGUARDED. Measured before: --work /nonexistent
+    # died with a raw traceback at the __init__.py read (exit 1), which is a
+    # crash, not a verdict. require_corpus makes it an explicit CANNOT-EVALUATE.
+    if not getattr(a, 'selftest', False):
+        sec.require_corpus(a.work, min_files=1, label='--work', patterns=('*.py',))
+    global VERBOSE
+    VERBOSE = bool(getattr(a, "verbose", False))
+    # --plan runs BEFORE anything mutates: its whole purpose is to tell you what the
+    # cut needs while you can still act on it.
+    if getattr(a, "plan", False):
+        return plan(a.work, a.version)
+
+    def _receipt_ok():
+        return cut_quality.enforce(
+            a.work, a.cut_quality_permit, "pre-implementation", consumer_path=__file__,
+        )
+
+    # This is a receipt for the exact dirty input snapshot, not a fictional
+    # final candidate SHA: swarm-cut has not yet generated, bumped, or built that
+    # tree. Refuse before output creation and every cut gate.
+    if not _receipt_ok():
+        return 2
+
+    # --detach (v3.66.723+): THE FIX FOR --skip-fe-AS-A-HABIT.
+    #
+    # The FE chain (tsc+vitest+vite) does not fit the ~230s exec window, so --skip-fe
+    # became the default move -- which means the cut's OWN frontend gate was routinely
+    # not run, and tsc/vitest/vite got run by hand instead. Detaching the FE *sub-step*
+    # would not have helped: swarm-cut ITSELF is the thing being timed out, so polling a
+    # detached child from inside swarm-cut still dies at 230s. The caller is the problem.
+    #
+    # So: detach the WHOLE cut. Under swarm-job it has unlimited wall time and the FE chain
+    # runs INLINE, unchanged. --skip-fe goes back to meaning what it says (a backend-only
+    # cut) instead of "the gate does not fit".
+    os.makedirs(a.out, exist_ok=True)
+
+    # --- STEP 0: the release gate. FAILS CLOSED as of v3.66.1145.
+    #
+    # It used to fail OPEN, and the measurement is the argument. Three
+    # independent harnesses, one clean-room, drove a stub checker through every
+    # outcome at 8cea48c:
+    #
+    #   outcome   0   1   2   3   4  127  crash  missing  exception  timeout
+    #   result   go  go  go  STOP go   go     go       go         go       go
+    #
+    # Only exit 3 blocked. `bdtools_sec.EXIT_CANNOT_EVALUATE = 2` is minted by
+    # swarm-footguns and swarm-ratchet precisely to REFUSE to certify blindness --
+    # swarm-footguns' own comment reads "UNKNOWN IS A THIRD STATE AND IT FAILS
+    # (CLAUDE.md s0) ... Refuse instead of certifying" -- and step 0 converted
+    # that refusal into authorization. That was live, not theoretical:
+    # swarm-ratchet --check exits 2 on every fleet host because its baseline is an
+    # untracked $HOME-relative file that does not exist.
+    #
+    # Now: ONLY exit 0 authorizes a cut. Every other outcome names itself and
+    # blocks. --no-gate still overrides, loudly, because an override you cannot
+    # prove happened is indistinguishable from a gate that ran.
+    # --resume-zip WITH --detach IS INCOHERENT AND IS REFUSED (v3.66.1148),
+    # before anything is extracted and before swarm-job is touched. The parent would
+    # extract, attest and gate subject A, then hand the child an argv that makes
+    # it extract, attest, gate and band its OWN subject B. Two subjects again --
+    # the exact split this cut removed -- and the parent's certification would
+    # describe a directory the child never sees.
+    if getattr(a, "resume_zip", None) and getattr(a, "detach", False):
+        print("\nNO-CUT: --resume-zip cannot be combined with --detach. The "
+              "parent would certify one extract and the detached child would "
+              "band a different one. Run the resume in the foreground.",
+              file=sys.stderr)
+        return 3
+
+    # ONE SUBJECT, EXTRACTED ONCE, ATTESTED, SHARED BY THE GATE AND THE BAND.
+    # v3.66.1147. Previously the gate extracted to bdcut_step0_* and band()
+    # extracted again to bdcut_verify_*, so the directory that was CERTIFIED and
+    # the directory that was TESTED were different objects -- section 0's core
+    # failure even when both came from one archive. `_subject` below is the only
+    # extract, its bytes are verified against the archive member-by-member, and
+    # it is removed on every exit path by the finally at the end of main().
+    _gate_subject = a.work
+    _subject = None
+    _snapshot = None
+    _snapfd = None
+    if getattr(a, "resume_zip", None) and os.path.exists(a.resume_zip):
+        try:
+            # SNAPSHOT FIRST. From here on the operator's mutable file is
+            # touched exactly once more -- to ask, at the end, whether it moved.
+            # Every consumer reads the owned copy instead (v3.66.1149).
+            _snapshot, _archive_id, _snapfd = snapshot_archive(a.resume_zip)
+            _subject = extract_and_attest(_snapshot)
+            _cleanup.append(_subject)
+        except Exception as _e:
+            print(f"\nNO-CUT: step-0 could not snapshot, extract or attest "
+                  f"{a.resume_zip} ({type(_e).__name__}: {_e}) -- the gate has "
+                  f"no subject it can vouch for.", file=sys.stderr)
+            return 3
+        _gate_subject = _subject
+
+    if a.no_gate:
+        # LOUD. stderr, unmissable, and repeated in the summary.
+        _banner = ("!!! STEP-0 GATE SKIPPED BY OPERATOR (--no-gate) -- this cut "
+                   "was NOT verified by swarm-footguns/swarm-ratchet !!!")
+        print("\n" + "!" * len(_banner), file=sys.stderr)
+        print(_banner, file=sys.stderr)
+        print("!" * len(_banner) + "\n", file=sys.stderr)
+        try:
+            os.makedirs(a.out, exist_ok=True)
+            with open(os.path.join(a.out, "STEP0_SKIPPED.txt"), "w") as _fh:
+                _fh.write("--no-gate: step-0 was skipped by explicit operator "
+                          "override.\nsubject: %s\n" % _gate_subject)
+        except Exception:
+            pass          # the banner is the contract; the artifact is a bonus
+    else:
+        _refusals = step0_gate(_gate_subject)
+        if _refusals:
+            print()
+            for _r in _refusals:
+                print(_r, file=sys.stderr)
+            print("\n       Fix it, or re-run with --no-gate to override "
+                  "deliberately (it will say so, loudly).", file=sys.stderr)
+            return 3
+
+
+    # --- DETACH HAPPENS *AFTER* STEP 0 as of v3.66.1145.
+    #
+    # It used to run BEFORE the gate and `return 0` unconditionally once swarm-job
+    # accepted the job. That 0 meant only "child launched", but nothing in the
+    # exit code said so: a cut whose gate would have BLOCKED still launched, and
+    # an operator or a script reading the parent's 0 could not tell it apart
+    # from an authorized cut. Gating first means a blocked cut never launches at
+    # all, so there is no unauthorized child to misread. The child re-runs the
+    # same gate (it re-execs swarm-cut without --detach), which is belt and braces,
+    # not redundancy: the parent's copy is the one that prevents the launch.
+    #
+    # The gate here is the CHEAP pair (swarm-footguns + swarm-ratchet), not the FE
+    # chain --detach exists to escape, so this costs seconds inside the parent's
+    # exec window rather than minutes.
+    if getattr(a, "detach", False):
+        if not _receipt_ok():
+            return 2
+        # v3.66.855 port: the fallback was /home/claude/bin/swarm-job, which cannot
+        # exist here -- so --detach could only ever die. swarm-job ships in this
+        # tool's OWN bin dir; resolve it there, exactly as regen_order resolves
+        # swarm-regen-order from the work tree instead of from PATH.
+        _job = shutil.which("swarm-job") or os.path.join(
+            os.path.dirname(os.path.realpath(__file__)), "swarm-job")
+        if not os.path.isfile(_job):
+            die("--detach needs swarm-job (not found) -- run without it, or install swarm-job")
+        argv_ = list(argv if argv is not None else sys.argv[1:])
+        argv_ = [x for x in argv_ if x != "--detach"]
+        name = "cut"
+        subprocess.run([sys.executable, _job, "kill", name],
+                       capture_output=True, text=True, timeout=900)
+        r = subprocess.run([sys.executable, _job, "start", "--name", name, "--",
+                            sys.executable, os.path.abspath(__file__)] + argv_,
+                           capture_output=True, text=True, timeout=900)
+        sys.stdout.write(r.stdout)
+        if r.returncode != 0:
+            sys.stdout.write(r.stderr)
+            return 2
+        print(f"\n{G}cut LAUNCHED detached -- the FULL FE chain (tsc+vitest+vite) will run,"
+              f" not be skipped.{RST}")
+        # This process's exit code means "the child was launched", NEVER "the cut
+        # succeeded". Say so in words as well as in the code, because a caller
+        # that reads only the exit status has no other way to learn it.
+        print(f"{Y}  NOT A CUT VERDICT: step 0 passed and the job started; the "
+              f"cut itself is still running.{RST}")
+        print(f"{Y}  Ask `swarm-job status cut` for running|done|failed before "
+              f"treating this cut as complete.{RST}")
+        print(f"  {DIM}swarm-job tail cut     # progress")
+        print(f"  swarm-job status cut   # running | done | failed")
+        print(f"  swarm-job wait cut     # block to completion{RST}")
+        return 0
+
+    # Last common boundary before resume-band work or normal precut/regeneration
+    # work. Step 0 may have taken seconds, so compare the complete snapshot a
+    # second time immediately before expensive or mutating work.
+    if not _receipt_ok():
+        return 2
+
+    # --- fast retry path: band+verify+summary on an already-built zip, skipping
+    #     the whole tsc->vitest->vite->build_release chain. For when the band
+    #     failed for a non-source reason (flaky/missing suite, a suite you just
+    #     added) or you simply want to re-verify. A *source* fix still needs a
+    #     full re-cut (the fix changes the bundle -> a new zip).
+    if a.resume_zip:
+        if not os.path.exists(a.resume_zip):
+            die(f"--resume-zip not found: {a.resume_zip}")
+        print(f"{Y}== RESUME =={RST} skip build; band+verify on "
+              f"{os.path.basename(a.resume_zip)}")
+        suites = list(a.suites)
+        for s in VERSION_COUPLED_SUITES:
+            if s not in suites:
+                suites.append(s)
+        # THE SAME DIRECTORY step 0 certified, out of the SAME owned snapshot.
+        # Not a second extract, and not the mutable external path.
+        assert _subject is not None and _snapshot is not None, (
+            "resume-zip reached the band without an attested subject")
+        band(_snapshot, suites, a.work, extracted=_subject)
+        # THE OPERATOR'S ARCHIVE MUST NOT HAVE MOVED.
+        #
+        # Everything this run judged was the owned snapshot, so a swap can no
+        # longer make the band and verify disagree -- that hole is closed by
+        # construction rather than by this check. What remains is a DIFFERENT
+        # claim, and it is why the check stays: the operator SHIPS the external
+        # file, so a verdict about an artifact that has since changed describes
+        # something they no longer hold. Asked twice, because the window did not
+        # end at the band: verify and the summary take real time.
+        def _snapshot_moved(stage):
+            """Re-hash the OWNED snapshot against the identity recorded when it
+            was taken.
+
+            THE SEAL DOES NOT BIND THE PATHNAME, and v3.66.1150's first
+            implementation claimed it did. chmod(d, 0o500) removes write INSIDE
+            the directory, but that directory's own parent is still writable by
+            the same uid -- so the whole sealed directory can be renamed away
+            and a fresh one created at the same path holding an imposter, and
+            band/verify/max_summary all re-open the snapshot BY PATH. The
+            external-archive check cannot see it, because the external archive
+            never moved.
+
+            A mode bit cannot close that; content can. This detects rename +
+            recreate, unlink + replace, and an in-place rewrite alike, which is
+            the whole class. Compared on sha256 alone: `_archive_id` carries the
+            EXTERNAL file's mtime_ns, which the copy legitimately does not share.
+            """
+            try:
+                now = archive_identity(_snapshot)
+            except OSError as _e:
+                print(f"\nNO-CUT: the owned snapshot could not be re-read "
+                      f"({stage}: {_e}) -- this run can no longer vouch for "
+                      "what it judged.", file=sys.stderr)
+                return True
+            if now["sha256"] == _archive_id["sha256"]:
+                return False
+            print(f"\nNO-CUT: the owned snapshot at {_snapshot} was replaced "
+                  f"during this run ({stage}: sha "
+                  f"{_archive_id['sha256'][:12]} -> {now['sha256'][:12]}). The "
+                  "directory is sealed, but its parent is not, so the pathname "
+                  "can still be renamed away and recreated.", file=sys.stderr)
+            return True
+
+        def _source_moved(stage):
+            _now = archive_identity(a.resume_zip)
+            if _now == _archive_id:
+                return False
+            print(f"\nNO-CUT: {a.resume_zip} changed during this run "
+                  f"({stage}: sha {_archive_id['sha256'][:12]} -> "
+                  f"{_now['sha256'][:12]}). This run's verdict is about the "
+                  "snapshot taken at the start, which is no longer the file "
+                  "you would ship.", file=sys.stderr)
+            return True
+
+        if _snapshot_moved("after the band") or _source_moved("after the band"):
+            return 3
+        verify(a.work, _snapshot, pass_fds=(_snapfd,) if _snapfd is not None else ())
+        max_summary(_snapshot, a.baseline)
+        if _snapshot_moved("during verify/summary") \
+                or _source_moved("during verify/summary"):
+            return 3
+        print(f"\n{G}swarm-cut --resume complete{RST} -> {a.resume_zip}")
+        print(f"{DIM}re-verified an existing zip; deploy is a separate human gate.{RST}")
+        return 0
+
+    # --- compaction-safe recovery: detect a half-finished cut and do the right
+    #     thing WITHOUT re-bumping. The @511 footgun: after a compaction or a
+    #     post-bump abort, __version__/slice4/CHANGELOG may already be bumped but
+    #     no zip exists; re-running WITH --version used to risk a duplicate work
+    #     path. bump() already no-ops on a matching __version__, but --resume makes
+    #     the recovery EXPLICIT + self-diagnosing so it never depends on the
+    #     operator remembering the "omit --version" rule.
+    if a.resume:
+        initp = os.path.join(a.work, "bulk_downloader/__init__.py")
+        cur = re.search(r'__version__ = "([0-9.]+)"', open(initp).read())
+        live_ver = cur.group(1) if cur else "?"
+        # is a zip for this version already sitting in out/?
+        existing = sorted(glob.glob(os.path.join(
+            a.out, f"${TARGET_REPO_PATH}_v{live_ver.replace('.', '_')}*.zip")))
+        print(f"{Y}== RESUME =={RST} detected live __version__={live_ver}")
+        if existing:
+            print(f"  a zip already exists: {os.path.basename(existing[-1])}")
+            print(f"  -> re-running band+verify on it (use --resume-zip to be explicit)")
+            suites = list(a.suites)
+            for s in VERSION_COUPLED_SUITES:
+                if s not in suites:
+                    suites.append(s)
+            band(existing[-1], suites, a.work)
+            verify(a.work, existing[-1])
+            max_summary(existing[-1], a.baseline)
+            print(f"\n{G}swarm-cut --resume complete{RST} -> {existing[-1]}")
+            return 0
+        # no zip yet: continue FORWARD to build, but force bump-skip (the version
+        # is already landed; a re-bump/re-prepend is the footgun we are avoiding).
+        if a.version and a.version != live_ver:
+            die(f"--resume but --version {a.version} != live {live_ver}; refusing "
+                f"to bump on a resume. Omit --version or pass --version {live_ver}.")
+        print(f"  no zip in {a.out} yet -> continuing FORWARD to build; "
+              f"bump SKIPPED (version already at {live_ver}).")
+        a.version = None  # hard-guarantee no bump/re-prepend on the resume path
+
+    precut(a.work, a.baseline)
+    if a.skip_fe:
+        dist = os.path.join(fe(a.work), "dist")
+        if not os.path.isdir(dist):
+            die("--skip-fe but frontend/dist is absent -- run a normal cut once "
+                "to build it (NO-CUT)")
+        # SAY WHAT WAS ACTUALLY NOT DONE. This used to read "(backend-only cut)" --
+        # asserting an INTENT the tool cannot verify. If frontend/src changed this cut,
+        # --skip-fe means the change ships UNTYPECHECKED, UNTESTED and UNBUILT, and the
+        # cut still reports success. A check that cannot verify must say so.
+        _src_changed = _fe_src_touched(a.work, a.baseline)
+        print(f"\n{Y}--skip-fe: THE FRONTEND GATE DID NOT RUN. tsc + vitest + vite build "
+              f"were NOT executed; reusing the existing frontend/dist.{RST}")
+        if _src_changed:
+            print(f"{R}  WARNING: frontend/src HAS CHANGED vs the baseline "
+                  f"({_src_changed} file(s)). Those edits are shipping UNTYPECHECKED, "
+                  f"UNTESTED and UNBUILT.{RST}")
+            print(f"{R}  -> re-run with --detach to run the real FE chain "
+                  f"(no exec-window limit).{RST}")
+        else:
+            print(f"{DIM}  (no frontend/src change detected vs baseline -- "
+                  f"a legitimate backend-only cut){RST}")
+    # v3.66.722: regen BEFORE the ~3-min FE chain. A stale derived doc used to abort the
+    # cut only AFTER tsc+vitest+vite had run.
+    regen_order(a.work)
+    if not a.skip_fe:
+        typecheck(a.work)
+        vitest(a.work)
+        build(a.work)
+    regen_inventory(a.work, a.baseline)
+    if a.no_build:
+        print(f"\n{Y}--no-build: stopped after inventory. Re-run without it to cut.{RST}")
+        return 0
+    suites = list(a.suites)
+    if a.version:
+        bump(a.work, a.version, a.changelog)
+        regen_version_indexes(a.work)
+        # Union the version-coupled suites (dedup, preserve order) so a bump
+        # always bands test_pin_index_in_sync + test_kb_golden_questions even
+        # when the caller passed an explicit --suites that omits them.
+        for s in VERSION_COUPLED_SUITES:
+            if s not in suites:
+                suites.append(s)
+    check_runtime_db(a.work, a.rm_runtime_db)
+    z = build_release(a.work, a.out, a.baseline)
+    band(z, suites, a.work)
+    verify(a.work, z)
+    max_summary(z, a.baseline)
+    print(f"\n{G}swarm-cut complete{RST} -> {z}")
+    print(f"{DIM}present_files it; regenerate the next-session pack; deploy is a separate human gate.{RST}")
+    return 0
+
+
+def _reap(cleanup):
+    """Close every descriptor and remove every directory this run created.
+
+    Returns the list of failures, already reported on stderr. Split out of
+    main()'s finally at v3.66.1152 so the caller can ACT on the result -- the
+    finally could only print, and printing was all it did.
+    """
+    # CLOSE THE DESCRIPTORS FIRST (v3.66.1151). They are held so consumers bind
+    # to an inode rather than a name; held past the run they are a leak with a
+    # different word for it, and on the sealed snapshot they also keep the
+    # inode alive after its directory entry has gone.
+    for fd in list(_OPEN_FDS):
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        _OPEN_FDS.remove(fd)
+    # ONE REMOVAL PATH (v3.66.1150). This used to inline its own rmtree, which
+    # meant it did NOT unseal -- so once snapshot_archive began sealing its
+    # directory, every --resume-zip run ended by reporting its own snapshot as
+    # an unremovable leak. Note the band's SWARM_HOME carries the DEFAULT /tmp/tmp*
+    # prefix, so a `ls /tmp/bdcut_*` sweep cannot see it and "zero leaks" from
+    # that glob would be a gate blind to its own subject.
+    # TOTAL, NOT MERELY WRAPPED (v3.66.1154). One of this function's two call
+    # sites is inside main()'s `except BaseException:`, where a raise would
+    # replace the cut's real failure reason with a cleanup exception -- exactly
+    # what that handler's own comment says must not happen. Measured at
+    # 63be0464: one directory raising RecursionError took the loop, the
+    # summary, and every REMAINING directory's attempt with it, and swarm-cut then
+    # exited 1, indistinguishable from die(). Exception rather than
+    # BaseException so Ctrl-C can still stop a reap.
+    failed = []
+    for d in list(dict.fromkeys(cleanup + _TEMPDIRS)):
+        try:
+            ok = _discard_tempdir(d)
+        except Exception as e:
+            ok = False
+            _LAST_DISCARD_ERROR[d] = (
+                "%s the reaper itself could not complete for this directory "
+                "(%s: %s)" % (R_TOO_DEEP, type(e).__name__, e))
+        if not ok:
+            why = _LAST_DISCARD_ERROR.get(d)
+            failed.append(f"{d}: {why if why else 'still present'}")
+    # The run is over by definition -- this IS main()'s finally -- so every
+    # ownership descriptor is released here. Section 0: creating a resource is
+    # a promise to remove it, and an fd held past the process is a leak with a
+    # different word for it.
+    for _d in list(_TEMPDIR_FD):
+        _fd = _TEMPDIR_FD.pop(_d, None)
+        if _fd is not None:
+            try:
+                _st = os.fstat(_fd)
+            except OSError:
+                continue
+            _ident = _TEMPDIR_IDENT.get(_d)
+            if (_ident is not None and
+                    (_st.st_dev, _st.st_ino) == _ident):
+                os.close(_fd)
+    if failed:
+        print("swarm-cut: TEMPORARY DIRECTORIES NOT REMOVED:", file=sys.stderr)
+        for f in failed:
+            print(f"  {f}", file=sys.stderr)
+    return failed
+
+
+def _print_cleanup_verdict(failed):
+    """ONE phrasing, so both exit paths say the same thing."""
+    print(f"swarm-cut: exiting {EXIT_CLEANUP_FAILED} -- the cut finished but "
+          f"cleanup did not: {len(failed)} temporary "
+          f"director{'y' if len(failed) == 1 else 'ies'} could not be "
+          f"removed (listed above).", file=sys.stderr)
+
+
+def main(argv=None):
+    """Wrapper whose only job is that the attested subject cannot leak -- and,
+    since v3.66.1152, that failing to remove it COSTS SOMETHING.
+
+    CLAUDE.md section 0: creating a path is a promise to remove it, and nothing
+    gates that promise. Three cuts made the breach of that promise loud; none
+    made it cost anything. main() returned whatever _main_inner returned while
+    its finally merely printed, so a run that leaked two directories exited 0 --
+    measured at dcf34528. An exit code is the only part of a tool's output a
+    caller cannot ignore by accident, and section 10 records that the last line
+    a tool prints is exercised by nobody.
+
+    A REAL FAILURE IS NEVER MASKED. If the cut itself failed -- die()'s exit 1,
+    a step-0 refusal's exit 3, or any exception -- that verdict is what the
+    caller gets. EXIT_CLEANUP_FAILED replaces only a SUCCESS, because "the cut
+    was not authorized" is more important than "and also a directory is still
+    there".
+    """
+    _cleanup = []
+    try:
+        rc = _main_inner(argv, _cleanup)
+    except SystemExit as e:
+        # DEFENCE IN DEPTH, AND SAID TO BE (v3.66.1154). No live path at
+        # 63be0464 reaches here holding a registered directory -- die() exits
+        # 1, the bdtools_sec helpers exit 2, and argparse exits before any
+        # tempdir exists -- so this closes a shape rather than a reproduced
+        # bug. It is here because EXIT_CLEANUP_FAILED was applied on the
+        # RETURN path only, so any future sys.exit(0) would carry straight
+        # through a cleanup that did not happen. A non-integer code is a real
+        # failure with a message and is never replaced.
+        _failed = _reap(_cleanup)
+        _code = 0 if e.code is None else e.code
+        if _failed and _code == 0:
+            _print_cleanup_verdict(_failed)
+            raise SystemExit(EXIT_CLEANUP_FAILED) from None
+        raise
+    except BaseException:
+        # Still reap, still report -- but let the original propagate. die()
+        # raises SystemExit(1) through here, and replacing that with a cleanup
+        # code would hide the reason the cut stopped.
+        _reap(_cleanup)
+        raise
+    _failed = _reap(_cleanup)
+    if _failed and rc in (0, None):
+        _print_cleanup_verdict(_failed)
+        return EXIT_CLEANUP_FAILED
+    return rc
+
+
+if __name__ == "__main__":
+    sys.exit(main())

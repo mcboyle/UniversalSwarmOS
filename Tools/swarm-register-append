@@ -1,0 +1,469 @@
+#!/usr/bin/env python3
+"""Atomically append validated OPEN rows to the canonical register."""
+
+from __future__ import annotations
+
+import argparse
+from collections.abc import Callable
+from contextlib import contextmanager
+import fcntl
+import hashlib
+import importlib.util
+import json
+import os
+from pathlib import Path
+import re
+import stat
+import tempfile
+from typing import Any
+
+
+_HEADER = re.compile(
+    r"<!-- canonical-task-register schema=1 rows=\d+ open=\d+ "
+    r"ids-sha256=[0-9a-f]{64} -->"
+)
+_REQUEST_KEYS = {"schema", "expected_ids_sha256", "rows"}
+_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+_ROW = re.compile(r"\|\s*([1-9]\d*)\s*\|\s*([^|]*?)\s*\|\s*([^|]+?)\s*\|")
+
+# THE REGISTER'S CONTIGUITY DECLARATION.
+#
+# This tool has always enforced monotonic increase and uniqueness and never
+# contiguity, so an id handed to a cut that did not merge left a permanent hole
+# and nothing refused. 57 such holes accumulated. The declaration beside the
+# register is now part of the same publication: a gap can still be created
+# deliberately, but not without its reason, and not in a separate step that can
+# be forgotten.
+#
+# tests/test_v3_66_1052_the_backlog_is_machine_visible.py is the AUTHORITY on
+# this file's shape and on what a hole means. The validation here is deliberately
+# narrower -- enough to refuse rather than clobber a declaration this tool does
+# not understand, and never enough to become a second authority.
+_GAP_ALLOWLIST_NAME = "REGISTER_GAP_ALLOWLIST.json"
+_GAP_ALLOWLIST_KEYS = frozenset({"schema", "register", "notes", "gaps"})
+_GAP_ENTRY_KEYS = frozenset({"id", "status", "reason"})
+_GAP_ALLOWLIST_SCHEMA = "swarm-register-gap-allowlist/v1"
+# The ONLY status this tool may write. DOCUMENTED cites the register itself and
+# UNADJUDICATED records that no reason was ever recorded; neither is a machine's
+# to author, and neither is a machine's to clear.
+_MACHINE_WRITABLE_GAP_STATUS = "DECLARED"
+
+
+class _PostReplaceOperationError(OSError):
+    """One or more named finalization operations failed."""
+
+    def __init__(self, failures: list[tuple[str, Exception]]) -> None:
+        self.failures = failures
+        super().__init__("; ".join(f"{operation}: {error}" for operation, error in failures))
+
+
+class CommitDurabilityUncertainError(RuntimeError):
+    """The replacement is visible but its finalization did not fully succeed."""
+
+    def __init__(self, operation: str, error: Exception) -> None:
+        super().__init__(
+            "COMMIT UNCERTAIN: the appended register was published, but "
+            f"{operation} failed: {error}. Inspect the register before retrying."
+        )
+
+
+def _derive_backlog(repo: Path, text: str) -> tuple[int, int, str, list[str]]:
+    source = repo / "project-knowledge" / "build_current_overlay.py"
+    spec = importlib.util.spec_from_file_location("_bd_current_overlay", source)
+    if spec is None or spec.loader is None:
+        raise ValueError(f"cannot load canonical register parser from {source}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    result = module.derive_backlog(text)
+    if result is None:
+        raise ValueError("canonical register parser examined zero rows")
+    return result
+
+
+def _marker(rows: int, opened: int, digest: str) -> str:
+    return f"<!-- canonical-task-register schema=1 rows={rows} open={opened} ids-sha256={digest} -->"
+
+
+def _assert_canonical_header(repo: Path, text: str) -> tuple[int, int, str, list[str]]:
+    matches = list(_HEADER.finditer(text))
+    if len(matches) != 1:
+        raise ValueError("canonical register header occurs other than once")
+    derived = _derive_backlog(repo, text)
+    if matches[0].group(0) != _marker(*derived[:3]):
+        raise ValueError("canonical register header does not match derived table")
+    return derived
+
+
+def _load_request(path: Path) -> tuple[str, list[tuple[int, str]]]:
+    try:
+        raw = path.read_bytes().decode("ascii")
+        payload = json.loads(raw)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("request must be an ASCII JSON object") from exc
+    if not isinstance(payload, dict) or set(payload) != _REQUEST_KEYS:
+        raise ValueError("request must use exactly the swarm-register-append/v1 schema")
+    if payload.get("schema") != "swarm-register-append/v1":
+        raise ValueError("request schema must be swarm-register-append/v1")
+    expected = payload.get("expected_ids_sha256")
+    if not isinstance(expected, str) or _SHA256.fullmatch(expected) is None:
+        raise ValueError("request expected_ids_sha256 must be lowercase SHA-256")
+    rows = payload.get("rows")
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("request rows must be a non-empty list of complete rows")
+
+    proposed: list[tuple[int, str]] = []
+    for value in rows:
+        if not isinstance(value, str):
+            raise ValueError("each proposed row must be an ASCII text row")
+        try:
+            value.encode("ascii")
+        except UnicodeEncodeError as exc:
+            raise ValueError("each proposed row must be ASCII text without newline or pipe hazards") from exc
+        if "\n" in value or "\r" in value:
+            raise ValueError("each proposed row must be ASCII text without newline or pipe hazards")
+        if any(not 0x20 <= ord(character) <= 0x7E for character in value):
+            raise ValueError(
+                "each proposed row must use printable ASCII; TAB and control bytes are refused"
+            )
+        row = value.strip()
+        if row.count("|") != 4:
+            raise ValueError("each proposed row must have exactly four table pipes")
+        match = _ROW.fullmatch(row)
+        if match is None:
+            raise ValueError("each proposed row must be a complete numeric table row")
+        if match.group(2).strip() != "OPEN":
+            raise ValueError("each proposed row status must be exactly OPEN without evidence or version claim")
+        if not match.group(3).strip():
+            raise ValueError("each proposed row must have a non-empty item")
+        proposed.append((int(match.group(1)), row))
+
+    ids = [identity for identity, _ in proposed]
+    if len(ids) != len(set(ids)):
+        raise ValueError("proposed rows must use unique numeric IDs")
+    if ids != sorted(ids):
+        raise ValueError("proposed rows must use numeric insertion order")
+    return expected, proposed
+
+
+def _atomic_replace_all(
+    replacements: list[tuple[Path, bytes, int]], mark_published: Callable[[], None]
+) -> None:
+    """Publish one or more same-directory files behind a single durability barrier.
+
+    ORDER IS THE CONTRACT HERE, not an implementation detail. Two files cannot
+    share one os.replace, so the strongest thing POSIX offers is what this does:
+    stage and fsync EVERY replacement before any of them is visible, then replace
+    them back to back with nothing in between, then one directory fsync covering
+    all of them.
+
+    The gap declaration is published BEFORE the register on purpose. An
+    interruption between the two replaces then leaves a reason for a gap that
+    does not exist yet, which the gap gate refuses as PREMATURE and which a rerun
+    of the IDENTICAL request repairs: the register was never touched, so its
+    compare-and-swap digest still matches, and an identical standing declaration
+    is idempotent. The other order leaves an UNDECLARED HOLE -- the exact defect
+    this refuses to create -- and cannot be retried at all, because the register
+    already holds the row and its digest has moved out from under the request.
+    """
+    parents = {path.parent for path, _, _ in replacements}
+    if len(parents) != 1:
+        raise ValueError("atomic publication requires exactly one shared directory")
+    staged: list[tuple[Path, Path]] = []
+    committed = 0
+    try:
+        for path, data, mode in replacements:
+            fd, name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+            temporary = Path(name)
+            staged.append((temporary, path))
+            os.fchmod(fd, mode)
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(data)
+                handle.flush()
+                os.fsync(handle.fileno())
+        for temporary, path in staged:
+            os.replace(temporary, path)
+            committed += 1
+            mark_published()
+        directory = parents.pop()
+        try:
+            directory_fd = os.open(directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+        except Exception as exc:
+            raise _PostReplaceOperationError([("directory open", exc)]) from exc
+        failures: list[tuple[str, Exception]] = []
+        try:
+            try:
+                os.fsync(directory_fd)
+            except Exception as exc:
+                failures.append(("directory fsync", exc))
+        finally:
+            try:
+                os.close(directory_fd)
+            except Exception as exc:
+                failures.append(("directory close", exc))
+        if failures:
+            raise _PostReplaceOperationError(failures) from failures[0][1]
+    finally:
+        for temporary, _ in staged[committed:]:
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
+
+
+def _gap_allowlist_path(repo: Path) -> Path:
+    return repo / "project-knowledge" / _GAP_ALLOWLIST_NAME
+
+
+def _load_gap_allowlist(path: Path) -> dict[str, Any]:
+    """Read the standing declaration, or refuse. Never repair, never create.
+
+    Every refusal names the step that failed rather than collapsing into one
+    message: "absent", "not ASCII", "not JSON" and "an entry this tool cannot
+    read" lead to four different repairs.
+    """
+    try:
+        raw = path.read_bytes().decode("ascii")
+    except FileNotFoundError as exc:
+        raise ValueError(
+            f"register gap declaration {path} is absent; this tool declares a gap in an "
+            "existing declaration and does not create the declaration surface itself"
+        ) from exc
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ValueError(f"register gap declaration {path} is not readable ASCII: {exc}") from exc
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"register gap declaration {path} is not valid JSON: {exc}") from exc
+    if not isinstance(payload, dict) or set(payload) != _GAP_ALLOWLIST_KEYS:
+        raise ValueError(
+            f"register gap declaration {path} must be an object with exactly "
+            f"{sorted(_GAP_ALLOWLIST_KEYS)}"
+        )
+    if payload.get("schema") != _GAP_ALLOWLIST_SCHEMA:
+        raise ValueError(
+            f"register gap declaration {path} must declare schema {_GAP_ALLOWLIST_SCHEMA}"
+        )
+    entries = payload.get("gaps")
+    if not isinstance(entries, list):
+        raise ValueError(f"register gap declaration {path} gaps must be a list of entries")
+    seen: set[int] = set()
+    for entry in entries:
+        if not isinstance(entry, dict) or set(entry) != _GAP_ENTRY_KEYS:
+            raise ValueError(
+                f"register gap declaration {path} holds an entry this tool cannot read; "
+                "refusing rather than rewriting a declaration it does not understand"
+            )
+        identity = entry["id"]
+        if isinstance(identity, bool) or not isinstance(identity, int) or identity < 1:
+            raise ValueError(
+                f"register gap declaration {path} holds id {identity!r}, which is not a "
+                "positive integer"
+            )
+        if identity in seen:
+            raise ValueError(f"register gap declaration {path} declares id {identity} twice")
+        seen.add(identity)
+        if not isinstance(entry["status"], str) or not isinstance(entry["reason"], str):
+            raise ValueError(
+                f"register gap declaration {path} entry {identity} has a non-string status "
+                "or reason"
+            )
+    return payload
+
+
+def _validated_gap_reason(reason: str) -> str:
+    text = reason.strip()
+    if not text:
+        raise ValueError("--allow-gap requires a non-empty reason for the gap it declares")
+    if any(not 0x20 <= ord(character) <= 0x7E for character in text):
+        raise ValueError(
+            "--allow-gap reason must be printable ASCII on a single line; TAB, newline and "
+            "control bytes are refused exactly as they are in a row"
+        )
+    return text
+
+
+def _declared_gap_allowlist(
+    payload: dict[str, Any], created: set[int], reason: str, path: Path
+) -> bytes:
+    """The declaration bytes carrying a DECLARED entry for every created gap.
+
+    An identical standing entry is left alone: that is the retry path after an
+    interruption between the two replaces. A DIFFERENT standing entry refuses,
+    because silently rewriting someone else's recorded reason is how a
+    declaration stops being evidence.
+    """
+    existing = {entry["id"]: entry for entry in payload["gaps"]}
+    entries = list(payload["gaps"])
+    for identity in sorted(created):
+        prior = existing.get(identity)
+        if prior is None:
+            entries.append(
+                {"id": identity, "status": _MACHINE_WRITABLE_GAP_STATUS, "reason": reason}
+            )
+            continue
+        if prior["status"] == _MACHINE_WRITABLE_GAP_STATUS and prior["reason"] == reason:
+            continue
+        raise ValueError(
+            f"register gap declaration {path} already declares id {identity} as "
+            f"{prior['status']!r}; this tool will not rewrite a standing declaration"
+        )
+    entries.sort(key=lambda entry: entry["id"])
+    updated = dict(payload)
+    updated["gaps"] = entries
+    return (json.dumps(updated, indent=2) + "\n").encode("ascii")
+
+
+@contextmanager
+def _exclusive_register_lock(directory: Path):
+    """Serialize CAS operations on the stable register directory inode."""
+    descriptor = os.open(directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        yield
+    finally:
+        failures: list[tuple[str, Exception]] = []
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        except Exception as exc:
+            failures.append(("lock unlock", exc))
+        try:
+            os.close(descriptor)
+        except Exception as exc:
+            failures.append(("lock close", exc))
+        if failures:
+            raise _PostReplaceOperationError(failures) from failures[0][1]
+
+
+def append(repo: Path, request_path: Path, allow_gap: str | None = None) -> int:
+    expected_digest, proposed = _load_request(request_path)
+    register = repo / "project-knowledge" / "IMPROVEMENT_BACKLOG.md"
+    published = False
+    created_gaps: set[int] = set()
+
+    def mark_published() -> None:
+        nonlocal published
+        published = True
+
+    try:
+        with _exclusive_register_lock(register.parent):
+            original = register.read_bytes()
+            try:
+                text = original.decode("ascii")
+            except UnicodeDecodeError as exc:
+                raise ValueError("canonical register is not ASCII") from exc
+            if not text.endswith("\n"):
+                raise ValueError("canonical register must end with a newline before append")
+            rows, _, digest, _ = _assert_canonical_header(repo, text)
+            if digest != expected_digest:
+                raise ValueError("compare-and-swap canonical header digest mismatch")
+
+            existing_ids = {int(identity) for identity in re.findall(r"^\|\s*(\d+)\s*\|", text, re.MULTILINE)}
+            proposed_ids = [identity for identity, _ in proposed]
+            overlap = existing_ids.intersection(proposed_ids)
+            if overlap:
+                raise ValueError(f"proposed row ID already exists: {min(overlap)}")
+            if existing_ids and proposed_ids[0] <= max(existing_ids):
+                raise ValueError("proposed rows must use numeric insertion order after existing IDs")
+
+            proposed_suffix = "".join(f"{row}\n" for _, row in proposed)
+            appended = text + proposed_suffix
+            derived_rows, opened, new_digest, _ = _derive_backlog(repo, appended)
+            amended = _HEADER.sub(_marker(derived_rows, opened, new_digest), appended, count=1)
+            _assert_canonical_header(repo, amended)
+            has_exact_suffix = amended.endswith(proposed_suffix)
+            candidate_prefix = amended[: -len(proposed_suffix)] if has_exact_suffix else ""
+            normalized_original = _HEADER.sub(
+                "<canonical-header>", original.decode("ascii"), count=1
+            )
+            normalized_candidate_prefix = _HEADER.sub(
+                "<canonical-header>", candidate_prefix, count=1
+            )
+            if not has_exact_suffix or normalized_original != normalized_candidate_prefix:
+                raise ValueError("append would change a physical row outside the proposed suffix")
+            if derived_rows != rows + len(proposed):
+                raise ValueError("append did not produce exactly the proposed number of rows")
+
+            replacements = [
+                (register, amended.encode("ascii"), stat.S_IMODE(register.stat().st_mode))
+            ]
+
+            # A HOLE IS AN ID A CUT WAS HANDED AND NEVER LANDED. Every proposed
+            # id is already proven greater than every existing one, so the ids
+            # this append skips are exactly the ones between the old frontier
+            # and the new one that no proposed row occupies.
+            highest_existing = max(existing_ids) if existing_ids else 0
+            created_gaps = set(range(highest_existing + 1, max(proposed_ids) + 1)) - set(
+                proposed_ids
+            )
+            if created_gaps and allow_gap is None:
+                raise ValueError(
+                    "append would create undeclared register gap(s): "
+                    f"{sorted(created_gaps)}. Use contiguous IDs, or rerun with "
+                    "--allow-gap '<reason>' so the reason and the row are published "
+                    "together."
+                )
+            if allow_gap is not None:
+                reason = _validated_gap_reason(allow_gap)
+                if not created_gaps:
+                    raise ValueError(
+                        "--allow-gap was given but this append creates no register gap; a "
+                        "declaration for a gap that does not exist is banked permission, "
+                        "and the gap gate refuses it as PREMATURE"
+                    )
+                allowlist = _gap_allowlist_path(repo)
+                declaration = _declared_gap_allowlist(
+                    _load_gap_allowlist(allowlist), created_gaps, reason, allowlist
+                )
+                # FIRST in the list, so the reason is durable before the gap is.
+                replacements.insert(
+                    0,
+                    (allowlist, declaration, stat.S_IMODE(allowlist.stat().st_mode)),
+                )
+
+            _atomic_replace_all(replacements, mark_published)
+        print(f"{len(proposed)} row(s) appended; canonical header verified")
+        if created_gaps:
+            print(
+                f"{len(created_gaps)} register gap(s) declared in {_GAP_ALLOWLIST_NAME}: "
+                f"{sorted(created_gaps)}"
+            )
+    except CommitDurabilityUncertainError:
+        raise
+    except Exception as exc:
+        if published:
+            operation = "post-replace finalization"
+            if isinstance(exc, _PostReplaceOperationError):
+                operation = " and ".join(operation for operation, _ in exc.failures)
+            raise CommitDurabilityUncertainError(operation, exc) from exc
+        raise
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo", required=True, type=Path)
+    parser.add_argument("--request", required=True, type=Path)
+    parser.add_argument(
+        "--allow-gap",
+        metavar="REASON",
+        default=None,
+        help=(
+            "declare the register ID(s) this append skips, writing REASON into "
+            f"project-knowledge/{_GAP_ALLOWLIST_NAME} in the same publication as the row. "
+            "Without it, an append that would skip an ID is REFUSED: a gap with no "
+            "recorded reason is indistinguishable from work that was silently lost."
+        ),
+    )
+    args = parser.parse_args()
+    try:
+        return append(args.repo.resolve(), args.request.resolve(), args.allow_gap)
+    except CommitDurabilityUncertainError as exc:
+        print(str(exc), file=os.sys.stderr)
+        return 3
+    except (OSError, ValueError) as exc:
+        print(str(exc), file=os.sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,3989 @@
+#!/usr/bin/env python3
+"""swarm-mutate -- run a mutation battery without rebuilding the harness (and its
+bugs) from scratch every session.
+
+WHY THIS EXISTS. Mutation testing is the only thing in this project that has
+repeatedly found defects a green band could not: at v3.66.847 a battery scored
+2/13 caught on a cut whose own 39-test suite was green, and the worst survivor
+turned a real failure (exit 4, a dangling library twin) into a clean success
+(exit 0, "0 remain, re-measured not inferred") while passing all 238 tests. It
+is worth doing. What is NOT worth doing is what happened around it: five
+separate agents hand-rolled the harness, and the harness -- not the subject --
+was wrong in four distinguishable ways, each of which silently produced a
+CONFIDENT WRONG NUMBER:
+
+  1. AN ANCHOR THAT MATCHED MORE THAN ONE SITE. `re.subn(..., count=1)` rewrites
+     whichever site it reaches first, so the verdict is evidence about a
+     different line than the one named in the report.
+  2. A MUTANT THAT DID NOT PARSE. Deleting a line can orphan an `except:`; the
+     runner then reports a collection error, no named guard flips, and the row
+     reads as an ESCAPE. Invalid is a third outcome and it is not "caught".
+  3. STALE BYTECODE. Python invalidates a .pyc on (mtime, size). A same-length
+     substitution (`lid` -> `hid`) restored inside one wall-clock second changes
+     neither, so the NEXT run imports the mutant while the file's sha256 matches
+     the original. Measured: a battery's postflight went red on a tree it had
+     just proven byte-identical, and the obvious reading was "the restore
+     corrupted something".
+  4. A BASELINE THAT WAS NEVER GREEN, or was green for the wrong reason -- two
+     agents ran in a git worktree checked out at the pre-cut base, found the
+     feature absent, REIMPLEMENTED it, and scored their own code. Their escape
+     lists were precise, well-evidenced measurements about code that was not
+     shipping.
+
+Every one of those is mechanical, and every one is handled here. What is NOT
+handled here is choosing good mutants; that is the part that needs judgment, so
+it stays with the caller.
+
+THE CONTRACT
+
+  swarm-mutate --spec tests/mutants/v3_66_N_slug.json --work DETACHED_SCRATCH
+  swarm-mutate --spec scratch-list.json --band "tests/a.py tests/b.py" --work DETACHED_SCRATCH
+  swarm-mutate --spec scratch-list.json --band "tests/a.py" \
+      --emit-spec v3_66_N_slug.json --subject "what this battery pins"
+  swarm-mutate --selftest
+
+  A durable spec is an object tagged ``swarm-mutate-spec/1`` or
+  ``swarm-mutation-spec/2`` with ``subject``, ``band``, and ``mutants`` fields.
+  V2 makes each regression's exact expected failure and preserved controls
+  executable. A scratch spec may remain a bare LIST;
+  bare-list mutants default to ``direction: regression`` and still require the
+  legacy ``--band`` argument.
+
+  Each mutant object has:
+    label   required  what this mutant breaks, in words, for the report
+    file    required  repo-relative path to mutate
+    old     exactly one of old/old_regex; literal text that MUST occur once
+    old_regex
+            exactly one of old/old_regex; Python regex that MUST match once
+    new     required  what to replace it with; may be EMPTY = delete the span
+    direction         regression (default) or overcorrection
+    catcher required for durable/emitted regression; optional for legacy scratch
+    control  required for overcorrection; this nodeid must fail
+    preserves required for overcorrection; these nodeids must still pass
+
+  A TRANSFORM CONTROL -- the primary battery's mutant applied byte for byte
+  while a band member that cannot see it is named as the catcher, run to
+  prove the primary CAUGHT verdicts come from assertions -- must DECLARE
+  itself: either its basename ends in ``_transform_control.json`` or the
+  spec carries a top-level ``"control_spec": true`` (the two must agree).
+  A declared control is graded the other way up: ESCAPED is reported as
+  CONTROL-ESCAPED (expected) and the run exits 0; CAUGHT is reported as
+  CONTROL-CAUGHT, a FAILURE that exits 1, because a control whose band
+  member sees the transform is not a control. Control rows are counted
+  apart from the regression numerator and denominator. Without the
+  declaration a control's row is byte-identical to a real escape
+  (HARNESS_BACKLOG H89). --emit-spec carries the declaration into the
+  emitted document and refuses a *_transform_control.json name for a run
+  that was not declared a control.
+
+  After an overcorrection runs, its control and preserves are run once more
+  against the restored source.  Every one must PASS.  A fixture can leave
+  state outside the mutated file; without this independent replay, that state
+  can keep the control red and manufacture a CAUGHT verdict after the mutant
+  itself is gone.
+
+  --direction {regression,overcorrection,all} filters a recorded battery;
+  filtering to zero mutants is UNKNOWN rather than vacuous success.
+  --timeout SECONDS bounds collection and execution separately (default: 900).
+
+  The work tree must be a detached scratch copy outside the repository that
+  supplies this runner. Mutating the runner's own repository makes concurrent
+  review evidence untrustworthy, so that topology fails closed before baseline.
+
+  Exit 0 only when every selected mutant is CAUGHT -- or, in a declared
+  control, CONTROL-ESCAPED. Exit 1 if any ESCAPED, CONTROL-CAUGHT or
+  INDISCRIMINATE. Exit 2 if the battery could not be measured -- an empty
+  selection, UNKNOWN/INVALID/ERROR mutant, red or unprovable baseline, missing
+  named nodeid, partial JUnit, or failed restore. Two is not a softer one: it
+  means the battery has no verdict, which must never read as success.
+
+WHAT IT DELIBERATELY DOES NOT DO. It does not judge whether an escape matters,
+and it does not close one. An escape is closed by adding the missing TEST, never
+by deleting the behaviour -- and that test must be proven RED with the mutant
+applied AND green without it, because a test that passes in both states is not a
+test and in this phase that mistake is invisible.
+"""
+from __future__ import annotations
+
+import argparse
+import ast
+import ctypes
+import errno
+import hashlib
+import json
+import os
+import pathlib
+import re
+import shutil
+import signal
+import stat
+import subprocess
+import sys
+import tempfile
+import time
+import xml.etree.ElementTree as ET
+from collections import Counter
+from pathlib import Path
+
+CAUGHT, ESCAPED = "CAUGHT", "ESCAPED"
+# H89: a DECLARED control is graded the other way up. Its escape is the
+# expected result and its catch is the failure, and the row says which.
+CONTROL_ESCAPED, CONTROL_CAUGHT = "CONTROL-ESCAPED", "CONTROL-CAUGHT"
+_CONTROL_SUFFIX = "_transform_control.json"
+_CONTROL_DISPLAY = {
+    CONTROL_ESCAPED: "CONTROL-ESCAPED (expected)",
+    CONTROL_CAUGHT: "CONTROL-CAUGHT (FAILURE)",
+}
+INDISCRIMINATE, UNKNOWN = "INDISCRIMINATE", "UNKNOWN"
+INVALID, ERROR = "INVALID", "ERROR"
+SPEC_SCHEMA = "swarm-mutate-spec/1"
+EXACT_SPEC_SCHEMA = "swarm-mutation-spec/2"
+DEFAULT_BAND_TIMEOUT_SECONDS = 900.0
+PROCESS_GROUP_TERM_GRACE_SECONDS = 1.0
+PROCESS_GROUP_KILL_GRACE_SECONDS = 1.0
+_EMIT_NAME = re.compile(r"v3_66_[0-9]+_[a-z0-9_]+\.json\Z")
+_QUANTIFIED_MUTATION_HEADING = re.compile(
+    r"\bMUTATION(?:\s+BATTERY)?:", re.IGNORECASE
+)
+_QUANTIFIED_MUTATION_OUTCOME = re.compile(
+    r"(?:"
+    r"\b[0-9]+(?:\s+of\s+[0-9]+|/[0-9]+)?\s+"
+    r"(?:CAUGHT|ESCAPED|FAILED|PASSED)\b"
+    r"|"
+    r"\b(?:CAUGHT|ESCAPED|FAILED|PASSED)\s+"
+    r"[0-9]+(?:/[0-9]+)?\b"
+    r")",
+    re.IGNORECASE,
+)
+_EXPLICIT_OVERCORRECTION_MUTANT = re.compile(
+    r"\b(?:OVER-CORRECTION|OVERCORRECTION|OVER-SENSITIVITY)\s+MUTANT\b",
+    re.IGNORECASE,
+)
+_INVOKED_REPOSITORY = Path(__file__).resolve().parents[2]
+_STARTUP_RUNNER_IDENTITY: tuple | None = None
+
+REGISTERED = "REGISTERED"
+REGISTRATION_FAILED = "REGISTRATION FAILED"
+NO_REGISTRAR = "NO REGISTRAR IN THIS TREE"
+_REGISTRATION_STATE_PREFIX = "BD-PYTEST REGISTRATION STATE: "
+_PYTEST_REGISTRATION_REPOSITORY_ROOT = pathlib.Path(__file__).resolve().parents[2]
+
+_PYTEST_REGISTRATION_BOOTSTRAP = r'''\
+import os
+import runpy
+import shlex
+import subprocess
+import sys
+
+state, jobs, anchor, proof, purpose, *pytest_args = sys.argv[1:]
+if state == "REGISTERED":
+    command = shlex.join([sys.executable, "-m", "pytest", *pytest_args])
+    try:
+        registration = subprocess.run(
+            [sys.executable, jobs, "register", "--pid", str(os.getpid()),
+             "--purpose", purpose, "--cmd", command],
+            capture_output=True, text=True,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        print("BD-PYTEST REGISTRATION STATE: REGISTRATION FAILED: "
+              f"anchor={anchor}; registrar={jobs}; {type(exc).__name__}: {exc}",
+              file=sys.stderr)
+        raise SystemExit(3)
+    if registration.returncode:
+        detail = (registration.stdout + registration.stderr).strip()
+        print("BD-PYTEST REGISTRATION STATE: REGISTRATION FAILED: "
+              f"anchor={anchor}; registrar={jobs}; exit={registration.returncode}"
+              + (f"; {detail}" if detail else ""), file=sys.stderr)
+        raise SystemExit(3)
+    print("BD-PYTEST REGISTRATION STATE: REGISTERED: "
+          f"anchor={anchor}; registrar={jobs}", file=sys.stderr)
+elif state == "NO REGISTRAR IN THIS TREE":
+    print("BD-PYTEST REGISTRATION STATE: NO REGISTRAR IN THIS TREE: "
+          f"anchor={anchor}; {proof}", file=sys.stderr)
+else:
+    print("BD-PYTEST REGISTRATION UNKNOWN: invalid internal state "
+          f"{state!r}; anchor={anchor}; nothing ran", file=sys.stderr)
+    raise SystemExit(3)
+sys.argv[:] = ["pytest", *pytest_args]
+runpy.run_module("pytest", run_name="__main__", alter_sys=True)
+'''
+
+
+class PytestRegistrationRefused(RuntimeError):
+    """Owned pytest could not start because registry evidence refused."""
+
+
+def _registration_refusal(output):
+    for raw_line in str(output).splitlines():
+        line = raw_line.strip()
+        if (line.startswith(_REGISTRATION_STATE_PREFIX + REGISTRATION_FAILED + ":")
+                or line.startswith("BD-PYTEST REGISTRATION UNKNOWN:")):
+            return line
+    return None
+
+
+def _raise_if_registration_refused(output):
+    detail = _registration_refusal(output)
+    if detail:
+        raise PytestRegistrationRefused(detail)
+
+
+def _registration_unknown(anchor, detail):
+    raise PytestRegistrationRefused(
+        "BD-PYTEST REGISTRATION UNKNOWN: anchor=%s; %s; nothing ran"
+                       % (anchor, detail))
+
+
+def _resolve_pytest_registrar(repository_root=None):
+    """Resolve only the explicit repository anchor; never ambient candidates."""
+    raw_anchor = (repository_root if repository_root is not None
+                  else _PYTEST_REGISTRATION_REPOSITORY_ROOT)
+    try:
+        anchor = pathlib.Path(raw_anchor).resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        _registration_unknown(raw_anchor, "anchor is unavailable: %s" % exc)
+    if not anchor.is_dir():
+        _registration_unknown(anchor, "anchor is not a directory")
+    registrar = anchor / "toolchain" / "bin" / "swarm-jobs"
+    registrar_present = True
+    for owned_dir in (anchor / "toolchain", anchor / "toolchain" / "bin"):
+        try:
+            owned_info = owned_dir.lstat()
+        except FileNotFoundError:
+            registrar_present = False
+            break
+        except OSError as exc:
+            _registration_unknown(
+                anchor, "registrar metadata is unavailable: %s" % exc)
+        if stat.S_ISLNK(owned_info.st_mode):
+            _registration_unknown(
+                anchor, "registrar parent is a symlink: %s" % owned_dir)
+        if not stat.S_ISDIR(owned_info.st_mode):
+            _registration_unknown(
+                anchor, "registrar parent is not a directory: %s" % owned_dir)
+    if registrar_present:
+        try:
+            registrar_info = registrar.lstat()
+        except FileNotFoundError:
+            registrar_present = False
+        except OSError as exc:
+            _registration_unknown(
+                anchor, "registrar metadata is unavailable: %s" % exc)
+        else:
+            if stat.S_ISLNK(registrar_info.st_mode):
+                _registration_unknown(anchor, "registrar is a symlink: %s" % registrar)
+            if not stat.S_ISREG(registrar_info.st_mode):
+                _registration_unknown(
+                    anchor, "registrar is not a regular file: %s" % registrar)
+
+    try:
+        (anchor / ".git").lstat()
+    except FileNotFoundError:
+        if registrar_present:
+            proof = ("anchor has no .git repository metadata; untracked "
+                     "toolchain/bin/swarm-jobs is not a registrar")
+        else:
+            proof = ("anchor has no .git repository metadata and no "
+                     "toolchain/bin/swarm-jobs")
+        return NO_REGISTRAR, None, proof
+    except OSError as exc:
+        _registration_unknown(anchor, "repository metadata is unavailable: %s" % exc)
+    try:
+        top = subprocess.run(["git", "-C", str(anchor), "rev-parse", "--show-toplevel"],
+                             capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as exc:
+        _registration_unknown(anchor, "repository-root measurement failed: %s" % exc)
+    if top.returncode != 0 or not top.stdout.strip():
+        _registration_unknown(anchor, "repository-root measurement returned exit %d: %s"
+                              % (top.returncode, (top.stdout + top.stderr).strip()))
+    try:
+        measured_root = pathlib.Path(top.stdout.strip()).resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        _registration_unknown(anchor, "measured repository root is unavailable: %s" % exc)
+    if measured_root != anchor:
+        _registration_unknown(anchor, "anchor is not the measured repository root %s"
+                              % measured_root)
+    try:
+        tracked = subprocess.run(
+            ["git", "-C", str(anchor), "ls-files", "--error-unmatch", "--",
+             "toolchain/bin/swarm-jobs"], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as exc:
+        _registration_unknown(anchor, "tracked-registrar measurement failed: %s" % exc)
+    if tracked.returncode == 0:
+        if not registrar_present:
+            _registration_unknown(anchor,
+                                  "tracked toolchain/bin/swarm-jobs is absent or not a file")
+        return REGISTERED, registrar, "tracked toolchain/bin/swarm-jobs"
+    if tracked.returncode == 1:
+        proof = "Git proves toolchain/bin/swarm-jobs is not tracked under this anchor"
+        if registrar_present:
+            proof += "; the untracked path is not trusted"
+        return NO_REGISTRAR, None, proof
+    _registration_unknown(anchor, "tracked-registrar measurement returned exit %d: %s"
+                          % (tracked.returncode,
+                             (tracked.stdout + tracked.stderr).strip()))
+
+
+def _registered_pytest_argv(python, purpose, *pytest_args, repository_root=None):
+    """Return a same-PID register-before-import pytest command."""
+    raw_anchor = (repository_root if repository_root is not None
+                  else _PYTEST_REGISTRATION_REPOSITORY_ROOT)
+    state, registrar, proof = _resolve_pytest_registrar(raw_anchor)
+    anchor = pathlib.Path(raw_anchor).resolve(strict=True)
+    return [str(python), "-c", _PYTEST_REGISTRATION_BOOTSTRAP,
+            state, str(registrar or ""), str(anchor), proof, str(purpose),
+            *[str(arg) for arg in pytest_args]]
+
+
+def _invoked_runner_identity() -> tuple:
+    """Return the byte and inode identity that owns repository authority."""
+    runner = Path(__file__).resolve(strict=True)
+    info = runner.stat()
+    if not stat.S_ISREG(info.st_mode):
+        raise ValueError(f"invoked runner is not a regular file: {runner}")
+    if info.st_nlink != 1:
+        raise ValueError(
+            "invoked runner has multiple hard links (%d): %s; repository "
+            "authority is ambiguous" % (info.st_nlink, runner))
+    return (str(runner), info.st_dev, info.st_ino, stat.S_IFMT(info.st_mode),
+            info.st_nlink, _sha(runner))
+
+
+def _bind_invoked_runner_identity() -> None:
+    global _STARTUP_RUNNER_IDENTITY
+    _STARTUP_RUNNER_IDENTITY = _invoked_runner_identity()
+
+
+def _require_invoked_runner_identity() -> None:
+    global _STARTUP_RUNNER_IDENTITY
+    current = _invoked_runner_identity()
+    if _STARTUP_RUNNER_IDENTITY is None:
+        _STARTUP_RUNNER_IDENTITY = current
+    elif current != _STARTUP_RUNNER_IDENTITY:
+        raise ValueError(
+            "invoked runner identity changed after startup; repository "
+            "authority is ambiguous")
+
+
+def _is_within(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
+def _git_common_dir(path: Path) -> Path | None:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--git-common-dir"], cwd=str(path),
+            capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+    common = Path(result.stdout.strip())
+    if not common.is_absolute():
+        common = path / common
+    try:
+        return common.resolve(strict=True)
+    except OSError:
+        return None
+
+
+def _runner_repository_conflict(work: Path) -> bool:
+    if (_is_within(work, _INVOKED_REPOSITORY)
+            or _is_within(_INVOKED_REPOSITORY, work)):
+        return True
+    work_common = _git_common_dir(work)
+    runner_common = _git_common_dir(_INVOKED_REPOSITORY)
+    return (work_common is not None and runner_common is not None
+            and work_common == runner_common)
+
+
+def _shares_runner_git_authority(work: Path) -> bool:
+    work_common = _git_common_dir(work)
+    runner_common = _git_common_dir(_INVOKED_REPOSITORY)
+    return (work_common is not None and runner_common is not None
+            and work_common == runner_common)
+
+
+def _contained_regular_path(work: Path, rel: str, role: str,
+                            *, protect_runner: bool) -> Path:
+    """Resolve one single-link file inside ``work`` with no runner alias."""
+    try:
+        work = work.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise ValueError(f"{role} work root is unavailable: {work}: {exc}") from exc
+    lexical = Path(rel)
+    if lexical.is_absolute() or ".." in lexical.parts:
+        raise ValueError(f"{role} escapes --work: {rel}")
+    candidate = work / lexical
+    try:
+        resolved = candidate.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise ValueError(f"{role} is unavailable: {rel}: {exc}") from exc
+    if not _is_within(resolved, work):
+        raise ValueError(f"{role} escapes --work: {rel}")
+    if protect_runner and _is_within(resolved, _INVOKED_REPOSITORY):
+        raise ValueError(f"{role} aliases the invoked runner repository: {rel}")
+    if not resolved.is_file():
+        raise ValueError(f"{role} is not a regular file: {rel}")
+    try:
+        links = resolved.stat().st_nlink
+    except OSError as exc:
+        raise ValueError(f"{role} identity is unavailable: {rel}: {exc}") from exc
+    if links != 1:
+        raise ValueError(f"{role} has multiple hard links ({links}): {rel}")
+    return resolved
+
+
+def _mutation_subject(work: Path, rel: str) -> Path:
+    _require_invoked_runner_identity()
+    return _contained_regular_path(
+        work, rel, "mutant subject", protect_runner=True)
+
+
+def _recovery_target(work: Path, rel: str) -> Path:
+    _require_invoked_runner_identity()
+    return _contained_regular_path(
+        work, rel, "recovery target", protect_runner=True)
+
+
+def _sha(p: Path) -> str:
+    return hashlib.sha256(p.read_bytes()).hexdigest()
+
+
+def _fd_bytes(fd: int) -> bytes:
+    chunks = []
+    offset = 0
+    while True:
+        chunk = os.pread(fd, 65536, offset)
+        if not chunk:
+            return b"".join(chunks)
+        chunks.append(chunk)
+        offset += len(chunk)
+
+
+def _fd_identity(path: Path, fd: int) -> dict:
+    info = os.fstat(fd)
+    return {
+        "path": str(path),
+        "device": info.st_dev,
+        "inode": info.st_ino,
+        "mode": stat.S_IMODE(info.st_mode),
+        "links": info.st_nlink,
+        "bytes": hashlib.sha256(_fd_bytes(fd)).hexdigest(),
+    }
+
+
+def _same_descriptor(receipt: tuple, info) -> bool:
+    return receipt == (info.st_dev, info.st_ino, stat.S_IFMT(info.st_mode))
+
+
+class _PinnedDirectory:
+    """One exact directory capability, including every ancestor from ``/``."""
+
+    def __init__(self, path: Path):
+        _require_invoked_runner_identity()
+        path = Path(path)
+        if not path.is_absolute():
+            raise ValueError("directory effect path is not absolute: %s" % path)
+        self.path = path
+        self._owned: dict[str, int] = {}
+        self._chain: list[tuple[str, str, tuple]] = []
+        flags = (os.O_RDONLY | os.O_DIRECTORY
+                 | getattr(os, "O_NOFOLLOW", 0)
+                 | getattr(os, "O_CLOEXEC", 0))
+        primary = None
+        try:
+            components = path.parts[1:]
+            self._owned["directory 0"] = os.open("/", flags)
+            root_info = os.fstat(self._owned["directory 0"])
+            self._chain.append(("directory 0", "", (
+                root_info.st_dev, root_info.st_ino,
+                stat.S_IFMT(root_info.st_mode))))
+            for index, component in enumerate(components, 1):
+                if component in ("", ".", "..") or "\x00" in component:
+                    raise ValueError("unsafe directory path component: %r" % component)
+                parent_name = self._chain[-1][0]
+                owner_name = "directory %d" % index
+                self._owned[owner_name] = os.open(
+                    component, flags, dir_fd=self._owned[parent_name])
+                info = os.fstat(self._owned[owner_name])
+                if not stat.S_ISDIR(info.st_mode):
+                    raise ValueError("effect parent is not a directory: %s" % path)
+                self._chain.append((owner_name, component, (
+                    info.st_dev, info.st_ino, stat.S_IFMT(info.st_mode))))
+            self.require_attached("acquisition")
+        except BaseException as exc:
+            primary = exc
+            raise
+        finally:
+            if primary is not None:
+                self.close(primary=primary)
+
+    @property
+    def fd(self) -> int:
+        return self._owned[self._chain[-1][0]]
+
+    @property
+    def receipt(self) -> tuple:
+        return self._chain[-1][2]
+
+    @classmethod
+    def child(cls, parent, name: str, expected: tuple):
+        """Acquire ``name`` relative to an already-pinned parent capability."""
+        if name in ("", ".", "..") or "/" in name or "\x00" in name:
+            raise ValueError("unsafe directory child name: %r" % name)
+        parent.require_attached("before child directory acquisition")
+        obj = cls.__new__(cls)
+        obj.path = parent.path / name
+        obj._owned = {}
+        obj._chain = []
+        primary = None
+        try:
+            for owner_name, component, receipt in parent._chain:
+                duplicate = os.dup(parent._owned[owner_name])
+                os.set_inheritable(duplicate, False)
+                obj._owned[owner_name] = duplicate
+                obj._chain.append((owner_name, component, receipt))
+            flags = (os.O_RDONLY | os.O_DIRECTORY
+                     | getattr(os, "O_NOFOLLOW", 0)
+                     | getattr(os, "O_CLOEXEC", 0))
+            owner_name = "directory %d" % len(obj._chain)
+            obj._owned[owner_name] = os.open(
+                name, flags, dir_fd=obj._owned[obj._chain[-1][0]])
+            info = os.fstat(obj._owned[owner_name])
+            if not _same_descriptor(expected, info):
+                raise ValueError("directory changed during acquisition: %s"
+                                 % obj.path)
+            obj._chain.append((owner_name, name, expected))
+            obj.require_attached("child directory acquisition")
+            parent.require_attached("after child directory acquisition")
+            return obj
+        except BaseException as exc:
+            primary = exc
+            raise
+        finally:
+            if primary is not None:
+                obj.close(primary=primary)
+
+    def require_attached(self, stage: str) -> None:
+        _require_invoked_runner_identity()
+        for index, (owner_name, component, receipt) in enumerate(self._chain):
+            current = os.fstat(self._owned[owner_name])
+            if not _same_descriptor(receipt, current):
+                raise ValueError("directory identity changed at %s: %s"
+                                 % (stage, self.path))
+            if index:
+                parent_name = self._chain[index - 1][0]
+                attached = os.stat(
+                    component, dir_fd=self._owned[parent_name],
+                    follow_symlinks=False)
+                if not _same_descriptor(receipt, attached):
+                    raise ValueError("directory detached at %s: %s"
+                                     % (stage, self.path))
+
+    def close(self, *, primary: BaseException | None = None) -> None:
+        names = tuple(reversed(tuple(self._owned)))
+        _settle_owned_fds(self._owned, names, primary=primary)
+
+
+class _PinnedSubject:
+    """One exact regular-file capability descended from the filesystem root."""
+
+    def __init__(self, path: Path, expected: dict | None = None):
+        _require_invoked_runner_identity()
+        path = Path(path)
+        if not path.is_absolute() or path.name in ("", ".", ".."):
+            raise ValueError("subject effect path is not absolute: %s" % path)
+        self.path = path
+        self._owned: dict[str, int] = {}
+        self._chain: list[tuple[str, str, tuple]] = []
+        flags = (os.O_RDONLY | os.O_DIRECTORY
+                 | getattr(os, "O_NOFOLLOW", 0)
+                 | getattr(os, "O_CLOEXEC", 0))
+        primary = None
+        try:
+            self._owned["subject directory 0"] = os.open("/", flags)
+            root_info = os.fstat(self._owned["subject directory 0"])
+            self._chain.append(("subject directory 0", "", (
+                root_info.st_dev, root_info.st_ino,
+                stat.S_IFMT(root_info.st_mode))))
+            for index, component in enumerate(path.parts[1:-1], 1):
+                if component in ("", ".", "..") or "\x00" in component:
+                    raise ValueError("unsafe subject path component: %r" % component)
+                parent_name = self._chain[-1][0]
+                owner_name = "subject directory %d" % index
+                self._owned[owner_name] = os.open(
+                    component, flags, dir_fd=self._owned[parent_name])
+                info = os.fstat(self._owned[owner_name])
+                if not stat.S_ISDIR(info.st_mode):
+                    raise ValueError("subject parent is not a directory: %s" % path)
+                self._chain.append((owner_name, component, (
+                    info.st_dev, info.st_ino, stat.S_IFMT(info.st_mode))))
+            leaf_flags = (os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
+                          | getattr(os, "O_CLOEXEC", 0))
+            parent_name = self._chain[-1][0]
+            self._owned["subject leaf"] = os.open(
+                path.name, leaf_flags, dir_fd=self._owned[parent_name])
+            info = os.fstat(self._owned["subject leaf"])
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                raise ValueError(
+                    "subject effect requires one regular-file link: %s" % path)
+            self._leaf_receipt = (
+                info.st_dev, info.st_ino, stat.S_IFMT(info.st_mode))
+            observed = _fd_identity(path, self._owned["subject leaf"])
+            if expected is not None:
+                drift = _subject_identity_drift(expected, observed)
+                if drift:
+                    raise ValueError("subject identity changed before effect: %s"
+                                     % drift)
+            self.require_attached("acquisition")
+        except BaseException as exc:
+            primary = exc
+            raise
+        finally:
+            if primary is not None:
+                self.close(primary=primary)
+
+    def __fspath__(self):
+        return str(self.path)
+
+    def identity(self) -> dict:
+        return _fd_identity(self.path, self._owned["subject leaf"])
+
+    def bytes(self) -> bytes:
+        return _fd_bytes(self._owned["subject leaf"])
+
+    def sha(self) -> str:
+        return hashlib.sha256(self.bytes()).hexdigest()
+
+    @property
+    def parent_fd(self) -> int:
+        return self._owned[self._chain[-1][0]]
+
+    def read_text(self) -> str:
+        self.require_attached("read")
+        return self.bytes().decode("utf-8")
+
+    def require_attached(self, stage: str) -> None:
+        _require_invoked_runner_identity()
+        self._require_subject_attached(stage)
+
+    def _require_subject_attached(self, stage: str) -> None:
+        for index, (owner_name, component, receipt) in enumerate(self._chain):
+            current = os.fstat(self._owned[owner_name])
+            if not _same_descriptor(receipt, current):
+                raise ValueError("subject directory identity changed at %s: %s"
+                                 % (stage, self.path))
+            if index:
+                parent_name = self._chain[index - 1][0]
+                attached = os.stat(
+                    component, dir_fd=self._owned[parent_name],
+                    follow_symlinks=False)
+                if not _same_descriptor(receipt, attached):
+                    raise ValueError("subject directory detached at %s: %s"
+                                     % (stage, self.path))
+        leaf = os.fstat(self._owned["subject leaf"])
+        if (not _same_descriptor(self._leaf_receipt, leaf)
+                or not stat.S_ISREG(leaf.st_mode) or leaf.st_nlink != 1):
+            raise ValueError("subject leaf identity changed at %s: %s"
+                             % (stage, self.path))
+        attached = os.stat(
+            self.path.name, dir_fd=self._owned[self._chain[-1][0]],
+            follow_symlinks=False)
+        if not _same_descriptor(self._leaf_receipt, attached):
+            raise ValueError("subject leaf detached at %s: %s"
+                             % (stage, self.path))
+
+    def _replace_bytes(self, payload: bytes) -> None:
+        os.ftruncate(self._owned["subject leaf"], 0)
+        offset = 0
+        while offset < len(payload):
+            written = os.pwrite(
+                self._owned["subject leaf"], payload[offset:], offset)
+            if written <= 0:
+                raise OSError("short subject write for %s" % self.path)
+            offset += written
+        os.fsync(self._owned["subject leaf"])
+        if _fd_bytes(self._owned["subject leaf"]) != payload:
+            raise OSError("subject write did not verify: %s" % self.path)
+
+    def write_text(self, text: str, *, expected_sha: str | None = None,
+                   restoring: bool = False) -> None:
+        _require_invoked_runner_identity()
+        self._require_subject_attached(
+            "before restore" if restoring else "before write")
+        original = self.bytes()
+        if (expected_sha is not None
+                and hashlib.sha256(original).hexdigest() != expected_sha):
+            raise ValueError("subject bytes changed before write: %s" % self.path)
+        payload = text.encode("utf-8")
+        try:
+            self._replace_bytes(payload)
+            self.require_attached("after write")
+        except BaseException as primary:
+            try:
+                self.require_attached("before rollback")
+                self._replace_bytes(original)
+            except BaseException as restore_error:
+                _attach_secondary_close_notes(
+                    primary, [("subject rollback", self._owned["subject leaf"],
+                               restore_error)])
+            raise
+
+    def close(self, *, primary: BaseException | None = None) -> None:
+        names = tuple(reversed(tuple(self._owned)))
+        _settle_owned_fds(self._owned, names, primary=primary)
+
+
+def _subject_identity(path: Path) -> dict:
+    """Snapshot every subject fact through one no-follow descriptor chain."""
+    owner = _PinnedSubject(Path(path))
+    try:
+        return owner.identity()
+    finally:
+        owner.close(primary=sys.exc_info()[1])
+
+
+def _subject_identity_drift(before: dict, after: dict) -> str:
+    changed = [name for name in before if before[name] != after.get(name)]
+    return ", ".join(changed)
+
+
+def _rename_noreplace(src_fd: int, src: str, dst_fd: int, dst: str) -> None:
+    """Linux atomic no-clobber rename, required for ownership isolation."""
+    libc = ctypes.CDLL(None, use_errno=True)
+    renameat2 = getattr(libc, "renameat2", None)
+    if renameat2 is None:
+        raise OSError("renameat2(RENAME_NOREPLACE) is unavailable")
+    renameat2.argtypes = [ctypes.c_int, ctypes.c_char_p,
+                          ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+    renameat2.restype = ctypes.c_int
+    if renameat2(src_fd, os.fsencode(src), dst_fd, os.fsencode(dst), 1) != 0:
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error), src, dst)
+
+
+def _entry_receipt(info) -> tuple:
+    return (info.st_dev, info.st_ino, stat.S_IFMT(info.st_mode))
+
+
+def _require_entry(parent_fd: int, name: str, receipt: tuple,
+                   display: Path) -> None:
+    info = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+    if not _same_descriptor(receipt, info):
+        raise ValueError("cache entry detached before effect: %s" % display)
+
+
+def _entry_receipt_or_none(parent_fd: int, name: str) -> tuple | None:
+    try:
+        info = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return None
+    return _entry_receipt(info)
+
+
+def _note_reconciliation(primary: BaseException, detail: str) -> None:
+    try:
+        BaseException.add_note(primary, detail)
+    except BaseException:
+        pass
+
+
+def _isolate_owned_name(parent_fd: int, public: str, private: str,
+                        receipt: tuple, display: Path) -> None:
+    """Rename one receipt without leaving an ambiguous after-effect hidden."""
+    try:
+        _rename_noreplace(parent_fd, public, parent_fd, private)
+    except BaseException as primary:
+        try:
+            public_receipt = _entry_receipt_or_none(parent_fd, public)
+            private_receipt = _entry_receipt_or_none(parent_fd, private)
+        except BaseException as observe_error:
+            _note_reconciliation(
+                primary, "cache isolation reconciliation observation failed for "
+                "%s: %s" % (display, _exception_summary(observe_error)))
+            raise primary
+        if public_receipt == receipt and private_receipt is None:
+            raise
+        if public_receipt is None and private_receipt == receipt:
+            try:
+                _rename_noreplace(parent_fd, private, parent_fd, public)
+                os.fsync(parent_fd)
+            except BaseException as restore_error:
+                try:
+                    restored_public = _entry_receipt_or_none(parent_fd, public)
+                    restored_private = _entry_receipt_or_none(parent_fd, private)
+                except BaseException as observe_error:
+                    _note_reconciliation(
+                        primary, "cache isolation restoration observation failed "
+                        "for %s: %s" % (
+                            display, _exception_summary(observe_error)))
+                else:
+                    if restored_public == receipt and restored_private is None:
+                        _note_reconciliation(
+                            primary, "cache isolation restoration completed despite "
+                            "a reported failure for %s" % display)
+                    else:
+                        _note_reconciliation(
+                            primary, "cache isolation restoration is unproved for "
+                            "%s: %s" % (
+                                display, _exception_summary(restore_error)))
+            raise
+        _note_reconciliation(
+            primary, "cache isolation reconciliation found a replacement or "
+            "unknown name state for %s; preserved every observed name" % display)
+        raise
+    moved = os.stat(private, dir_fd=parent_fd, follow_symlinks=False)
+    if not _same_descriptor(receipt, moved):
+        _restore_isolated_name(parent_fd, private, public, receipt)
+        raise ValueError("cache changed during isolation: %s" % display)
+    try:
+        os.stat(public, dir_fd=parent_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return
+    _restore_isolated_name(parent_fd, private, public, receipt)
+    raise ValueError("cache source still exists after isolation: %s" % display)
+
+
+def _restore_isolated_name(parent_fd: int, private: str, public: str,
+                           receipt: tuple) -> None:
+    """Best-effort restoration that never overwrites a replacement name."""
+    try:
+        info = os.stat(private, dir_fd=parent_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return
+    if not _same_descriptor(receipt, info):
+        return
+    try:
+        _rename_noreplace(parent_fd, private, parent_fd, public)
+        os.fsync(parent_fd)
+    except OSError:
+        pass
+
+
+def _destroy_isolated_tree(parent_fd: int, private: str, receipt: tuple,
+                           display: Path, allowed_device: int,
+                           attachment_check) -> None:
+    flags = (os.O_RDONLY | os.O_DIRECTORY
+             | getattr(os, "O_NOFOLLOW", 0)
+             | getattr(os, "O_CLOEXEC", 0))
+    owned = {}
+    primary = None
+    try:
+        attachment_check()
+        _require_entry(parent_fd, private, receipt, display)
+        owned["cache directory"] = os.open(private, flags, dir_fd=parent_fd)
+        cache_fd = owned["cache directory"]
+        cache_info = os.fstat(cache_fd)
+        if (not _same_descriptor(receipt, cache_info)
+                or cache_info.st_dev != allowed_device):
+            raise ValueError("cache directory ownership changed: %s" % display)
+        for child in os.listdir(cache_fd):
+            if child in ("", ".", "..") or "\x00" in child:
+                raise ValueError("unsafe cache entry under %s: %r" % (display, child))
+            attachment_check()
+            _require_entry(parent_fd, private, receipt, display)
+            info = os.stat(child, dir_fd=cache_fd, follow_symlinks=False)
+            child_receipt = _entry_receipt(info)
+            if info.st_dev != allowed_device:
+                raise ValueError("cross-device cache entry refused: %s"
+                                 % (display / child))
+            child_private = ".swarm-mutate-owned-%s" % os.urandom(12).hex()
+            _isolate_owned_name(
+                cache_fd, child, child_private, child_receipt, display / child)
+            try:
+                if stat.S_ISDIR(info.st_mode):
+                    _destroy_isolated_tree(
+                        cache_fd, child_private, child_receipt,
+                        display / child, allowed_device, attachment_check)
+                else:
+                    attachment_check()
+                    _require_entry(parent_fd, private, receipt, display)
+                    _require_entry(cache_fd, child_private, child_receipt,
+                                   display / child)
+                    os.unlink(child_private, dir_fd=cache_fd)
+                    try:
+                        os.stat(child_private, dir_fd=cache_fd,
+                                follow_symlinks=False)
+                    except FileNotFoundError:
+                        pass
+                    else:
+                        raise OSError("cache entry still exists after removal: %s"
+                                      % (display / child))
+            except BaseException:
+                _restore_isolated_name(
+                    cache_fd, child_private, child, child_receipt)
+                raise
+        attachment_check()
+        _require_entry(parent_fd, private, receipt, display)
+        os.rmdir(private, dir_fd=parent_fd)
+        try:
+            os.stat(private, dir_fd=parent_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
+            raise OSError("cache still exists after removal: %s" % display)
+        os.fsync(parent_fd)
+    except BaseException as exc:
+        primary = exc
+        raise
+    finally:
+        _settle_owned_fds(owned, ("cache directory",), primary=primary)
+
+
+def _remove_tree_at(parent_fd: int, name: str, display: Path,
+                    attachment_check=lambda: None) -> None:
+    """Isolate and destroy one exact cache without touching replacements."""
+    attachment_check()
+    info = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+    if not stat.S_ISDIR(info.st_mode):
+        raise ValueError("refusing non-directory cache %s" % display)
+    receipt = _entry_receipt(info)
+    parent_device = os.fstat(parent_fd).st_dev
+    if info.st_dev != parent_device:
+        raise ValueError("cross-device cache directory refused: %s" % display)
+    private = ".swarm-mutate-owned-cache-%s" % os.urandom(12).hex()
+    _isolate_owned_name(parent_fd, name, private, receipt, display)
+    try:
+        attachment_check()
+        _destroy_isolated_tree(
+            parent_fd, private, receipt, display, parent_device,
+            attachment_check)
+    except BaseException:
+        _restore_isolated_name(parent_fd, private, name, receipt)
+        raise
+
+
+def _purge_cache_descendants(directory_fd: int, display: Path,
+                             attachment_check=lambda: None,
+                             guards=()) -> int:
+    n = 0
+    flags = (os.O_RDONLY | os.O_DIRECTORY
+             | getattr(os, "O_NOFOLLOW", 0)
+             | getattr(os, "O_CLOEXEC", 0))
+    for name in os.listdir(directory_fd):
+        attachment_check()
+        for parent_fd, guard_name, receipt, guard_display in guards:
+            _require_entry(parent_fd, guard_name, receipt, guard_display)
+        if name in ("", ".", "..") or "\x00" in name:
+            raise ValueError("unsafe directory entry under %s: %r" % (display, name))
+        info = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+        if not stat.S_ISDIR(info.st_mode):
+            continue
+        if info.st_dev != os.fstat(directory_fd).st_dev:
+            raise ValueError("cross-device directory refused during cache scan: %s"
+                             % (display / name))
+        if name == "__pycache__":
+            _remove_tree_at(directory_fd, name, display / name,
+                            attachment_check=attachment_check)
+            n += 1
+            continue
+        child_fd = os.open(name, flags, dir_fd=directory_fd)
+        primary = None
+        try:
+            receipt = (info.st_dev, info.st_ino, stat.S_IFMT(info.st_mode))
+            if not _same_descriptor(receipt, os.fstat(child_fd)):
+                raise ValueError("directory changed during cache scan: %s"
+                                 % (display / name))
+            n += _purge_cache_descendants(
+                child_fd, display / name, attachment_check,
+                (*guards, (directory_fd, name, receipt, display / name)))
+            attached = os.stat(name, dir_fd=directory_fd, follow_symlinks=False)
+            if not _same_descriptor(receipt, attached):
+                raise ValueError("directory detached during cache scan: %s"
+                                 % (display / name))
+        except BaseException as exc:
+            primary = exc
+            raise
+        finally:
+            _settle_owned_fds({"cache scan directory": child_fd},
+                              ("cache scan directory",), primary=primary)
+    return n
+
+
+def _purge_pycache(root: Path) -> int:
+    """Remove caches only through one pinned work-root capability."""
+    _require_invoked_runner_identity()
+    owner = _PinnedDirectory(Path(root))
+    primary = None
+    try:
+        owner.require_attached("before cache purge")
+        count = _purge_cache_descendants(
+            owner.fd, Path(root),
+            lambda: owner.require_attached("during cache purge"))
+        owner.require_attached("after cache purge")
+        return count
+    except BaseException as exc:
+        primary = exc
+        raise
+    finally:
+        owner.close(primary=primary)
+
+
+def _purge_subject_pycache(target) -> int:
+    """Remove only the cache beside one recovered subject.
+
+    Recovery permits an ancestor ``--work`` so its journal can name a subject
+    below it.  Recursing from that ancestor would also delete caches belonging
+    to unrelated descendants, including the runner repository itself.
+    """
+    _require_invoked_runner_identity()
+    owned_here = not isinstance(target, _PinnedSubject)
+    owner = target if not owned_here else _PinnedSubject(Path(target))
+    primary = None
+    try:
+        owner.require_attached("before subject cache purge")
+        try:
+            info = os.stat("__pycache__", dir_fd=owner.parent_fd,
+                           follow_symlinks=False)
+        except FileNotFoundError:
+            return 0
+        if not stat.S_ISDIR(info.st_mode):
+            raise ValueError("refusing non-directory subject cache %s"
+                             % (owner.path.parent / "__pycache__"))
+        _remove_tree_at(
+            owner.parent_fd, "__pycache__",
+            owner.path.parent / "__pycache__",
+            attachment_check=lambda: owner.require_attached(
+                "during subject cache purge"))
+        owner.require_attached("after subject cache purge")
+        return 1
+    except BaseException as exc:
+        primary = exc
+        raise
+    finally:
+        if owned_here:
+            owner.close(primary=primary)
+
+
+def _write_subject_text(path, text: str, *, expected_sha: str | None = None,
+                        restoring: bool = False) -> None:
+    """Write only through an exact owned subject descriptor."""
+    if isinstance(path, _PinnedSubject):
+        path.write_text(text, expected_sha=expected_sha, restoring=restoring)
+        return
+    owner = _PinnedSubject(Path(path))
+    try:
+        owner.write_text(text, expected_sha=expected_sha, restoring=restoring)
+    finally:
+        owner.close(primary=sys.exc_info()[1])
+
+
+def _exception_summary(exc: BaseException, limit: int = 500) -> str:
+    """Return one bounded diagnostic line for an operational exception."""
+    try:
+        detail = str(exc)
+    except BaseException:
+        detail = "<unprintable>"
+    detail = detail.replace("\r", "\\r").replace("\n", "\\n")
+    summary = "%s: %s" % (type(exc).__name__, detail)
+    if len(summary) > limit:
+        return summary[:limit - 3] + "..."
+    return summary
+
+
+def _child_env() -> dict:
+    env = dict(os.environ)
+    env.pop("SWARM_INSTALL_DIR", None)
+    env["PYTHONDONTWRITEBYTECODE"] = "1"   # belt; the purge is braces
+    return env
+
+
+def _first_line(text: str) -> str:
+    """The first line as a LOADER reads it: everything up to the first "\\n".
+
+    Deliberately NOT str.splitlines()[0]. str.splitlines breaks on nine
+    separators beyond "\\n" -- a lone "\\r", plus \\x0b \\x0c \\x1c \\x1d \\x1e
+    \\x85 \\u2028 \\u2029 -- while the kernel's "#!" handling, CPython's own
+    source reader and bash all end the first line only at "\\n". splitlines()[0]
+    is therefore a PREFIX of this, so a `python` or `sh` marker sitting after an
+    exotic separator but before the first newline was INVISIBLE to _validate's
+    shebang predicates. Such a subject matched neither branch, fell through the
+    closing `return True, ""` at the bottom of _validate, and an unparseable
+    mutant was recorded VALID -- backlog row 239's fail-open reached by a
+    different door, in the tool that applies every mutant in tests/mutants.
+
+    Row 572 fixed exactly this shape one level up in
+    tests/test_row532_a_mutant_anchor_must_resolve_into_code.py::_comment_spans
+    and its own helper names this predicate as the uncorrected copy.
+    tests/test_bd_mutate_reads_the_loader_first_line.py is the gate.
+    """
+    return text.split("\n", 1)[0]
+
+
+# THE SUFFIXES THIS TOOL'S OWN CORPUS ALREADY MUTATES, REGISTERED AS DATA.
+#
+# Row 711 makes an unregistered suffix UNKNOWN, because declining to judge must
+# never be recorded as a pass. That default is only safe while registration
+# stays COMPLETE for the corpus swarm-mutate actually runs. Installing the default
+# WITHOUT these two families flipped 35 tracked mutants across 15 specs from
+# VALID to UNKNOWN, failed
+# tests/test_row353_mutant_anchors_survive_a_moved_census.py, and made
+# tests/mutants/row645_guard_health_and_ci_transform_control.json -- a control
+# that exists PRECISELY to ESCAPE -- unable to escape at all, because an
+# UNKNOWN mutant is never graded. Completeness is therefore gated, by
+# test_row711_every_suffix_in_the_tracked_mutant_corpus_is_registered, which
+# derives the population from the tracked specs and asks _validate itself.
+#
+# `.md` and `.txt` are prose/data subjects: no parse contract exists for a
+# mutant to break, so a mutated one is valid BY CONSTRUCTION. That is a
+# judgement, not a decline.
+_TEXT_SUFFIXES = frozenset({".md", ".txt"})
+# `.yml`/`.yaml` CAN be unparseable and PyYAML is in this environment, so they
+# are parsed for real. An unparseable one is False/INVALID -- the parser ran and
+# refused -- never the None that means "nobody looked".
+_YAML_SUFFIXES = frozenset({".yml", ".yaml"})
+
+
+def _validate(path: Path, text: str) -> tuple[bool | None, str]:
+    """Can this mutant even run? Invalid is its own outcome, never 'caught'."""
+    suffix = path.suffix
+    if suffix == ".py" or (not suffix and text.startswith("#!") and "python" in _first_line(text)):
+        try:
+            ast.parse(text)
+        except SyntaxError as e:
+            return False, f"ast.parse: {e}"
+        return True, ""
+    if suffix == ".sh" or (not suffix and text.startswith("#!") and "sh" in _first_line(text)):
+        with tempfile.NamedTemporaryFile("w", suffix=".sh", delete=False) as fh:
+            fh.write(text)
+            tmp = fh.name
+        try:
+            r = subprocess.run(["bash", "-n", tmp], capture_output=True, text=True)
+            if r.returncode != 0:
+                return False, f"bash -n: {r.stderr.strip()[:200]}"
+        finally:
+            os.unlink(tmp)
+        return True, ""
+
+    if suffix == ".json":
+        try:
+            json.loads(text)
+        except json.JSONDecodeError as exc:
+            json_unknown = None
+            return json_unknown, "json.loads: %s" % exc
+        return True, ""
+
+    if suffix in _TEXT_SUFFIXES:
+        return True, ""
+
+    if suffix in _YAML_SUFFIXES:
+        try:
+            import yaml
+        except ImportError as exc:
+            return None, (
+                "cannot validate %s: PyYAML is not importable (%s), so this "
+                "mutant's validity is UNKNOWN -- which is not the same as valid "
+                "(row 239)." % (suffix, exc))
+        try:
+            yaml.safe_load(text)
+        except yaml.YAMLError as exc:
+            # INVALID, NOT UNKNOWN. The parser ran and REFUSED this text; a
+            # measured refusal is a judgement. None would claim nobody looked,
+            # and row 711's UNKNOWN verdict skips grading entirely -- which
+            # would silently retire every .yml mutant in the corpus.
+            yaml_invalid = False
+            return yaml_invalid, "yaml.safe_load: %s" % (
+                " ".join(str(exc).split())[:200],)
+        return True, ""
+
+    # TYPESCRIPT AND JSX, PARSED BY THE TOOLCHAIN ALREADY IN THE TREE.
+    #
+    # This branch exists because its absence was a FAIL-OPEN in the instrument
+    # that validates every other cut (backlog row 239). A `.tsx` mutant that did
+    # not parse fell through to the unconditional `return True` below, so it was
+    # recorded VALID; its catcher then failed -- because the whole spec file
+    # could no longer be transformed, not because any assertion fired -- and
+    # `_grade_mutant` scored it CAUGHT on `named catcher failed`. The battery
+    # reported proof it did not have.
+    #
+    # MEASURED at v3.66.1237: esbuild 0.25.12 ships in frontend/node_modules for
+    # vitest, and reading from STDIN with an explicit --loader accepts a valid
+    # .tsx and refuses a broken one. (Passing a FILE with --loader is refused
+    # outright -- "loader without extension only applies when reading from
+    # stdin" -- which is why this pipes.)
+    _TS_LOADERS = {".ts": "ts", ".tsx": "tsx", ".mts": "ts", ".cts": "ts",
+                   ".js": "js", ".jsx": "jsx", ".mjs": "js", ".cjs": "js"}
+    loader = _TS_LOADERS.get(suffix)
+    if loader:
+        esbuild = None
+        for base in list(path.resolve().parents) + [_INVOKED_REPOSITORY]:
+            candidate = base / "frontend" / "node_modules" / ".bin" / "esbuild"
+            if candidate.is_file():
+                esbuild = candidate
+                break
+        if esbuild is None:
+            # NOT VALID, AND NOT A GUESS EITHER. Declining to judge must not be
+            # recorded as passing judgement -- that is the whole defect above.
+            return None, (
+                "cannot validate %s: no frontend/node_modules/.bin/esbuild above "
+                "%s. Run `npm ci` in frontend/, or this mutant's validity is "
+                "UNKNOWN -- which is not the same as valid (row 239)." % (suffix, path))
+        r = subprocess.run(
+            [str(esbuild), "--loader=%s" % loader, "--log-level=silent"],
+            input=text, capture_output=True, text=True, timeout=60)
+        if r.returncode != 0:
+            return False, "esbuild --loader=%s: %s" % (
+                loader, (r.stderr.strip() or "refused the mutated source")[:200])
+        return True, ""
+
+    # Extensionless, non-Python/non-shell subjects are an existing explicit
+    # contract: there is no suffix to classify, so preserve the declined
+    # validation result pinned by test_bd_mutate_reads_the_loader_first_line.
+    if not suffix:
+        return True, ""
+
+    unknown = None
+    return unknown, (
+        "cannot validate %s: no parser is registered; validity is UNKNOWN" % suffix)
+
+
+def _apply(src: str, old: str, new: str) -> str:
+    """The applied-check from CLAUDE.md section 6, in one place.
+
+    `new in after` is trivially true when `new` already occurs elsewhere;
+    `after.count(old) == 0` fails for an append-style edit where old is a
+    substring of new. Length arithmetic is exact for ONE replacement of a
+    UNIQUE anchor and cannot be fooled by substring overlap in either
+    direction. The uniqueness assert is what makes it exact.
+    """
+    n = src.count(old)
+    if n != 1:
+        raise ValueError(f"anchor occurs {n} times, must be exactly 1")
+    after = src.replace(old, new, 1)
+    if after == src:
+        raise ValueError("replacement changed nothing")
+    if len(after) != len(src) - len(old) + len(new):
+        raise ValueError("length arithmetic failed -- the edit is not what it claims")
+    return after
+
+
+def _apply_regex(src: str, old_regex: str, new: str) -> str:
+    """Replace one regex-matched span with ``new`` as literal text.
+
+    ``Match.expand`` and ``Pattern.sub`` deliberately do not appear here: the
+    replacement is not a regex template, so backslashes and group-looking text
+    in ``new`` are written verbatim.  Length arithmetic uses the one matched
+    span's measured length because the pattern text is not the source text it
+    describes.
+    """
+    try:
+        pattern = re.compile(old_regex)
+    except re.error as exc:
+        raise ValueError(f"invalid regex anchor: {exc}") from exc
+    matches = list(pattern.finditer(src))
+    n = len(matches)
+    if n != 1:
+        raise ValueError(f"regex anchor occurs {n} times, must be exactly 1")
+    match = matches[0]
+    matched_length = match.end() - match.start()
+    after = src[:match.start()] + new + src[match.end():]
+    if after == src:
+        raise ValueError("replacement changed nothing")
+    if len(after) != len(src) - matched_length + len(new):
+        raise ValueError("length arithmetic failed -- the edit is not what it claims")
+    return after
+
+
+def _apply_mutant(src: str, mutant: dict) -> str:
+    """Apply either supported anchor shape through the shared refusal path."""
+    has_old = "old" in mutant
+    has_old_regex = "old_regex" in mutant
+    if has_old == has_old_regex:
+        state = "both" if has_old else "neither"
+        raise ValueError(
+            "must supply exactly one of 'old' or 'old_regex'; got %s" % state)
+    if has_old_regex:
+        return _apply_regex(src, mutant["old_regex"], mutant["new"])
+    return _apply(src, mutant["old"], mutant["new"])
+
+
+def _git_audit_output(work: Path, *args: str) -> str:
+    """Run one read-only Git query or refuse the release-evidence audit."""
+    result = subprocess.run(
+        ["git", *args],
+        cwd=work,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise ValueError(
+            "release mutation-evidence query failed: git %s: %s"
+            % (" ".join(args), result.stderr.strip() or "no diagnostic")
+        )
+    return result.stdout
+
+
+def _added_diff_text(diff: str) -> str:
+    """Return added payload lines, excluding the unified-diff file header."""
+    return "\n".join(
+        line[1:]
+        for line in diff.splitlines()
+        if line.startswith("+") and not line.startswith("+++")
+    )
+
+
+def _has_quantified_mutation_receipt(added_changelog: str) -> bool:
+    """Recognise only an explicit quantitative MUTATION receipt paragraph.
+
+    This is deliberately not a guess that a code cut *should* have run a
+    battery.  The author has to publish ``MUTATION:`` or ``MUTATION BATTERY:``
+    and a numeric caught/escaped/failed/passed outcome in the same paragraph.
+    Cuts with no such claim remain outside this slice.
+    """
+    paragraphs = re.split(r"\n[ \t]*\n", added_changelog)
+    return any(
+        _QUANTIFIED_MUTATION_HEADING.search(paragraph)
+        and _QUANTIFIED_MUTATION_OUTCOME.search(paragraph)
+        for paragraph in paragraphs
+    )
+
+
+def _release_evidence_inputs(
+    work: Path, revision: str | None
+) -> tuple[str, str, str, list[str], dict[str, str]]:
+    """Return identity, parent, added CHANGELOG, specs, and their JSON bytes."""
+    if revision is None:
+        parent = _git_audit_output(work, "rev-parse", "--verify", "HEAD^{commit}").strip()
+        identity = "WORKTREE"
+        changelog_diff = _git_audit_output(
+            work, "diff", "--unified=0", "HEAD", "--", "CHANGELOG.md"
+        )
+        changed = _git_audit_output(
+            work,
+            "diff",
+            "--name-only",
+            "--diff-filter=ACMR",
+            "HEAD",
+            "--",
+            "tests/mutants/*.json",
+        ).splitlines()
+        untracked = _git_audit_output(
+            work,
+            "ls-files",
+            "--others",
+            "--exclude-standard",
+            "--",
+            "tests/mutants/*.json",
+        ).splitlines()
+        specs = sorted(set(changed + untracked))
+        payloads = {
+            rel: (work / rel).read_text(encoding="utf-8")
+            for rel in specs
+        }
+    else:
+        identity = _git_audit_output(
+            work, "rev-parse", "--verify", f"{revision}^{{commit}}"
+        ).strip()
+        parent = _git_audit_output(
+            work, "rev-parse", "--verify", f"{identity}^1"
+        ).strip()
+        changelog_diff = _git_audit_output(
+            work,
+            "diff",
+            "--unified=0",
+            parent,
+            identity,
+            "--",
+            "CHANGELOG.md",
+        )
+        specs = sorted(
+            _git_audit_output(
+                work,
+                "diff",
+                "--name-only",
+                "--diff-filter=ACMR",
+                parent,
+                identity,
+                "--",
+                "tests/mutants/*.json",
+            ).splitlines()
+        )
+        payloads = {
+            rel: _git_audit_output(work, "show", f"{identity}:{rel}")
+            for rel in specs
+        }
+    return identity, parent, _added_diff_text(changelog_diff), specs, payloads
+
+
+def _audit_release_mutation_evidence(
+    work: Path, revision: str | None = "HEAD"
+) -> dict:
+    """Audit the decidable release-receipt slice from backlog row 27.
+
+    A source diff cannot reliably say whether a battery or an over-sensitivity
+    control was semantically required.  A quantitative CHANGELOG receipt can:
+    it is a claim that executable evidence exists.  This audit therefore makes
+    no battery mandatory for an otherwise silent cut.  It only refuses a
+    receipt with no same-cut durable spec, or an explicit claim of an
+    ``OVERCORRECTION mutant`` with no executable named control.
+
+    ``revision=None`` audits the uncommitted worktree against HEAD, which lets
+    the existing pre-cut tracked-spec gate see the same contract before a cut
+    is frozen.  A commit-ish audits that commit against its first parent.
+    """
+    root = Path(work).resolve()
+    identity, parent, added, specs, payloads = _release_evidence_inputs(
+        root, revision
+    )
+    quantitative = _has_quantified_mutation_receipt(added)
+    explicit_overcorrection = bool(
+        quantitative and _EXPLICIT_OVERCORRECTION_MUTANT.search(added)
+    )
+    controls: list[dict] = []
+    invalid_specs: list[str] = []
+    for rel in specs:
+        try:
+            document = json.loads(payloads[rel])
+        except json.JSONDecodeError as exc:
+            invalid_specs.append(f"{rel}: invalid JSON: {exc}")
+            continue
+        if (not isinstance(document, dict)
+                or document.get("schema") != SPEC_SCHEMA
+                or not isinstance(document.get("mutants"), list)
+                or not document["mutants"]):
+            invalid_specs.append(f"{rel}: not a nonempty {SPEC_SCHEMA} object")
+            continue
+        for mutant in document["mutants"]:
+            if not isinstance(mutant, dict) or mutant.get("direction") != "overcorrection":
+                continue
+            control = mutant.get("control")
+            preserves = mutant.get("preserves")
+            if (isinstance(control, str) and control
+                    and isinstance(preserves, list) and preserves
+                    and all(isinstance(nodeid, str) and nodeid for nodeid in preserves)):
+                controls.append({
+                    "spec": rel,
+                    "label": mutant.get("label"),
+                    "control": control,
+                    "preserves": preserves,
+                })
+
+    problems: list[str] = []
+    if quantitative and not specs:
+        problems.append(
+            "quantitative mutation receipt has no same-cut durable mutation spec"
+        )
+    elif quantitative and invalid_specs:
+        problems.append(
+            "quantitative mutation receipt has invalid same-cut spec evidence: "
+            + "; ".join(invalid_specs)
+        )
+    if explicit_overcorrection and not controls:
+        problems.append(
+            "explicit overcorrection mutant claim has no executable named control"
+        )
+    return {
+        "revision": identity,
+        "parent": parent,
+        "quantitative_receipt": quantitative,
+        "explicit_overcorrection_mutant": explicit_overcorrection,
+        "specs": specs,
+        "overcorrection_controls": controls,
+        "problems": problems,
+    }
+
+
+def _normalise_spec(document: object, cli_band: list[str]
+                    ) -> tuple[list[dict], list[str]]:
+    """Accept durable object specs while keeping cheap scratch lists valid."""
+    durable = isinstance(document, dict)
+    if isinstance(document, list):
+        mutants = document
+        band = cli_band
+        schema = None
+    elif isinstance(document, dict):
+        schema = document.get("schema")
+        if schema not in {SPEC_SCHEMA, EXACT_SPEC_SCHEMA}:
+            raise ValueError(
+                "object spec schema must be "
+                f"{SPEC_SCHEMA!r} or {EXACT_SPEC_SCHEMA!r}, got {schema!r}")
+        mutants = document.get("mutants")
+        band = document.get("band")
+        if cli_band and cli_band != band:
+            raise ValueError(
+                "--band disagrees with the durable spec's recorded band; edit the spec "
+                "when its executable denominator changes")
+    else:
+        raise ValueError("spec root must be an object or a bare mutant list")
+
+    if not isinstance(mutants, list):
+        raise ValueError("spec mutants must be a list")
+    if not isinstance(band, list) or any(not isinstance(item, str) for item in band):
+        raise ValueError("spec band must be a list of test-target strings")
+
+    normalised: list[dict] = []
+    for index, raw in enumerate(mutants, 1):
+        if not isinstance(raw, dict):
+            raise ValueError(f"mutant {index} must be an object")
+        mutant = dict(raw)
+        has_old = "old" in mutant
+        has_old_regex = "old_regex" in mutant
+        if has_old == has_old_regex:
+            state = "both" if has_old else "neither"
+            raise ValueError(
+                f"mutant {index} must supply exactly one of 'old' or "
+                f"'old_regex'; got {state}")
+        anchor_field = "old_regex" if has_old_regex else "old"
+        for field in ("file", anchor_field):
+            if not isinstance(mutant.get(field), str) or not mutant[field]:
+                raise ValueError(f"mutant {index} field {field!r} must be a non-empty string")
+        # H377: `new` MAY be the empty string -- that is how a deletion mutant is
+        # written, and _apply's length arithmetic is exact for len(new) == 0.
+        # ABSENT is still refused: a missing key is a spec the author did not
+        # finish writing, not a deliberate deletion.
+        if "new" not in mutant:
+            raise ValueError(
+                f"mutant {index} field 'new' is required "
+                "(absent is not the same as empty)")
+        if not isinstance(mutant["new"], str):
+            raise ValueError(
+                f"mutant {index} field 'new' must be a string "
+                "(it may be empty = delete the span)")
+        if has_old_regex:
+            try:
+                re.compile(mutant["old_regex"])
+            except re.error as exc:
+                raise ValueError(
+                    f"mutant {index} field 'old_regex' is not a valid Python "
+                    f"regular expression: {exc}") from exc
+        for field in ("label", "catcher", "control"):
+            if field in mutant and mutant[field] is not None and not isinstance(mutant[field], str):
+                raise ValueError(f"mutant {index} field {field!r} must be a string")
+        direction = mutant.setdefault("direction", "regression")
+        if direction not in {"regression", "overcorrection"}:
+            raise ValueError(
+                f"mutant {index} direction must be 'regression' or 'overcorrection', "
+                f"got {direction!r}")
+        if direction == "regression" and durable and not mutant.get("catcher"):
+            raise ValueError(
+                f"mutant {index} in a durable spec requires a named catcher")
+        if schema == EXACT_SPEC_SCHEMA:
+            required = {
+                "label", "file", anchor_field, "new", "direction", "catcher",
+                "expected_failure", "preserves",
+            }
+            if direction != "regression" or set(mutant) != required:
+                raise ValueError(
+                    f"v2 mutant {index} fields must be exactly {sorted(required)} "
+                    "and direction must be 'regression'")
+            expected_failure = mutant["expected_failure"]
+            if (not isinstance(expected_failure, dict)
+                    or set(expected_failure) != {"outcome", "signature"}
+                    or expected_failure.get("outcome") != "failed"
+                    or not isinstance(expected_failure.get("signature"), str)
+                    or not expected_failure["signature"]):
+                raise ValueError(
+                    f"v2 mutant {index} requires exact failed expected_failure")
+            preserves = mutant["preserves"]
+            if (not isinstance(preserves, list) or not preserves
+                    or any(not isinstance(nodeid, str) or not nodeid
+                           for nodeid in preserves)):
+                raise ValueError(
+                    f"v2 mutant {index} requires nonempty named preserves")
+            if len(preserves) != len(set(preserves)):
+                raise ValueError(f"v2 mutant {index} preserves contains duplicates")
+            if mutant["catcher"] in preserves:
+                raise ValueError(
+                    f"v2 mutant {index} catcher must not also be preserved")
+        if direction == "overcorrection":
+            control = mutant.get("control")
+            preserves = mutant.get("preserves")
+            if not isinstance(control, str) or not control:
+                raise ValueError(
+                    f"mutant {index} overcorrection requires one named control")
+            if (not isinstance(preserves, list) or not preserves
+                    or any(not isinstance(nodeid, str) or not nodeid for nodeid in preserves)):
+                raise ValueError(
+                    f"mutant {index} overcorrection requires nonempty named preserves")
+            if len(preserves) != len(set(preserves)):
+                raise ValueError(f"mutant {index} preserves contains duplicates")
+            if control in preserves:
+                raise ValueError(f"mutant {index} control must not also be preserved")
+        normalised.append(mutant)
+    return normalised, band
+
+
+def _declared_control(document: object, spec_path: Path | None) -> bool:
+    """A control says so in a FIELD or in its NAME, and the two must agree.
+
+    H89: without a declaration a correct control's row -- direction
+    regression, a named catcher, verdict ESCAPED, exit 1 -- is byte-identical
+    to a genuine uncaught mutant, and two readers misread one in an hour.
+    """
+    named = spec_path is not None and spec_path.name.endswith(_CONTROL_SUFFIX)
+    if not isinstance(document, dict) or "control_spec" not in document:
+        return bool(named)
+    declared = document["control_spec"]
+    if not isinstance(declared, bool):
+        raise ValueError(
+            f"control_spec must be true or false, got {declared!r}")
+    if named and not declared:
+        raise ValueError(
+            f"{spec_path.name} is named *{_CONTROL_SUFFIX} but declares "
+            '"control_spec": false; a control\'s name and its declaration '
+            "must agree")
+    return declared
+
+
+def _control_verdict(verdict: str) -> str:
+    """Read a declared control's measurement the other way up."""
+    return {ESCAPED: CONTROL_ESCAPED, CAUGHT: CONTROL_CAUGHT}.get(verdict, verdict)
+
+
+def _verdict_display(verdict: str) -> str:
+    return _CONTROL_DISPLAY.get(verdict, verdict)
+
+
+def _battery_exit(rows: list[dict]) -> int:
+    """Map measured verdicts to the public three-state CLI contract."""
+    if any(row.get("verdict") in {UNKNOWN, INVALID, ERROR} for row in rows):
+        return 2
+    return 0 if rows and all(
+        row.get("verdict") in {CAUGHT, CONTROL_ESCAPED} for row in rows) else 1
+
+
+def _defined_test_nodeids(work: Path, rel: str) -> set[str]:
+    path = work / rel
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    except (OSError, SyntaxError) as exc:
+        raise ValueError(f"cannot read defined tests from {rel}: {exc}") from exc
+    found: set[str] = set()
+
+    def walk(body: list[ast.stmt], owners: tuple[str, ...] = ()) -> None:
+        for node in body:
+            if (isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and node.name.startswith("test")):
+                found.add("::".join((rel, *owners, node.name)))
+            elif isinstance(node, ast.ClassDef):
+                walk(node.body, (*owners, node.name))
+
+    walk(tree.body)
+    return found
+
+
+def _defined_base_test_nodeid(nodeid: str) -> str | None:
+    """Bind one exact collected parameter case to its AST-defined test."""
+    head, sep, leaf = nodeid.rpartition("::")
+    if not sep or not leaf:
+        return None
+    if "[" not in leaf:
+        return nodeid
+    base, bracket, parameter = leaf.partition("[")
+    if (not bracket or not base or not parameter.endswith("]")
+            or parameter == "]" or "[" in parameter[:-1]):
+        return None
+    return f"{head}::{base}"
+
+
+def _is_defined_test_or_collected_case(
+        work: Path, rel: str, nodeid: str) -> bool:
+    base = _defined_base_test_nodeid(nodeid)
+    return base is not None and base in _defined_test_nodeids(work, rel)
+
+
+def _tracked_paths(work: Path) -> set[str]:
+    run = subprocess.run(
+        ["git", "ls-files", "-z"], cwd=str(work), capture_output=True, text=True)
+    if run.returncode != 0:
+        raise ValueError("--emit-spec requires a git work tree with tracked subjects/tests")
+    return {rel for rel in run.stdout.split("\0") if rel}
+
+
+def _prepare_emitted_spec(work: Path, name: str, subject: str, band: list[str],
+                          mutants: list[dict],
+                          control_spec: bool = False) -> tuple[_PinnedDirectory, Path, bytes]:
+    """Validate one canonical candidate; publication waits for a real verdict."""
+    if not _EMIT_NAME.fullmatch(name):
+        raise ValueError(
+            "--emit-spec must be a canonical basename like "
+            "v3_66_1185_short_slug.json")
+    if name.endswith(_CONTROL_SUFFIX) and not control_spec:
+        # H89: the emitted spec would re-run as a control although this run
+        # was graded as a regression battery -- a document whose meaning
+        # changes between the measurement and the re-run.
+        raise ValueError(
+            f"--emit-spec {name} declares a control by suffix but this run was "
+            'not declared a control; add "control_spec": true to the source '
+            f"spec or name it *{_CONTROL_SUFFIX}")
+    if not subject.strip():
+        raise ValueError("--subject is required with --emit-spec")
+    if not band or any(not target for target in band):
+        raise ValueError("cannot emit a spec with an empty band")
+    if len(band) != len(set(band)):
+        raise ValueError("cannot emit a spec with duplicate band targets")
+
+    tracked = _tracked_paths(work)
+    band_paths = {target.split("::", 1)[0] for target in band}
+    for target in band:
+        rel = target.split("::", 1)[0]
+        if rel not in tracked:
+            raise ValueError(f"untracked band target: {rel}")
+        if not (work / rel).is_file():
+            raise ValueError(f"emitted band target does not exist: {target}")
+        if ("::" in target
+                and not _is_defined_test_or_collected_case(work, rel, target)):
+            raise ValueError(f"band nodeid is not a defined test: {target}")
+
+    for index, mutant in enumerate(mutants, 1):
+        anchor_fields = {"old", "old_regex"} & set(mutant)
+        if len(anchor_fields) != 1:
+            raise ValueError(
+                f"emitted mutant {index} must have exactly one anchor field")
+        anchor_field = next(iter(anchor_fields))
+        required = {"label", "file", anchor_field, "new", "direction"}
+        if mutant["direction"] == "regression":
+            required.add("catcher")
+        else:
+            required.update({"control", "preserves"})
+        if set(mutant) != required:
+            raise ValueError(
+                f"emitted mutant {index} fields must be exactly {sorted(required)}")
+        for field in required - {"preserves", "new"}:
+            if not isinstance(mutant[field], str) or not mutant[field]:
+                raise ValueError(
+                    f"emitted mutant {index} field {field!r} must be a non-empty string")
+        # H377: the writer must accept what the runner accepts, or a seat could
+        # RUN a deletion battery and then be refused when promoting it.
+        if not isinstance(mutant["new"], str):
+            raise ValueError(
+                f"emitted mutant {index} field 'new' must be a string "
+                "(it may be empty = delete the span)")
+        subject_path = _mutation_subject(work, mutant["file"])
+        if mutant["file"] not in tracked:
+            raise ValueError(f"emitted mutant {index} has untracked subject: {mutant['file']}")
+        owner = _PinnedSubject(subject_path)
+        primary = None
+        try:
+            source = owner.read_text()
+            if anchor_field == "old_regex":
+                count = len(list(re.finditer(mutant["old_regex"], source)))
+            else:
+                count = source.count(mutant["old"])
+        except BaseException as exc:
+            primary = exc
+            raise
+        finally:
+            owner.close(primary=primary)
+        if count != 1:
+            raise ValueError(
+                f"emitted mutant {index} "
+                f"{'regex ' if anchor_field == 'old_regex' else ''}anchor occurs "
+                f"{count} times, must be exactly 1")
+        named = (
+            [mutant["catcher"]]
+            if mutant["direction"] == "regression"
+            else [mutant["control"], *mutant["preserves"]]
+        )
+        for nodeid in named:
+            node_path = nodeid.split("::", 1)[0]
+            if node_path not in tracked:
+                raise ValueError(f"named test path is absent or untracked: {nodeid}")
+            if node_path not in band_paths:
+                raise ValueError(f"named test is outside the emitted band: {nodeid}")
+            if not _is_defined_test_or_collected_case(
+                    work, node_path, nodeid):
+                raise ValueError(f"nodeid is not a defined test: {nodeid}")
+
+    rel = Path("tests") / "mutants" / name
+    document: dict = {"schema": SPEC_SCHEMA}
+    if control_spec:
+        document["control_spec"] = True
+    document.update({
+        "_comment": f"Re-run: toolchain/bin/swarm-mutate --spec {rel.as_posix()}",
+        "subject": subject.strip(),
+        "band": band,
+        "mutants": mutants,
+    })
+    payload = (json.dumps(document, indent=2, ensure_ascii=True) + "\n").encode("utf-8")
+
+    tests_owner = _PinnedDirectory(work / "tests")
+    emit_owner = None
+    try:
+        tests_owner.require_attached("before emitted-spec directory acquisition")
+        try:
+            info = os.stat("mutants", dir_fd=tests_owner.fd,
+                           follow_symlinks=False)
+        except FileNotFoundError:
+            os.mkdir("mutants", mode=0o755, dir_fd=tests_owner.fd)
+            os.fsync(tests_owner.fd)
+            info = os.stat("mutants", dir_fd=tests_owner.fd,
+                           follow_symlinks=False)
+        else:
+            if not stat.S_ISDIR(info.st_mode):
+                raise ValueError("emitted-spec parent is not a directory: tests/mutants")
+        emit_owner = _PinnedDirectory.child(
+            tests_owner, "mutants", _entry_receipt(info))
+        tests_owner.require_attached("after emitted-spec directory acquisition")
+        emit_owner.require_attached("emitted-spec preparation")
+        try:
+            os.stat(name, dir_fd=emit_owner.fd, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
+            raise ValueError(f"canonical spec already exists: {rel.as_posix()}")
+    except BaseException as primary:
+        if emit_owner is not None:
+            emit_owner.close(primary=primary)
+        tests_owner.close(primary=primary)
+        raise
+    try:
+        tests_owner.close()
+    except BaseException as primary:
+        emit_owner.close(primary=primary)
+        raise
+    return emit_owner, rel, payload
+
+
+def _link_emitted_stage(stage_fd: int, owner_fd: int, name: str) -> None:
+    """Link the already-open stage inode, never a reusable staging pathname."""
+    os.link(
+        "/proc/self/fd/%d" % stage_fd, name, dst_dir_fd=owner_fd,
+        follow_symlinks=True)
+
+
+def _publish_emitted_spec(owner: _PinnedDirectory, rel: Path,
+                          payload: bytes) -> None:
+    """Publish after exit 0/1, atomically and without clobbering another writer."""
+    _require_invoked_runner_identity()
+    name = rel.name
+    tmp_name = ".%s.%s.tmp" % (name, os.urandom(12).hex())
+    owned = {}
+    linked = False
+    primary = None
+    stage_receipt = None
+    try:
+        owner.require_attached("before emitted-spec publication")
+        flags = (os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                 | getattr(os, "O_NOFOLLOW", 0)
+                 | getattr(os, "O_CLOEXEC", 0))
+        owned["emitted-spec stage"] = os.open(
+            tmp_name, flags, 0o600, dir_fd=owner.fd)
+        stage_receipt = _entry_receipt(os.fstat(owned["emitted-spec stage"]))
+        offset = 0
+        while offset < len(payload):
+            written = os.write(owned["emitted-spec stage"], payload[offset:])
+            if written <= 0:
+                raise OSError("short emitted-spec write: %s" % rel.as_posix())
+            offset += written
+        os.fsync(owned["emitted-spec stage"])
+        os.fchmod(owned["emitted-spec stage"], 0o644)
+        try:
+            _require_entry(owner.fd, tmp_name, stage_receipt,
+                           owner.path / tmp_name)
+            _link_emitted_stage(
+                owned["emitted-spec stage"], owner.fd, name)
+        except BaseException as link_error:
+            try:
+                final_info = os.stat(name, dir_fd=owner.fd,
+                                     follow_symlinks=False)
+            except FileNotFoundError:
+                final_info = None
+            except BaseException as observe_error:
+                _note_reconciliation(
+                    link_error, "canonical link reconciliation observation failed: "
+                    + _exception_summary(observe_error))
+                raise link_error
+            else:
+                if _same_descriptor(stage_receipt, final_info):
+                    linked = True
+                else:
+                    _note_reconciliation(
+                        link_error,
+                        "canonical name holds a foreign identity after link failure")
+            if (isinstance(link_error, FileExistsError)
+                    and final_info is not None and not linked):
+                raise ValueError(
+                    f"canonical spec already exists: {rel.as_posix()}") from link_error
+            raise
+        final_info = os.stat(name, dir_fd=owner.fd, follow_symlinks=False)
+        if not _same_descriptor(stage_receipt, final_info):
+            raise ValueError("canonical name changed during publication: %s"
+                             % rel.as_posix())
+        linked = True
+        _require_entry(owner.fd, tmp_name, stage_receipt,
+                       owner.path / tmp_name)
+        os.fsync(owner.fd)
+        owner.require_attached("after emitted-spec publication")
+        read_flags = (os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+                      | getattr(os, "O_CLOEXEC", 0))
+        owned["emitted-spec final"] = os.open(name, read_flags, dir_fd=owner.fd)
+        info = os.fstat(owned["emitted-spec final"])
+        if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 2
+                or _fd_bytes(owned["emitted-spec final"]) != payload):
+            raise OSError("emitted spec did not verify: %s" % rel.as_posix())
+    except BaseException as exc:
+        primary = exc
+        if linked:
+            try:
+                _require_entry(owner.fd, name, stage_receipt, rel)
+                os.unlink(name, dir_fd=owner.fd)
+                os.fsync(owner.fd)
+            except BaseException as cleanup_error:
+                _attach_secondary_close_notes(
+                    primary, [("emitted-spec rollback", owner.fd, cleanup_error)])
+        raise
+    finally:
+        try:
+            if stage_receipt is not None:
+                _require_entry(owner.fd, tmp_name, stage_receipt,
+                               owner.path / tmp_name)
+                os.unlink(tmp_name, dir_fd=owner.fd)
+                os.fsync(owner.fd)
+        except FileNotFoundError:
+            pass
+        except BaseException as cleanup_error:
+            if primary is None:
+                primary = cleanup_error
+            else:
+                _attach_secondary_close_notes(
+                    primary, [("emitted-spec stage cleanup", owner.fd,
+                               cleanup_error)])
+        active_exception = sys.exc_info()[1]
+        close_primary = primary or active_exception
+        try:
+            _settle_owned_fds(
+                owned, ("emitted-spec final", "emitted-spec stage"),
+                primary=close_primary)
+        except BaseException as close_error:
+            close_primary = close_error
+        try:
+            owner.close(primary=close_primary)
+        except BaseException as close_error:
+            close_primary = close_primary or close_error
+        if active_exception is None and close_primary is not None:
+            raise close_primary
+    print(f"emitted canonical spec: {rel.as_posix()}")
+
+
+def _python_for(work: Path) -> str:
+    py = str(work / "venv" / "bin" / "python")
+    if not Path(py).is_file():
+        py = sys.executable      # a worktree has no venv/ -- say so, do not guess
+    return py
+
+
+def _collected_nodeids(output: str, work: Path) -> list[str]:
+    """Read pytest -q collection output without treating its summary as data."""
+    nodeids: list[str] = []
+    for raw in output.splitlines():
+        candidate = raw.strip()
+        if "::" not in candidate:
+            continue
+        rel = candidate.split("::", 1)[0]
+        if (work / rel).is_file():
+            nodeids.append(candidate)
+    return nodeids
+
+
+def _nodeid_identity(nodeid: str) -> tuple[str, str]:
+    parts = nodeid.split("::")
+    module = parts[0]
+    if module.endswith(".py"):
+        module = module[:-3]
+    classname = ".".join([module.replace("/", "."), *parts[1:-1]])
+    return classname, parts[-1]
+
+
+def _read_junit(path: Path, collected: list[str]) -> tuple[
+        dict[str, list[str]], dict[str, list[dict[str, str]]], str | None]:
+    """Return exact per-node outcomes and their own failure text."""
+    if not path.is_file() or path.stat().st_size == 0:
+        return {}, {}, "JUnit evidence is missing or empty"
+    try:
+        root = ET.parse(path).getroot()
+    except (ET.ParseError, OSError) as e:
+        return {}, {}, f"JUnit evidence is malformed or truncated: {e}"
+    cases = list(root.iter("testcase"))
+    if not collected:
+        return {}, {}, "pytest collected zero tests"
+    if len(cases) != len(collected):
+        return {}, {}, (
+            f"JUnit executed {len(cases)} cases but collection named "
+            f"{len(collected)}")
+
+    identities: dict[tuple[str, str], list[str]] = {}
+    for nodeid in collected:
+        identities.setdefault(_nodeid_identity(nodeid), []).append(nodeid)
+    outcomes: dict[str, list[str]] = {}
+    records: dict[str, list[dict[str, str]]] = {}
+    for case in cases:
+        identity = (case.get("classname", ""), case.get("name", ""))
+        candidates = identities.get(identity, [])
+        if len(candidates) != 1:
+            return {}, {}, (
+                f"JUnit case {identity!r} maps to {len(candidates)} collected nodeids")
+        error = case.find("error")
+        failure = case.find("failure")
+        skipped = case.find("skipped")
+        detail = error if error is not None else failure
+        if error is not None:
+            outcome = "error"
+        elif failure is not None:
+            outcome = "failed"
+        elif skipped is not None:
+            outcome = "skipped"
+        else:
+            outcome = "passed"
+        nodeid = candidates[0]
+        text = ""
+        if detail is not None:
+            text = "\n".join(
+                part for part in (detail.get("message", ""), detail.text or "")
+                if part
+            ).strip()
+        outcomes.setdefault(nodeid, []).append(outcome)
+        records.setdefault(nodeid, []).append({
+            "outcome": outcome,
+            "failure_text": text,
+            "failure_text_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        })
+    if set(outcomes) != set(collected):
+        missing = sorted(set(collected) - set(outcomes))
+        extra = sorted(set(outcomes) - set(collected))
+        return {}, {}, f"JUnit identity reconciliation failed: missing={missing} extra={extra}"
+    if any(len(values) != 1 for values in outcomes.values()):
+        duplicates = sorted(k for k, values in outcomes.items() if len(values) != 1)
+        return {}, {}, f"JUnit contains duplicate nodeids: {duplicates}"
+    return outcomes, records, None
+
+
+def _preserve_junit(source: Path, target: Path) -> dict[str, str]:
+    """Atomically preserve raw node evidence outside the mutated work tree."""
+    data = source.read_bytes()
+    fd, temporary = tempfile.mkstemp(prefix=f".{target.name}.", dir=target.parent)
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, target)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+    return {"artifact": str(target.resolve()),
+            "sha256": hashlib.sha256(data).hexdigest()}
+
+
+def _timeout_tail(exc: subprocess.TimeoutExpired) -> str:
+    """Keep any partial pytest diagnostics without assuming text=True honoured it."""
+    parts: list[str] = []
+    for value in (exc.stdout, exc.stderr):
+        if isinstance(value, bytes):
+            value = value.decode("utf-8", "replace")
+        if value:
+            parts.append(value)
+    return "".join(parts)[-4000:]
+
+
+def _process_group_exists(pgid: int) -> bool:
+    try:
+        os.killpg(pgid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+def _signal_process_group(pgid: int, sig: signal.Signals) -> None:
+    try:
+        os.killpg(pgid, sig)
+    except ProcessLookupError:
+        pass
+
+
+def _wait_process_group_gone(pgid: int, timeout: float) -> bool:
+    deadline = time.monotonic() + timeout
+    while _process_group_exists(pgid):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(0.02, remaining))
+    return True
+
+
+def _band_session_alive(pgid: int) -> bool:
+    """The band's session leader is alive AND still leads its own group.
+
+    A bare ``killpg(pgid, 0)`` is satisfied by any member of a RECYCLED group
+    id; requiring ``getpgid(pgid) == pgid`` proves the recorded pid is still
+    the leader the band recorded, not a stranger that inherited the number.
+    """
+    try:
+        return os.getpgid(pgid) == pgid
+    except (ProcessLookupError, PermissionError, OSError):
+        return False
+
+
+def _orphaned_band_pgid(heartbeat: Path) -> int:
+    """The band's own session id, read from the heartbeat the band wrote.
+
+    ``_run_owned`` gives every band ``start_new_session=True``, so the band
+    pytest is a session leader and its pid IS its process-group id. Taking it
+    from the band's own ``os.getpid()`` is exact. An argv probe would not be:
+    a pattern matches the shell that WROTE the script it looks for, and the
+    ``[b]racket`` trick does not hide that, because there the pattern is data
+    rather than argv.
+
+    Returns -1 when no id was recorded, so the caller REFUSES rather than
+    quietly skipping the reap.
+
+    Uses this file's own ``_first_line`` rather than ``splitlines()[0]``: the
+    band writes the id with "\n" and ``str.splitlines`` also breaks on nine
+    separators no writer here emits, so the naive subscript would silently
+    truncate an id that contained one. Reaching for the tool's existing helper
+    instead of rebuilding its semantics is the same rule that owns it.
+    """
+    try:
+        first = _first_line(heartbeat.read_text(encoding="utf-8"))
+    except OSError:
+        return -1
+    if not first.startswith("PID="):
+        return -1
+    try:
+        return int(first[4:])
+    except ValueError:
+        return -1
+
+
+def _run_owned(cmd: list[str], *, work: Path, timeout: float
+               ) -> subprocess.CompletedProcess[str]:
+    """Run pytest in a private session and bound cleanup of its whole tree."""
+    proc = subprocess.Popen(
+        cmd, cwd=str(work), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        text=True, env=_child_env(), start_new_session=True)
+    try:
+        stdout, stderr = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired as original:
+        pgid = proc.pid  # start_new_session makes the child's pid its pgid.
+        _signal_process_group(pgid, signal.SIGTERM)
+        _wait_process_group_gone(pgid, PROCESS_GROUP_TERM_GRACE_SECONDS)
+        if _process_group_exists(pgid):
+            _signal_process_group(pgid, signal.SIGKILL)
+        try:
+            stdout, stderr = proc.communicate(
+                timeout=PROCESS_GROUP_KILL_GRACE_SECONDS)
+        except subprocess.TimeoutExpired:
+            # Defensive direct-child fallback; the group KILL above is the
+            # descendant cleanup, while this guarantees the owned child reaps.
+            proc.kill()
+            stdout, stderr = proc.communicate(
+                timeout=PROCESS_GROUP_KILL_GRACE_SECONDS)
+        _wait_process_group_gone(pgid, PROCESS_GROUP_KILL_GRACE_SECONDS)
+        raise subprocess.TimeoutExpired(
+            original.cmd, original.timeout, output=stdout, stderr=stderr)
+    return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
+
+
+def _run_band(band: list[str], work: Path,
+              timeout: float = DEFAULT_BAND_TIMEOUT_SECONDS,
+              preserve_junit: Path | None = None) -> dict:
+    py = _python_for(work)
+    collect_cmd = _registered_pytest_argv(
+        py, "swarm-mutate collection", "--collect-only", "-q", "-p",
+        "no:randomly", *band, repository_root=_INVOKED_REPOSITORY)
+    try:
+        collected_run = _run_owned(collect_cmd, work=work, timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "rc": 2,
+            "tail": _timeout_tail(exc),
+            "collected": [],
+            "outcomes": {},
+            "measurement_error": f"pytest collection exceeded {timeout:g}s",
+            "collection_error": False,
+        }
+    collect_output = collected_run.stdout + collected_run.stderr
+    collected = _collected_nodeids(collect_output, work)
+    if collected_run.returncode == 5:
+        return {
+            "rc": 2,
+            "tail": collect_output[-4000:],
+            "collected": [],
+            "outcomes": {},
+            "measurement_error": "pytest collected zero tests",
+            "collection_error": False,
+        }
+    if collected_run.returncode != 0 and collected:
+        return {
+            "rc": collected_run.returncode,
+            "tail": collect_output[-4000:],
+            "collected": collected,
+            "outcomes": {},
+            "measurement_error": (
+                f"pytest collection process exited {collected_run.returncode} "
+                f"after collecting {len(collected)} test(s)"),
+            "collection_error": False,
+        }
+    if collected_run.returncode != 0:
+        return {
+            "rc": collected_run.returncode,
+            "tail": collect_output[-4000:],
+            "collected": collected,
+            "outcomes": {},
+            "measurement_error": "pytest collection failed",
+            "collection_error": True,
+        }
+    if not collected:
+        return {
+            "rc": 2,
+            "tail": collect_output[-4000:],
+            "collected": [],
+            "outcomes": {},
+            "measurement_error": "pytest collected zero tests",
+            "collection_error": False,
+        }
+
+    junit_parent = work.parent.resolve()
+    if junit_parent == work.resolve():
+        return {
+            "rc": 2,
+            "tail": "",
+            "collected": collected,
+            "outcomes": {},
+            "measurement_error": "cannot place JUnit evidence outside the work tree",
+            "collection_error": False,
+        }
+    with tempfile.TemporaryDirectory(
+            prefix="swarm-mutate-junit-", dir=str(junit_parent)) as td:
+        junit = Path(td) / "band.xml"
+        cmd = _registered_pytest_argv(
+            py, "swarm-mutate execution", "-q", "-p", "no:randomly",
+            "--junitxml", str(junit), *band,
+            repository_root=_INVOKED_REPOSITORY)
+        try:
+            run = _run_owned(cmd, work=work, timeout=timeout)
+        except subprocess.TimeoutExpired as exc:
+            return {
+                "rc": 2,
+                "tail": _timeout_tail(exc),
+                "collected": collected,
+                "outcomes": {},
+                "measurement_error": f"pytest execution exceeded {timeout:g}s",
+                "collection_error": False,
+            }
+        output = run.stdout + run.stderr
+        outcomes, records, measurement_error = _read_junit(junit, collected)
+        junit_evidence = (
+            _preserve_junit(junit, preserve_junit)
+            if preserve_junit is not None else None
+        )
+    return {
+        "rc": run.returncode,
+        "tail": output[-4000:],
+        "collected": collected,
+        "outcomes": outcomes,
+        "records": records,
+        "junit_evidence": junit_evidence,
+        "measurement_error": measurement_error,
+        "collection_error": False,
+    }
+
+
+def _named_outcome(result: dict, nodeid: str) -> tuple[str | None, str | None]:
+    values = result["outcomes"].get(nodeid, [])
+    if len(values) != 1:
+        return None, f"named nodeid {nodeid} appeared {len(values)} times; expected exactly 1"
+    return values[0], None
+
+
+def _named_record(result: dict, nodeid: str) -> tuple[dict | None, str | None]:
+    values = result.get("records", {}).get(nodeid, [])
+    if len(values) != 1:
+        return None, f"named nodeid {nodeid} had {len(values)} JUnit records; expected exactly 1"
+    return values[0], None
+
+
+def _node_record_summary(result: dict) -> list[dict[str, str]]:
+    rows = []
+    for nodeid in sorted(result.get("records", {})):
+        values = result["records"][nodeid]
+        if len(values) != 1:
+            continue
+        record = values[0]
+        rows.append({
+            "nodeid": nodeid,
+            "outcome": record["outcome"],
+            "failure_text_sha256": record["failure_text_sha256"],
+        })
+    return rows
+
+
+def _other_members_note(result: dict, nodeid: str) -> str:
+    """Say what the REST of the band did -- measured, never 'may have'.
+
+    H89: 'named catcher passed while another band member may have failed'
+    was emitted unconditionally, so a one-member band read as a finding.
+    """
+    others = {other: values for other, values in result["outcomes"].items()
+              if other != nodeid}
+    if not others:
+        return "and it is the only band member that ran"
+    failed = sorted(other for other, values in others.items() if "failed" in values)
+    if failed:
+        return f"while other band member(s) failed {failed}"
+    return f"and no other band member failed ({len(others)} other(s) ran)"
+
+
+def _grade_mutant(mutant: dict, result: dict, *, exact_semantics: bool = False
+                  ) -> tuple[str, str]:
+    """Grade the named subject, never whichever unrelated test also screamed."""
+    if result.get("collection_error"):
+        return INVALID, "pytest collection error: " + result["tail"][-700:]
+    if result.get("measurement_error"):
+        return UNKNOWN, result["measurement_error"]
+    errors = sorted(nodeid for nodeid, values in result["outcomes"].items()
+                    if values == ["error"])
+    if errors:
+        return INVALID, f"pytest error outcome(s), not assertion failures: {errors}"
+
+    direction = mutant.get("direction", "regression")
+    if direction == "regression":
+        catcher = mutant.get("catcher")
+        if not catcher:
+            if result["rc"] == 0:
+                return ESCAPED, "band stayed green with the behaviour broken"
+            first = [line for line in result["tail"].splitlines() if line.startswith("FAILED")]
+            return CAUGHT, first[0][:160] if first else "band went red"
+        outcome, why = _named_outcome(result, catcher)
+        if why:
+            return UNKNOWN, why
+        if exact_semantics:
+            preserved = []
+            for nodeid in mutant["preserves"]:
+                control_outcome, control_why = _named_outcome(result, nodeid)
+                if control_why:
+                    return UNKNOWN, control_why
+                preserved.append((nodeid, control_outcome))
+            bad_controls = [row for row in preserved if row[1] != "passed"]
+            if bad_controls:
+                return INDISCRIMINATE, (
+                    f"named catcher changed but preserved controls were not green: "
+                    f"{bad_controls}")
+            signature = mutant["expected_failure"]["signature"]
+            if outcome == "failed":
+                record, record_why = _named_record(result, catcher)
+                if record_why:
+                    return UNKNOWN, record_why
+                if signature not in record["failure_text"]:
+                    return INDISCRIMINATE, (
+                        f"named catcher failed without expected signature {signature!r}")
+        if outcome == "failed":
+            return CAUGHT, f"named catcher failed: {catcher}"
+        if outcome == "passed":
+            return ESCAPED, (
+                f"named catcher passed {_other_members_note(result, catcher)}: "
+                f"{catcher}")
+        return UNKNOWN, f"named catcher was {outcome}, not an executed assertion verdict: {catcher}"
+
+    control = mutant["control"]
+    control_outcome, why = _named_outcome(result, control)
+    if why:
+        return UNKNOWN, why
+    preserve_outcomes: list[tuple[str, str]] = []
+    for nodeid in mutant["preserves"]:
+        outcome, preserve_why = _named_outcome(result, nodeid)
+        if preserve_why:
+            return UNKNOWN, preserve_why
+        preserve_outcomes.append((nodeid, outcome))
+    unknown = [(nodeid, outcome) for nodeid, outcome in preserve_outcomes
+               if outcome not in {"passed", "failed"}]
+    if control_outcome not in {"passed", "failed"}:
+        return UNKNOWN, f"named control was {control_outcome}, not an assertion verdict: {control}"
+    if unknown:
+        return UNKNOWN, f"preserved nodeids lacked assertion verdicts: {unknown}"
+    if control_outcome == "passed":
+        return ESCAPED, (
+            f"named control passed {_other_members_note(result, control)}: "
+            f"{control}")
+    failed_preserves = [nodeid for nodeid, outcome in preserve_outcomes if outcome == "failed"]
+    if failed_preserves:
+        return INDISCRIMINATE, (
+            f"control failed but preserved test(s) also failed: {failed_preserves}")
+    return CAUGHT, f"named control failed and every preserved test passed: {control}"
+
+
+def _restored_control_replay_problem(mutant: dict, result: dict) -> str | None:
+    """Return why an overcorrection's restored-source replay is not GREEN.
+
+    The exact named set is independent of the mutant run's JUnit artifact.  It
+    is deliberately narrower than the whole band: unrelated bandmates do not
+    decide the mutant's attributed verdict, so rerunning them here would add a
+    new, over-sensitive denominator after the verdict was already measured.
+    """
+    expected = [mutant["control"], *mutant["preserves"]]
+    if not expected:
+        return "restored-source replay has a zero named-test denominator"
+    if result.get("collection_error"):
+        return "restored-source replay had a pytest collection error: " + result["tail"][-700:]
+    if result.get("measurement_error"):
+        return "restored-source replay is unproved: " + result["measurement_error"]
+
+    expected_counts = Counter(expected)
+    collected_counts = Counter(result.get("collected", []))
+    if collected_counts != expected_counts:
+        missing = sorted((expected_counts - collected_counts).elements())
+        extra = sorted((collected_counts - expected_counts).elements())
+        return (
+            "restored-source replay did not execute its exact named-test "
+            f"denominator: expected={expected} missing={missing} extra={extra}"
+        )
+
+    not_passed: list[tuple[str, str | None]] = []
+    for nodeid in expected:
+        outcome, why = _named_outcome(result, nodeid)
+        if why:
+            return "restored-source replay is unproved: " + why
+        if outcome != "passed":
+            not_passed.append((nodeid, outcome))
+    if result.get("rc") != 0 or not_passed:
+        return (
+            "restored-source replay was not GREEN: "
+            f"rc={result.get('rc')} nonpasses={not_passed}"
+        )
+    return None
+
+
+# --------------------------------------------------------------------------- #
+# @875 -- THE INTERRUPTED BATTERY, and why a signal handler is not the fix.     #
+# --------------------------------------------------------------------------- #
+# The restore is a `finally:` in the per-mutant loop. It runs on the normal path
+# and on any Python-level exception -- and a signal whose default disposition is
+# to terminate never becomes one. Measured: SIGINT unwinds through
+# KeyboardInterrupt and restores; SIGTERM (shell 143) and SIGKILL both leave the
+# mutant on disk with the band's pytest orphaned and still running against it.
+# `timeout 30 swarm-mutate ...` reproduces it exactly.
+#
+# So every UNATTENDED way a battery dies -- an agent command timeout, timeout(1),
+# an orchestrator reaping a slow job -- is a way it dies dirty, and Ctrl-C, the
+# one case `finally` covers, is the case that does not happen when nobody is
+# watching.
+#
+# A SIGTERM trap would be a PARTIAL fix that reproduces the shape of the defect:
+# it converts a reliable failure (every kill leaves residue) into a rare, SILENT
+# one (only SIGKILL/OOM), and the next run adopts that residue as pristine --
+# because `original` is read from the WORKING TREE, never from git, so a
+# before/after check structurally cannot see that "before" was already wrong.
+# Measured: a tree left at `len(hits) > 99` ran a full battery, scored an
+# ESCAPE, and restored `> 99`. Precise, well-evidenced, and about code that is
+# not in git.
+#
+# The journal is on DISK, which is the property no handler can have: it survives
+# SIGKILL and OOM. It does not prevent residue; it makes the NEXT run refuse to
+# launder it.
+_JOURNAL_DIRNAME = "swarm-mutate-inflight"
+
+
+def _journal_dir(work: Path) -> Path:
+    """Where in-flight records live.
+
+    Inside `<git-dir>/` on purpose: invisible to `git status`, to
+    `git clean -fdx`, and to every axis-6 enumerator, so it needs no .gitignore
+    entry and contaminates no other gate. Resolved with `git rev-parse
+    --git-dir` rather than `work/'.git'` because in a WORKTREE `.git` is a FILE
+    and the literal path fails -- and CLAUDE.md 2b puts agents in worktrees
+    routinely.
+
+    A non-git `work` (the selftest's tmpdirs) has no git to contaminate, so a
+    dot-dir beside it is correct there and nowhere else.
+    """
+    try:
+        r = subprocess.run(["git", "rev-parse", "--git-dir"], cwd=str(work),
+                           capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        r = None
+    if r is not None and r.returncode == 0 and r.stdout.strip():
+        gd = Path(r.stdout.strip())
+        if not gd.is_absolute():
+            gd = work / gd
+        try:
+            base = gd.resolve(strict=True)
+        except OSError as exc:
+            raise ValueError(
+                "git journal authority cannot be resolved: %s" % exc) from exc
+        if not base.is_dir():
+            raise ValueError("git journal authority is not a directory: %s" % base)
+        return base / _JOURNAL_DIRNAME
+    base = work.resolve(strict=True)
+    return base / ("." + _JOURNAL_DIRNAME)
+
+
+def _attach_secondary_close_notes(primary: BaseException,
+                                  failures: list[tuple[str, int,
+                                                       BaseException]]) -> None:
+    """Attach best-effort close evidence without letting metadata escape."""
+    for context, fd, exc in failures:
+        try:
+            failure_type = type(exc).__name__
+        except BaseException:
+            failure_type = "<unknown>"
+        try:
+            detail = str(exc)
+        except BaseException:
+            detail = "<unprintable>"
+        try:
+            note = "secondary close failure for %s fd %d: %s: %s" % (
+                context, fd, failure_type, detail)
+        except BaseException:
+            note = "secondary close failure (details unavailable)"
+        try:
+            BaseException.add_note(primary, note)
+        except BaseException:
+            pass
+
+
+def _settle_owned_fds(owned: dict[str, int],
+                      names: tuple[str, ...] | None = None, *,
+                      primary: BaseException | None = None) -> None:
+    """Spend each named fd before close; drain all and preserve the first."""
+    selected = tuple(owned) if names is None else tuple(names)
+    first = primary
+    secondary_failures = []
+    for name in selected:
+        fd = owned.pop(name, None)
+        if fd is None:
+            continue
+        try:
+            os.close(fd)
+        except BaseException as exc:
+            if first is None:
+                first = exc
+            elif exc is not first:
+                secondary_failures.append((name, fd, exc))
+    if first is not None:
+        _attach_secondary_close_notes(first, secondary_failures)
+    if primary is None and first is not None:
+        raise first
+
+
+def _open_journal_dir(work: Path, create: bool = False) -> tuple[Path, int]:
+    """Open the exact owned journal directory without following its name."""
+    d = _journal_dir(work)
+    base, name = d.parent, d.name
+    flags = os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0)
+    owned = {"journal parent": os.open(str(base), flags)}
+    try:
+        if create:
+            try:
+                os.mkdir(name, mode=0o700,
+                         dir_fd=owned["journal parent"])
+            except FileExistsError:
+                pass
+        try:
+            owned["journal directory"] = os.open(
+                name, flags, dir_fd=owned["journal parent"])
+        except FileNotFoundError:
+            if create:
+                raise
+            return d, -1
+        except (NotADirectoryError, OSError) as exc:
+            raise ValueError(
+                "journal containment refused non-directory/symlink %s: %s"
+                % (d, exc)) from exc
+        _settle_owned_fds(owned, ("journal parent",))
+        return d, owned.pop("journal directory")
+    finally:
+        _settle_owned_fds(
+            owned, ("journal directory", "journal parent"),
+            primary=sys.exc_info()[1])
+
+
+def _journal_unlink(work: Path, record: Path, expected_dir, expected_record) -> None:
+    _require_invoked_runner_identity()
+    d, journal_fd = _open_journal_dir(work, create=False)
+    if journal_fd < 0:
+        raise OSError("journal directory disappeared before unlink: %s" % d)
+    owned = {"journal directory": journal_fd}
+    try:
+        if record.parent != d or record.name != os.path.basename(record.name):
+            raise ValueError("journal record escapes owned directory: %s" % record)
+        current_dir = os.fstat(owned["journal directory"])
+        current_dir_identity = (current_dir.st_dev, current_dir.st_ino,
+                                stat.S_IFMT(current_dir.st_mode))
+        if current_dir_identity != expected_dir:
+            raise ValueError("journal directory identity changed before unlink: %s"
+                             % d)
+        current_record = os.stat(
+            record.name, dir_fd=owned["journal directory"],
+            follow_symlinks=False)
+        current_record_identity = (
+            current_record.st_dev, current_record.st_ino,
+            stat.S_IFMT(current_record.st_mode))
+        if current_record_identity != expected_record:
+            raise ValueError("journal record identity changed before unlink: %s"
+                             % record)
+        os.unlink(record.name, dir_fd=owned["journal directory"])
+        os.fsync(owned["journal directory"])
+    finally:
+        _settle_owned_fds(
+            owned, ("journal directory",), primary=sys.exc_info()[1])
+
+
+def _journal_write(work: Path, rel: str, original: str, mutated: str,
+                   label: str) -> tuple[Path, tuple, tuple]:
+    _require_invoked_runner_identity()
+    d, journal_fd = _open_journal_dir(work, create=True)
+    owned = {"journal directory": journal_fd}
+    name = f"{os.getpid()}.json"
+    f = d / name
+    payload = json.dumps({
+        "path": rel, "label": label, "pid": os.getpid(),
+        "original_sha": hashlib.sha256(original.encode("utf-8")).hexdigest(),
+        "mutated_sha": hashlib.sha256(mutated.encode("utf-8")).hexdigest(),
+        "original": original,
+    }, indent=1).encode("utf-8")
+    try:
+        flags = (os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                 | getattr(os, "O_NOFOLLOW", 0))
+        owned["journal record"] = os.open(
+            name, flags, 0o600, dir_fd=owned["journal directory"])
+        view = memoryview(payload)
+        while view:
+            wrote = os.write(owned["journal record"], view)
+            if wrote <= 0:
+                raise OSError("short journal write for %s" % f)
+            view = view[wrote:]
+        os.fsync(owned["journal record"])
+        record_info = os.fstat(owned["journal record"])
+        record_identity = (
+            record_info.st_dev, record_info.st_ino,
+            stat.S_IFMT(record_info.st_mode))
+        directory_info = os.fstat(owned["journal directory"])
+        directory_identity = (
+            directory_info.st_dev, directory_info.st_ino,
+            stat.S_IFMT(directory_info.st_mode))
+        _settle_owned_fds(owned, ("journal record",))
+        os.fsync(owned["journal directory"])
+    finally:
+        _settle_owned_fds(
+            owned, ("journal record", "journal directory"),
+            primary=sys.exc_info()[1])
+    return f, directory_identity, record_identity
+
+
+def _journal_records(work: Path) -> list[tuple[Path, dict, tuple, tuple]]:
+    d, journal_fd = _open_journal_dir(work, create=False)
+    out = []
+    if journal_fd < 0:
+        return out
+    owned = {"journal directory": journal_fd}
+    try:
+        directory_info = os.fstat(owned["journal directory"])
+        directory_identity = (
+            directory_info.st_dev, directory_info.st_ino,
+            stat.S_IFMT(directory_info.st_mode))
+        names = sorted(name for name in os.listdir(owned["journal directory"])
+                       if name.endswith(".json") and "/" not in name)
+        for name in names:
+            f = d / name
+            try:
+                owned["journal record"] = os.open(
+                    name, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+                    dir_fd=owned["journal directory"])
+                info = os.fstat(owned["journal record"])
+                if not stat.S_ISREG(info.st_mode):
+                    raise ValueError("journal record is not regular")
+                record_identity = (
+                    info.st_dev, info.st_ino, stat.S_IFMT(info.st_mode))
+                chunks = []
+                while True:
+                    chunk = os.read(owned["journal record"], 65536)
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                out.append((f, json.loads(b"".join(chunks).decode("utf-8")),
+                            directory_identity, record_identity))
+            except (OSError, UnicodeError, ValueError):
+                # An unreadable record has no deletion authority.  Placeholder
+                # identities ensure every later unlink comparison fails closed.
+                out.append((f, {}, directory_identity, ("unreadable",)))
+            finally:
+                _settle_owned_fds(
+                    owned, ("journal record",),
+                    primary=sys.exc_info()[1])
+    finally:
+        _settle_owned_fds(
+            owned, ("journal record", "journal directory"),
+            primary=sys.exc_info()[1])
+    return out
+
+
+def _text_sha(path: Path) -> str | None:
+    try:
+        return hashlib.sha256(path.read_text(encoding="utf-8").encode("utf-8")).hexdigest()
+    except OSError:
+        return None
+
+
+def journal_preflight(work: Path) -> tuple[int, list[str]]:
+    """(exit_code, messages). RESOLVE the journal; never assume.
+
+    Three branches, and the first is what stops this becoming the cry-wolf gate
+    that gets switched off: a journal whose file already matches its ORIGINAL is
+    a tree someone repaired by hand or with `git reset --hard`. Reap it and
+    proceed. swarm-claim's precedent -- a dead claimant is reaped rather than
+    wedging the repo.
+    """
+    msgs: list[str] = []
+    bad = False
+    try:
+        records = _journal_records(work)
+    except (OSError, RuntimeError, ValueError) as exc:
+        return (2, [
+            "BD-MUTATE-UNRUNNABLE: journal containment is unproved (%s); "
+            "nothing was read, deleted, or run" % exc])
+    for f, rec, directory_identity, record_identity in records:
+        rel = rec.get("path")
+        if not rel or not rec.get("original_sha"):
+            msgs.append(f"BD-MUTATE-UNRUNNABLE: unreadable in-flight record {f}. "
+                        f"Cannot tell what it was protecting -- inspect and remove it.")
+            bad = True
+            continue
+        owner = None
+        reap = False
+        owner_problem = None
+        preflight_stage = "subject inspection"
+        try:
+            target = _recovery_target(work, rel)
+            owner = _PinnedSubject(target)
+            cur = owner.sha()
+            if cur == rec["original_sha"]:
+                preflight_stage = "cache cleanup"
+                _purge_subject_pycache(owner)
+                owner.require_attached("clean journal preflight")
+                reap = True
+            elif cur == rec.get("mutated_sha"):
+                msgs.append(
+                    f"BD-MUTATE-UNRUNNABLE: {rel} still holds the MUTANT from an "
+                    f"interrupted battery (pid {rec.get('pid')}, {rec.get('label')!r}). "
+                    f"A run started here would adopt it as pristine and restore it. "
+                    f"Repair with: swarm-mutate --recover --work {work}")
+                bad = True
+            else:
+                msgs.append(
+                    f"BD-MUTATE-UNRUNNABLE: {rel} matches NEITHER the recorded "
+                    f"original nor the recorded mutant. Unknown is a third state "
+                    f"and it fails -- refusing to guess. Diff it: git diff -- {rel}")
+                bad = True
+        except Exception as exc:
+            owner_problem = exc
+            msgs.append(
+                "BD-MUTATE-UNRUNNABLE: %s %s is unproved (%s); retained %s"
+                % (rel, preflight_stage, _exception_summary(exc), f))
+            bad = True
+            reap = False
+        finally:
+            active_primary = sys.exc_info()[1]
+            if owner is not None:
+                try:
+                    owner.close(primary=active_primary)
+                except Exception as exc:
+                    owner_problem = owner_problem or exc
+                    msgs.append(
+                        "BD-MUTATE-UNRUNNABLE: subject owner close is unproved "
+                        "(%s); retained %s" % (exc, f))
+                    bad = True
+                    reap = False
+        if reap and owner_problem is None:
+            try:
+                _journal_unlink(work, f, directory_identity, record_identity)
+            except (OSError, RuntimeError, ValueError) as exc:
+                msgs.append(
+                    "BD-MUTATE-UNRUNNABLE: could not durably reap clean "
+                    "journal %s (%s); no test was run" % (f, exc))
+                bad = True
+    return (2 if bad else 0), msgs
+
+
+def journal_recover(work: Path) -> int:
+    """Write recorded originals back, verifying by sha. Never a blind overwrite."""
+    rc = 0
+    try:
+        recs = _journal_records(work)
+    except (OSError, RuntimeError, ValueError) as exc:
+        print("REFUSING recovery: journal containment is unproved (%s)" % exc,
+              file=sys.stderr)
+        return 2
+    if not recs:
+        print("no in-flight records: nothing to recover")
+        return 0
+    for f, rec, directory_identity, record_identity in recs:
+        rel = rec.get("path")
+        if not rel or not rec.get("original_sha"):
+            print(f"REFUSING {f}: unreadable record", file=sys.stderr)
+            rc = 2
+            continue
+        owner = None
+        recovered = False
+        already_clean = False
+        owner_problem = None
+        recovery_stage = "recovery target acquisition"
+        try:
+            target = _recovery_target(work, rel)
+            owner = _PinnedSubject(target)
+            cur = owner.sha()
+            if cur == rec["original_sha"]:
+                recovery_stage = "subject cache cleanup"
+                _purge_subject_pycache(owner)
+                owner.require_attached("already-clean recovery")
+                already_clean = True
+            elif cur != rec.get("mutated_sha"):
+                print(f"REFUSING {rel}: it matches neither recorded state, so a "
+                      f"recover would overwrite an edit nobody recorded. "
+                      f"git diff -- {rel}", file=sys.stderr)
+                rc = 2
+            else:
+                recovery_stage = "recovery write"
+                _write_subject_text(
+                    owner, rec["original"], expected_sha=rec.get("mutated_sha"),
+                    restoring=True)
+                recovery_stage = "recovery verification"
+                if owner.sha() != rec["original_sha"]:
+                    raise OSError("sha still wrong after recovery write")
+                recovery_stage = "subject cache cleanup"
+                _purge_subject_pycache(owner)
+                owner.require_attached("after recovery cache cleanup")
+                recovered = True
+        except Exception as exc:
+            owner_problem = exc
+            try:
+                observed_sha = owner.sha() if owner is not None else None
+            except Exception as observe_exc:
+                observed_state = "observed state is unproved (%s)" % (
+                    _exception_summary(observe_exc))
+            else:
+                if observed_sha == rec["original_sha"]:
+                    observed_state = "observed recorded original"
+                elif observed_sha == rec.get("mutated_sha"):
+                    observed_state = "observed recorded mutant"
+                elif observed_sha is None:
+                    observed_state = "observed subject is unreadable"
+                else:
+                    observed_state = "observed neither recorded state"
+            print("REFUSING %s: %s is unproved (%s); %s; recovery "
+                  "journal retained" % (
+                      rel, recovery_stage, _exception_summary(exc), observed_state),
+                  file=sys.stderr)
+            rc = 2
+            recovered = already_clean = False
+        finally:
+            active_primary = sys.exc_info()[1]
+            if owner is not None:
+                try:
+                    owner.close(primary=active_primary)
+                except Exception as exc:
+                    owner_problem = owner_problem or exc
+                    print("REFUSING %s: subject owner close is unproved (%s)"
+                          % (rel, exc), file=sys.stderr)
+                    rc = 2
+                    recovered = already_clean = False
+        if (recovered or already_clean) and owner_problem is None:
+            try:
+                _journal_unlink(work, f, directory_identity, record_identity)
+            except (OSError, RuntimeError, ValueError) as exc:
+                print("REFUSING %s: recovery journal removal is unproved (%s)"
+                      % (rel, exc), file=sys.stderr)
+                rc = 2
+                continue
+            print(("already clean: " if already_clean else "recovered ") + rel)
+    return rc
+
+
+def run_battery(spec: list[dict], band: list[str], work: Path,
+                verbose: bool = True,
+                timeout: float = DEFAULT_BAND_TIMEOUT_SECONDS,
+                control_spec: bool = False,
+                exact_semantics: bool = False,
+                junit_dir: Path | None = None,
+                evidence_runs: list[dict] | None = None) -> tuple[int, list[dict]]:
+    out: list[dict] = []
+
+    # ---- DENOMINATOR. An empty battery must never read as "all caught". -----
+    if not spec:
+        print("BD-MUTATE-UNRUNNABLE: the spec lists zero mutants, so 'every "
+              "mutant was caught' would be true over nothing.", file=sys.stderr)
+        return 2, out
+    if not band:
+        print("BD-MUTATE-UNRUNNABLE: no band given; a mutant judged by no test "
+              "is not judged.", file=sys.stderr)
+        return 2, out
+
+    initial_subjects = {}
+    try:
+        for mutant in spec:
+            rel = mutant["file"]
+            path = _mutation_subject(work, rel)
+            if rel not in initial_subjects:
+                initial_subjects[rel] = _subject_identity(path)
+    except (KeyError, OSError, RuntimeError, ValueError) as exc:
+        print(f"BD-MUTATE-UNRUNNABLE: {exc}", file=sys.stderr)
+        return 2, out
+
+    # ---- RESIDUE. A dirty tree makes every verdict below evidence about a
+    # mutant somebody else left, and the run would restore it (@875).
+    prc, pmsgs = journal_preflight(work)
+    for m in pmsgs:
+        print(m, file=sys.stderr)
+    if prc != 0:
+        return prc, out
+
+    # ---- BASELINE. Red afterwards proves nothing if it was red before. ------
+    try:
+        _purge_pycache(work)
+    except (OSError, RuntimeError, ValueError) as exc:
+        print("BD-MUTATE-UNRUNNABLE: baseline cache cleanup is unproved "
+              "(%s); no test or mutant was run" % exc, file=sys.stderr)
+        return 2, out
+    try:
+        baseline = _run_band(
+            band, work, timeout=timeout,
+            preserve_junit=junit_dir / "0000-baseline.xml" if junit_dir else None,
+        )
+    except Exception as exc:
+        print(
+            "BD-MUTATE-UNRUNNABLE: baseline execution is unproved (%s); "
+            "no mutant was run" % _exception_summary(exc),
+            file=sys.stderr,
+        )
+        return 2, out
+    if evidence_runs is not None and baseline.get("junit_evidence"):
+        evidence_runs.append({
+            "kind": "baseline",
+            **baseline["junit_evidence"],
+            "nodes": _node_record_summary(baseline),
+        })
+    if baseline["rc"] != 0 or baseline.get("measurement_error"):
+        print("BD-MUTATE-UNRUNNABLE: BASELINE IS RED. Every verdict below would "
+              "be evidence about the baseline, not about a mutant.\n"
+              + (baseline.get("measurement_error") or "") + "\n"
+              + baseline["tail"][-1500:],
+              file=sys.stderr)
+        return 2, out
+    collected_counts = Counter(baseline["collected"])
+    missing_named_rows = []
+    for index, mutant in enumerate(spec, 1):
+        named = (
+            [mutant.get("catcher")]
+            if mutant.get("direction", "regression") == "regression"
+            else [mutant.get("control"), *mutant.get("preserves", [])]
+        )
+        for nodeid in named:
+            if not nodeid:
+                continue
+            exact_count = collected_counts[nodeid]
+            parameterized_count = sum(
+                count for collected, count in collected_counts.items()
+                if collected.startswith(nodeid + "[")
+            )
+            if exact_count > 1 or parameterized_count:
+                print(
+                    "BD-MUTATE-UNRUNNABLE: mutant %d named nodeid is not one "
+                    "exact collected test (%r appeared %d times). Parameterized "
+                    "tests require one concrete collected case." % (
+                        index, nodeid, exact_count + parameterized_count),
+                    file=sys.stderr,
+                )
+                return 2, out
+            if exact_count == 0:
+                row = {
+                    "label": mutant.get("label") or f"mutant {index}",
+                    "file": mutant["file"],
+                    "direction": mutant.get("direction", "regression"),
+                    "catcher": mutant.get("catcher"),
+                    "control": mutant.get("control"),
+                    "preserves": mutant.get("preserves"),
+                    "verdict": UNKNOWN,
+                    "why": (
+                        "named nodeid %r appeared 0 times; expected exactly 1"
+                        % nodeid
+                    ),
+                }
+                missing_named_rows.append(row)
+                break
+    if missing_named_rows:
+        for row in missing_named_rows:
+            print(f"BD-MUTATE-UNRUNNABLE: {row['why']}", file=sys.stderr)
+        return 2, missing_named_rows
+    if verbose:
+        print(f"baseline GREEN over {len(band)} band target(s), "
+              f"{len(baseline['collected'])} collected test(s); {len(spec)} mutant(s)\n")
+
+    # A green band is evidence only if it leaves every subject exactly as it
+    # found it.  Capture before running any mutant so drift in a later subject
+    # cannot be hidden behind an earlier CAUGHT result.
+    for m in spec:
+        rel = m["file"]
+        row = {
+            "label": m.get("label") or "mutant",
+            "file": rel,
+            "direction": m.get("direction", "regression"),
+            "catcher": m.get("catcher"),
+            "control": m.get("control"),
+            "preserves": m.get("preserves"),
+        }
+        try:
+            path = _mutation_subject(work, rel)
+            observed = _subject_identity(path)
+            drift = _subject_identity_drift(initial_subjects[rel], observed)
+        except (KeyError, OSError, RuntimeError, ValueError) as exc:
+            drift = str(exc)
+        if drift:
+            row["verdict"] = UNKNOWN
+            row["why"] = "subject identity changed after baseline: %s" % drift
+            out.append(row)
+            print(f"BD-MUTATE-UNRUNNABLE: {row['why']}", file=sys.stderr)
+            return 2, out
+
+    for i, m in enumerate(spec, 1):
+        label = m.get("label") or f"mutant {i}"
+        rel = m["file"]
+        row = {
+            "label": label,
+            "file": rel,
+            "direction": m.get("direction", "regression"),
+            "catcher": m.get("catcher"),
+            "control": m.get("control"),
+            "preserves": m.get("preserves"),
+        }
+        mutant_band = (
+            [m["catcher"], *m["preserves"]] if exact_semantics else band
+        )
+        row["executed_targets"] = mutant_band
+        owner = None
+        try:
+            path = _mutation_subject(work, rel)
+            owner = _PinnedSubject(path, expected=initial_subjects[rel])
+        except (KeyError, OSError, RuntimeError, ValueError) as exc:
+            row["verdict"] = UNKNOWN
+            row["why"] = "subject identity changed after baseline: %s" % exc
+            out.append(row)
+            print(f"BD-MUTATE-UNRUNNABLE: {row['why']}", file=sys.stderr)
+            break
+        operation_problem = None
+        restore_problem = None
+        close_problem = None
+        replay_problem = None
+        jrec = None
+        try:
+            try:
+                original = owner.read_text()
+                before_sha = owner.sha()
+            except Exception as exc:
+                row["verdict"] = UNKNOWN
+                row["why"] = "subject read is unproved: %s" % _exception_summary(exc)
+                out.append(row)
+                return 2, out
+            try:
+                mutated = _apply_mutant(original, m)
+            except (ValueError, KeyError) as exc:
+                row["verdict"] = ERROR
+                row["why"] = f"apply: {exc}"
+                out.append(row)
+                continue
+            row["subject_blob_sha256"] = before_sha
+            row["mutated_blob_sha256"] = hashlib.sha256(
+                mutated.encode("utf-8")
+            ).hexdigest()
+
+            try:
+                ok, why = _validate(path, mutated)
+            except Exception as exc:
+                row["verdict"] = UNKNOWN
+                row["why"] = "validation is unproved: %s" % _exception_summary(exc)
+                out.append(row)
+                print("BD-MUTATE-UNRUNNABLE: %s; no mutant was run" % row["why"],
+                      file=sys.stderr)
+                return 2, out
+            if ok is None:
+                # DECLINING TO JUDGE IS NOT PASSING JUDGEMENT (row 239). A type
+                # this tool cannot parse used to be recorded VALID, and a mutant
+                # that merely broke the transform then scored CAUGHT because its
+                # catcher failed for a reason no assertion produced.
+                row["verdict"] = UNKNOWN
+                row["why"] = why
+                out.append(row)
+                continue
+            if not ok:
+                row["verdict"] = INVALID
+                row["why"] = why
+                out.append(row)
+                continue
+
+            # Journal BEFORE the write, and refuse if it cannot be written -- a
+            # safety net that reports OK while absent is the defect it closes.
+            try:
+                jrec, journal_dir_identity, journal_record_identity = _journal_write(
+                    work, rel, original, mutated, label)
+            except (OSError, RuntimeError, ValueError) as exc:
+                print(f"BD-MUTATE-UNRUNNABLE: cannot write the in-flight journal "
+                      f"({exc}). Refusing to mutate unjournalled -- an interrupted "
+                      f"run would then be invisible to the next one.", file=sys.stderr)
+                return 2, out
+            try:
+                _purge_pycache(work)
+            except (OSError, RuntimeError, ValueError) as exc:
+                print("BD-MUTATE-UNRUNNABLE: pre-mutant cache cleanup is unproved "
+                      "(%s); retained %s and ran no mutant" % (exc, jrec),
+                      file=sys.stderr)
+                return 2, out
+
+            operation_stage = "mutant write"
+            try:
+                _write_subject_text(owner, mutated, expected_sha=before_sha)
+                operation_stage = "mutant band execution"
+                junit_target = None
+                if junit_dir is not None:
+                    label_key = hashlib.sha256(label.encode("utf-8")).hexdigest()[:12]
+                    junit_target = junit_dir / f"{i:04d}-{label_key}.xml"
+                result = _run_band(
+                    mutant_band, work, timeout=timeout,
+                    preserve_junit=junit_target,
+                )
+                # VERIFY THE SUBJECT BEFORE THE VERDICT. The band graded
+                # whatever content it imported; if the subject no longer holds
+                # the exact mutant we wrote -- a concurrent run or other tooling
+                # rewrote it in place on a shared work tree -- the verdict would
+                # be attributed to a mutant that never ran. owner.sha() reads the
+                # pinned fd, so it sees an in-place same-inode rewrite the band
+                # imported. (A detach/replace is already non-silent: the subject
+                # cannot be restored, so the restore path below fails loud.)
+                mutated_sha = hashlib.sha256(mutated.encode("utf-8")).hexdigest()
+                observed_sha = owner.sha()
+                row["verdict"], row["why"] = _grade_mutant(
+                    m, result, exact_semantics=exact_semantics,
+                )
+                if exact_semantics and row["verdict"] == CAUGHT:
+                    observed, observed_why = _named_record(result, m["catcher"])
+                    if observed_why:
+                        row["verdict"] = UNKNOWN
+                        row["why"] = observed_why
+                    else:
+                        signature = m["expected_failure"]["signature"]
+                        row["actual_failure"] = {
+                            "nodeid": m["catcher"],
+                            "outcome": observed["outcome"],
+                            "signature": signature,
+                        }
+                        row["failure_text_sha256"] = observed["failure_text_sha256"]
+                        row["control_outcomes"] = [
+                            {"nodeid": nodeid,
+                             "outcome": _named_outcome(result, nodeid)[0]}
+                            for nodeid in m["preserves"]
+                        ]
+                if evidence_runs is not None and result.get("junit_evidence"):
+                    evidence_runs.append({
+                        "kind": "mutant",
+                        "label": label,
+                        **result["junit_evidence"],
+                        "nodes": _node_record_summary(result),
+                        "actual_failure": row.get("actual_failure"),
+                    })
+                if control_spec:
+                    row["verdict"] = _control_verdict(row["verdict"])
+                if observed_sha != mutated_sha:
+                    # The grade above scored whatever content the band imported.
+                    # The subject no longer holds the exact mutant we wrote -- a
+                    # concurrent run or other tooling substituted it on a shared
+                    # work tree -- so that grade is about a mutant that never ran.
+                    row["verdict"] = UNKNOWN
+                    row["why"] = (
+                        "subject changed under the band before grading "
+                        "(%s != mutant %s); the verdict would be about "
+                        "substituted content, not the mutant"
+                        % (observed_sha[:12], mutated_sha[:12]))
+            except Exception as exc:
+                operation_problem = "%s is unproved (%s)" % (
+                    operation_stage, _exception_summary(exc))
+                row["verdict"] = UNKNOWN
+                row["why"] = operation_problem
+            finally:
+                active_primary = sys.exc_info()[1]
+                try:
+                    mutated_sha = hashlib.sha256(mutated.encode("utf-8")).hexdigest()
+                    current_sha = owner.sha()
+                    if current_sha == mutated_sha:
+                        _write_subject_text(
+                            owner, original, expected_sha=mutated_sha, restoring=True)
+                    elif current_sha != before_sha:
+                        raise ValueError(
+                            "subject matches neither the original nor mutant after "
+                            "the operation")
+                    _purge_pycache(work)
+                    owner.require_attached("after restoration and cache cleanup")
+                    after_sha = owner.sha()
+                    if after_sha != before_sha:
+                        restore_problem = (
+                            f"RESTORE FAILED: {before_sha[:12]} -> {after_sha[:12]}. "
+                            f"The tree is NOT as it was found.")
+                except (OSError, RuntimeError, ValueError) as exc:
+                    restore_problem = "RESTORE/CACHE CLEANUP UNKNOWN: %s" % exc
+                except BaseException as restore_primary:
+                    if active_primary is None:
+                        raise
+                    if restore_primary is not active_primary:
+                        _note_reconciliation(
+                            active_primary, "secondary restoration failure: %s" %
+                            _exception_summary(restore_primary))
+        finally:
+            active_primary = sys.exc_info()[1]
+            try:
+                owner.close(primary=active_primary)
+            except (OSError, RuntimeError, ValueError) as exc:
+                close_problem = "SUBJECT OWNER CLOSE UNKNOWN: %s" % exc
+                restore_problem = (close_problem if restore_problem is None else
+                                   restore_problem + "; " + close_problem)
+                row["verdict"] = ERROR
+                row["why"] = restore_problem
+
+        if restore_problem is not None:
+            row["verdict"] = ERROR
+            row["why"] = restore_problem
+        elif (operation_problem is None
+              and row["direction"] == "overcorrection"
+              and jrec is not None):
+            # A byte-identical source restore cannot restore state a fixture
+            # wrote elsewhere.  Re-run the exact named verdict population
+            # while the original bytes are back, before another mutant can
+            # inherit that residue and turn it into a false CAUGHT.
+            replay_targets = [m["control"], *m["preserves"]]
+            try:
+                replay = _run_band(replay_targets, work, timeout=timeout)
+                replay_problem = _restored_control_replay_problem(m, replay)
+            except Exception as exc:
+                replay_problem = "restored-source replay is unproved (%s)" % (
+                    _exception_summary(exc),
+                )
+            if replay_problem is not None:
+                row["verdict"] = UNKNOWN
+                row["why"] = replay_problem
+        if restore_problem is None and jrec is not None:
+            try:
+                _journal_unlink(
+                    work, jrec, journal_dir_identity,
+                    journal_record_identity)
+            except (OSError, RuntimeError, ValueError) as exc:
+                restore_problem = (
+                    "RESTORE VERIFIED BUT JOURNAL REMOVAL UNKNOWN: %s" % exc)
+                row["verdict"] = ERROR
+                row["why"] = restore_problem
+        out.append(row)
+        if restore_problem is not None:
+            print("BD-MUTATE-UNRUNNABLE: %s; retained %s"
+                  % (restore_problem, jrec), file=sys.stderr)
+            return 2, out
+        if replay_problem is not None:
+            print("BD-MUTATE-UNRUNNABLE: %s; restoration and journal removal "
+                  "were verified" % replay_problem, file=sys.stderr)
+            return 2, out
+        if operation_problem is not None:
+            print("BD-MUTATE-UNRUNNABLE: %s; restoration and journal removal "
+                  "were verified" % operation_problem, file=sys.stderr)
+            return 2, out
+        if verbose:
+            print(f"  [{_verdict_display(row['verdict']):7}] {label}")
+
+    return _battery_exit(out), out
+
+
+def _report(rows: list[dict], control_spec: bool = False) -> None:
+    c = Counter(r["verdict"] for r in rows)
+    width = max([8] + [len(_verdict_display(r["verdict"])) for r in rows])
+    print("\n%-*s %-46s %s" % (width, "VERDICT", "MUTANT", "NOTE"))
+    for r in rows:
+        print("%-*s %-46s %s" % (width, _verdict_display(r["verdict"]),
+                                 r["label"][:46], (r.get("why") or "")[:70]))
+    counts = ("%d caught, %d escaped, %d indiscriminate, %d unknown, %d invalid, %d error"
+              % (c[CAUGHT], c[ESCAPED], c[INDISCRIMINATE], c[UNKNOWN],
+                 c[INVALID], c[ERROR]))
+    if control_spec:
+        # H89: controls sit OUTSIDE the regression numerator and denominator.
+        counts += (", %d control-escaped (expected), %d control-caught (FAILURE)"
+                   % (c[CONTROL_ESCAPED], c[CONTROL_CAUGHT]))
+    print("\n" + counts)
+    if c[INVALID]:
+        print("INVALID is not CAUGHT: those mutants never ran, so they are "
+              "unmeasured, not survived.")
+    if c[ESCAPED]:
+        print("An escape names a behaviour the cut asserts but does not "
+              "constrain. Close it by ADDING the missing test -- and prove that "
+              "test RED with the mutant applied AND green without it. A test "
+              "that passes in both states is not a test.")
+    if control_spec and c[CONTROL_CAUGHT]:
+        print("verdict: CONTROL-CAUGHT (FAILURE) -- %d of %d declared control(s) "
+              "were caught. A control's band member must NOT see the transform; "
+              "a caught control is not a control. Point it at an import-only "
+              "node, or move the mutant into the primary battery."
+              % (c[CONTROL_CAUGHT], len(rows)))
+    elif control_spec and rows and c[CONTROL_ESCAPED] == len(rows):
+        print("verdict: CONTROL-ESCAPED (expected) -- every declared control "
+              "escaped. Controls are outside the regression numerator and "
+              "denominator; this is the result a control is run to produce.")
+
+
+def _cleanup_selftest_directory(cleanup) -> None:
+    """Retry one ENOTEMPTY from the selftest's own temporary-directory cleanup."""
+    for attempt in range(2):
+        try:
+            cleanup()
+            return
+        except OSError as exc:
+            if exc.errno == errno.ENOTEMPTY and attempt == 0:
+                continue
+            raise
+
+
+class _SelftestTemporaryDirectory(tempfile.TemporaryDirectory):
+    """A selftest root may race one late writer after the final battery exits."""
+
+    def cleanup(self):
+        _cleanup_selftest_directory(super().cleanup)
+
+
+def _selftest(work: Path) -> int:
+    """Prove the harness catches its own four historical failures."""
+    ok = True
+    with _SelftestTemporaryDirectory() as td:
+        t = Path(td)
+        (t / "tests").mkdir()
+        (t / "m.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+        (t / "tests" / "test_m.py").write_text(
+            "import sys; sys.path.insert(0, '.')\n"
+            "def test_f():\n"
+            "    import importlib, m; importlib.reload(m)\n"
+            "    assert m.f() == 1\n", encoding="utf-8")
+
+        # 1. a real mutant is CAUGHT, and the bytecode purge makes it reliable
+        rc, rows = run_battery([{"label": "return 1 -> 2", "file": "m.py",
+                                 "old": "return 1", "new": "return 2"}],
+                               ["tests/test_m.py"], t, verbose=False)
+        got = rows[0]["verdict"] if rows else "?"
+        ok &= (got == CAUGHT)
+        print(("PASS" if got == CAUGHT else "FAIL") + f"  a real mutant is CAUGHT (got {got})")
+
+        # 1b. regex replacement is exactly once and never expands groups in new
+        regex_after = _apply_regex(
+            "CENSUS = 217\n", r"CENSUS = ([0-9]+)", r"CENSUS = \1")
+        regex_ok = regex_after == "CENSUS = \\1\n"
+        ok &= regex_ok
+        print(("PASS" if regex_ok else "FAIL")
+              + "  a regex anchor writes replacement text verbatim")
+
+        # 2. a non-parsing mutant is INVALID, never CAUGHT and never ESCAPED
+        rc, rows = run_battery([{"label": "orphan the body", "file": "m.py",
+                                 "old": "    return 1", "new": "    return ("}],
+                               ["tests/test_m.py"], t, verbose=False)
+        got = rows[0]["verdict"] if rows else "?"
+        ok &= (got == INVALID)
+        print(("PASS" if got == INVALID else "FAIL") + f"  a non-parsing mutant is INVALID (got {got})")
+
+        # 3. a non-unique anchor is an ERROR, not a silent first-match rewrite
+        (t / "dup.py").write_text("x = 1\nx = 1\n", encoding="utf-8")
+        rc, rows = run_battery([{"label": "ambiguous anchor", "file": "dup.py",
+                                 "old": "x = 1", "new": "x = 2"}],
+                               ["tests/test_m.py"], t, verbose=False)
+        got = rows[0]["verdict"] if rows else "?"
+        amb = got == ERROR and "occurs 2 times" in (rows[0].get("why") or "")
+        ok &= amb
+        print(("PASS" if amb else "FAIL") + f"  a non-unique anchor is ERROR (got {got})")
+
+        # 4. an empty spec is UNRUNNABLE (2), never "all caught" (0)
+        rc, rows = run_battery([], ["tests/test_m.py"], t, verbose=False)
+        ok &= (rc == 2)
+        print(("PASS" if rc == 2 else "FAIL") + f"  an empty spec exits 2, not 0 (got {rc})")
+
+        # 5. a RED baseline is UNRUNNABLE, so no verdict can be read from it
+        (t / "tests" / "test_red.py").write_text("def test_no():\n    assert False\n",
+                                                 encoding="utf-8")
+        rc, rows = run_battery([{"label": "unused", "file": "m.py",
+                                 "old": "return 1", "new": "return 2"}],
+                               ["tests/test_red.py"], t, verbose=False)
+        ok &= (rc == 2)
+        print(("PASS" if rc == 2 else "FAIL") + f"  a RED baseline exits 2 (got {rc})")
+
+        # 6. the tree is restored byte-identically after a battery
+        same = (t / "m.py").read_text(encoding="utf-8") == "def f():\n    return 1\n"
+        ok &= same
+        print(("PASS" if same else "FAIL") + "  the subject file is restored byte-identically")
+
+        # 6b. CLEAN-RUN CONTROL (@875). No journal may survive a normal battery,
+        # and the NEXT battery must reach a real verdict. Without this the
+        # journal wedges every subsequent run and the tool is dead -- the
+        # over-correction that "passes the escape's test and destroys the tool".
+        left = list(_journal_dir(t).glob("*.json")) if _journal_dir(t).is_dir() else []
+        rc, rows = run_battery([{"label": "again", "file": "m.py",
+                                 "old": "return 1", "new": "return 2"}],
+                               ["tests/test_m.py"], t, verbose=False)
+        clean = not left and rc in (0, 1) and rows and rows[0]["verdict"] == CAUGHT
+        ok &= clean
+        print(("PASS" if clean else "FAIL")
+              + f"  a clean run leaves no journal and the next run still verdicts "
+                f"(left={len(left)} rc={rc})")
+
+        # 7. AN INTERRUPTED BATTERY IS DETECTED, NOT LAUNDERED.
+        # The whole point: kill a battery mid-band so the mutant is on disk with
+        # no restore, then prove the NEXT run refuses instead of adopting it as
+        # pristine. The wait is on a HEARTBEAT the band test writes, never on a
+        # fixed sleep -- a fixed sleep is a race, and it is 2a's "cut on
+        # structure, never on a fixed width" in another costume.
+        import signal as _signal
+        import time as _time
+        k = Path(td) / "kill"
+        k.mkdir()
+        (k / "tests").mkdir()
+        (k / "m.py").write_text("def f():\n    return 1\n", encoding="utf-8")
+        # The band records its own pid and then waits on a SENTINEL FILE, not
+        # on a width. Its pid is its process-group id (start_new_session), so
+        # this is how the selftest learns which session it is about to orphan;
+        # and the sentinel makes the orphan's lifetime a fact the selftest
+        # decides rather than a race it hopes to win. Only the MUTATED run
+        # blocks -- the pristine baseline must not, or every battery stalls.
+        (k / "tests" / "test_m.py").write_text(
+            "import os, pathlib, time\n"
+            "def test_f():\n"
+            "    src = pathlib.Path('m.py').read_text()\n"
+            "    pathlib.Path('hb.txt').write_text('PID=%d\\n' % os.getpid() + src)\n"
+            "    if 'return 2' not in src:\n"
+            "        return\n"
+            "    stop = pathlib.Path('reap-me')\n"
+            "    deadline = time.time() + 120\n"
+            "    while not stop.exists() and time.time() < deadline:\n"
+            "        time.sleep(0.05)\n", encoding="utf-8")
+        specf = k / "spec.json"
+        specf.write_text(json.dumps([{"label": "kill me", "file": "m.py",
+                                      "old": "return 1", "new": "return 2"}]),
+                         encoding="utf-8")
+        proc = subprocess.Popen(
+            [sys.executable, os.path.realpath(__file__), "--spec", str(specf),
+             "--band", "tests/test_m.py", "--work", str(k)],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        hb = k / "hb.txt"
+        deadline = _time.time() + 90
+        while _time.time() < deadline:
+            if hb.is_file() and "return 2" in hb.read_text(encoding="utf-8"):
+                break
+            _time.sleep(0.2)
+        proc.send_signal(_signal.SIGTERM)
+        proc.wait(timeout=60)
+
+        # 7b. THE ORPHANED BAND, and why reaping it does not weaken 7.
+        # `_run_owned` starts every band with start_new_session=True, so the
+        # SIGTERM above -- the whole point of this section -- reaches the child
+        # swarm-mutate and NOT the band pytest underneath it. The band survives
+        # with ppid=1, keeps `k` as its cwd, and goes on creating .pytest_cache
+        # and its --junitxml directory INSIDE this selftest root. Measured on
+        # test5 2026-09-02: pid 3817652, ppid=1, pgid=sid=3817652, still adding
+        # entries 6.3s after proc.wait() returned.
+        #
+        # Leave it there and the root's own cleanup at the end of this `with`
+        # races a writer nothing owns. That is the row-638 failure: the retry's
+        # SECOND removal is the last one, so a real ENOTEMPTY escapes as the
+        # OS's own strerror -- reproduced at os.rmdir('kill'), `kill` being the
+        # orphan's cwd, by widening only this window the way CI load widens it.
+        #
+        # Reaping it cannot launder section 7's verdict: 7 asserts that the
+        # MUTANT IS STILL ON DISK because the child's `finally` never ran, and
+        # killing the band does not restore m.py. The residue check below is
+        # therefore read AFTER the reap, on purpose -- it must survive it.
+        band_pgid = _orphaned_band_pgid(hb)
+        band_alive = band_pgid > 0 and _band_session_alive(band_pgid)
+        # Release the band whether or not it is reapable, so no later battery
+        # in `k` can block on a sentinel that never arrives.
+        (k / "reap-me").write_text("stop\n", encoding="utf-8")
+        band_gone = False
+        if band_alive:
+            _signal_process_group(band_pgid, _signal.SIGTERM)
+            if not _wait_process_group_gone(
+                    band_pgid, PROCESS_GROUP_TERM_GRACE_SECONDS):
+                _signal_process_group(band_pgid, _signal.SIGKILL)
+            band_gone = _wait_process_group_gone(
+                band_pgid, PROCESS_GROUP_KILL_GRACE_SECONDS)
+        # A reaper satisfied by an absent or already-dead group is the
+        # fail-open shape it exists to prevent, and it would report success on
+        # exactly the schedules that make row 638 fire. Each of the three ways
+        # this can go wrong is named separately, because they lead to different
+        # repairs: no id recorded, nothing alive to reap, or a group that
+        # outlived SIGKILL.
+        reaped = band_alive and band_gone
+        ok &= reaped
+        print(("PASS" if reaped else "FAIL")
+              + "  the orphaned band session is reaped "
+                f"(pgid={band_pgid} alive={band_alive} gone={band_gone})")
+
+        residue = "return 2" in (k / "m.py").read_text(encoding="utf-8")
+        print(("PASS" if residue else "FAIL")
+              + "  SIGTERM leaves the mutant on disk (the trigger; finally does not run)")
+        ok &= residue
+        rc2, _rows2 = run_battery([{"label": "next run", "file": "m.py",
+                                    "old": "return 2", "new": "return 3"}],
+                                  ["tests/test_m.py"], k, verbose=False)
+        detected = rc2 == 2
+        ok &= detected
+        print(("PASS" if detected else "FAIL")
+              + f"  a battery on the residued tree exits 2 instead of a verdict (got {rc2})")
+
+        # 8a. --recover repairs it, verifying by sha
+        recovered = journal_recover(k) == 0 and \
+            (k / "m.py").read_text(encoding="utf-8") == "def f():\n    return 1\n"
+        ok &= recovered
+        print(("PASS" if recovered else "FAIL") + "  --recover restores the original")
+
+        # 8b. REAP CONTROL, the important over-sensitivity clamp. A journal whose
+        # file ALREADY matches its recorded original -- the operator ran
+        # `git checkout --` -- must be REAPED and the run must proceed. A check
+        # that refuses on the mere PRESENCE of a journal is the cry-wolf gate
+        # that gets switched off, taking the real check with it.
+        _journal_write(k, "m.py", (k / "m.py").read_text(encoding="utf-8"),
+                       "def f():\n    return 99\n", "already repaired")
+        prc, _ = journal_preflight(k)
+        reaped = prc == 0 and not list(_journal_dir(k).glob("*.json"))
+        ok &= reaped
+        print(("PASS" if reaped else "FAIL")
+              + f"  a journal whose tree is already clean is REAPED, not refused (rc={prc})")
+
+        # 8c. UNKNOWN IS NOT "DIRTY". A file matching neither recorded state must
+        # exit 2 by SAYING it cannot tell -- never by silently recovering over an
+        # edit the operator made deliberately.
+        _journal_write(k, "m.py", "def f():\n    return 1\n",
+                       "def f():\n    return 2\n", "unknown state")
+        (k / "m.py").write_text("def f():\n    return 41\n", encoding="utf-8")
+        prc, pmsgs = journal_preflight(k)
+        unknown = prc == 2 and any("NEITHER" in m for m in pmsgs)
+        ok &= unknown
+        print(("PASS" if unknown else "FAIL")
+              + "  a file matching neither recorded state is UNKNOWN, not auto-recovered")
+        refused = journal_recover(k) == 2 and \
+            (k / "m.py").read_text(encoding="utf-8") == "def f():\n    return 41\n"
+        ok &= refused
+        print(("PASS" if refused else "FAIL")
+              + "  --recover REFUSES rather than overwriting an unrecorded edit")
+
+        # 9. DIRECTION IS EXECUTABLE. The named control, not an unrelated red
+        # bandmate, decides whether an over-correction is constrained.
+        d = Path(td) / "direction"
+        d.mkdir()
+        (d / "tests").mkdir()
+        (d / "m.py").write_text(
+            "def render(value):\n"
+            "    if value is None:\n"
+            "        return 'unknown'\n"
+            "    return str(value)\n", encoding="utf-8")
+        test_path = d / "tests" / "test_m.py"
+        test_path.write_text(
+            "import importlib, m\n"
+            "def fresh(): return importlib.reload(m)\n"
+            "def test_fix(): assert fresh().render(None) == 'unknown'\n"
+            "def test_control(): assert fresh().render(7) == '7'\n"
+            "def test_bandmate(): assert fresh().render('ok') == 'ok'\n",
+            encoding="utf-8")
+        over = {
+            "label": "over-correct naming", "file": "m.py",
+            "old": "    return str(value)", "new": "    return 'unknown'",
+            "direction": "overcorrection",
+            "control": "tests/test_m.py::test_control",
+            "preserves": ["tests/test_m.py::test_fix"],
+        }
+        rc, rows = run_battery([over], ["tests/test_m.py"], d, verbose=False)
+        real = rc == 0 and rows and rows[0]["verdict"] == CAUGHT
+        ok &= real
+        print(("PASS" if real else "FAIL")
+              + "  an over-correction seen by its named control is CAUGHT")
+
+        test_path.write_text(
+            "import importlib, m\n"
+            "def fresh(): return importlib.reload(m)\n"
+            "def test_fix(): assert fresh().render(None) == 'unknown'\n"
+            "def test_control(): assert fresh().render(None) == 'unknown'\n"
+            "def test_bandmate(): assert fresh().render(7) == '7'\n",
+            encoding="utf-8")
+        rc, rows = run_battery([over], ["tests/test_m.py"], d, verbose=False)
+        decorative = rc == 1 and rows and rows[0]["verdict"] == ESCAPED
+        ok &= decorative
+        print(("PASS" if decorative else "FAIL")
+              + "  an unrelated failing bandmate cannot satisfy a named control")
+
+        invalid_import = {
+            "label": "parseable import break", "file": "m.py",
+            "old": "def render(value):",
+            "new": "import zzz_definitely_not_a_module\ndef render(value):",
+            "direction": "regression", "catcher": "tests/test_m.py::test_fix",
+        }
+        rc, rows = run_battery(
+            [invalid_import], ["tests/test_m.py"], d, verbose=False)
+        import_guard = rc == 2 and rows and rows[0]["verdict"] == INVALID
+        ok &= import_guard
+        print(("PASS" if import_guard else "FAIL")
+              + "  a parseable import break is INVALID rather than CAUGHT")
+
+        # 10. A DECLARED CONTROL IS GRADED THE OTHER WAY UP (H89): its escape
+        # is the expected result and exits 0; its catch is the failure.
+        test_path.write_text(
+            "import importlib, m\n"
+            "def fresh(): return importlib.reload(m)\n"
+            "def test_import_only(): assert fresh() is not None\n"
+            "def test_sees(): assert fresh().render(None) == 'unknown'\n",
+            encoding="utf-8")
+        control = {
+            "label": "CONTROL flip the None sentinel", "file": "m.py",
+            "old": "        return 'unknown'", "new": "        return 'UNKNOWN'",
+            "direction": "regression",
+            "catcher": "tests/test_m.py::test_import_only",
+        }
+        rc, rows = run_battery([control], ["tests/test_m.py"], d,
+                               verbose=False, control_spec=True)
+        expected = rc == 0 and rows and rows[0]["verdict"] == CONTROL_ESCAPED
+        ok &= expected
+        print(("PASS" if expected else "FAIL")
+              + "  a declared control that escapes is CONTROL-ESCAPED and exits 0")
+        seen = dict(control, catcher="tests/test_m.py::test_sees")
+        rc, rows = run_battery([seen], ["tests/test_m.py"], d,
+                               verbose=False, control_spec=True)
+        failure = rc == 1 and rows and rows[0]["verdict"] == CONTROL_CAUGHT
+        ok &= failure
+        print(("PASS" if failure else "FAIL")
+              + "  a declared control that is caught is CONTROL-CAUGHT and exits 1")
+
+    print("SELFTEST PASS" if ok else "SELFTEST FAIL")
+    return 0 if ok else 1
+
+
+def _evidence_candidate(work: Path, spec_path: Path,
+                        evidence_path: Path) -> tuple[str, str, str]:
+    """Resolve one clean tracked candidate before mutation evidence starts."""
+    try:
+        evidence_path.resolve().relative_to(work.resolve())
+    except ValueError:
+        pass
+    else:
+        raise ValueError("--evidence-out must be outside the candidate work tree")
+    status = subprocess.run(
+        ["git", "status", "--porcelain=v1", "-z", "--untracked-files=all"],
+        cwd=work, capture_output=True, check=True,
+    ).stdout
+    if status:
+        raise ValueError("--evidence-out requires a clean exact candidate")
+    relative_spec = spec_path.resolve().relative_to(work.resolve()).as_posix()
+    tracked = subprocess.run(
+        ["git", "ls-files", "--error-unmatch", "--", relative_spec], cwd=work,
+        capture_output=True, text=True,
+    )
+    if tracked.returncode != 0:
+        raise ValueError("--evidence-out requires a tracked candidate spec")
+    head = subprocess.run(
+        ["git", "rev-parse", "--verify", "HEAD^{commit}"], cwd=work,
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    tree = subprocess.run(
+        ["git", "rev-parse", "--verify", "HEAD^{tree}"], cwd=work,
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    return head, tree, hashlib.sha256(spec_path.read_bytes()).hexdigest()
+
+
+def _write_exact_mutation_evidence(path: Path, *, candidate_sha: str,
+                                   candidate_tree: str, spec_sha256: str,
+                                   contract_sha256: str,
+                                   environment_sha256: str,
+                                   tool_sha256: str, spec: list[dict],
+                                   rows: list[dict]) -> None:
+    """Publish the exact cut-mutation-result/2 consumed by the v2 validator."""
+    digest = re.compile(r"[0-9a-f]{64}\Z")
+    for name, value in {
+        "contract_sha256": contract_sha256,
+        "environment_sha256": environment_sha256,
+        "tool_sha256": tool_sha256,
+    }.items():
+        if digest.fullmatch(value or "") is None:
+            raise ValueError(f"--{name.replace('_', '-')} must be lowercase sha256")
+    labels = [mutant["label"] for mutant in spec]
+    if len(labels) != len(set(labels)):
+        raise ValueError("mutation evidence label accounting is incomplete or duplicated")
+    if [row["label"] for row in rows] != labels:
+        raise ValueError("mutation evidence label accounting is incomplete or duplicated")
+    subject_hashes = {row["subject_blob_sha256"] for row in rows}
+    if len(subject_hashes) != 1:
+        raise ValueError("cut-mutation-result/2 requires one exact subject blob")
+    result_rows = []
+    for mutant, row in zip(spec, rows, strict=True):
+        if row.get("verdict") != CAUGHT:
+            raise ValueError("mutation evidence can publish only an all-CAUGHT battery")
+        expected_actual = {
+            "nodeid": mutant["catcher"],
+            "outcome": mutant["expected_failure"]["outcome"],
+            "signature": mutant["expected_failure"]["signature"],
+        }
+        if row.get("actual_failure") != expected_actual:
+            raise ValueError(
+                f"mutation evidence lacks the observed catcher failure: {row['label']}")
+        expected_controls = [
+            {"nodeid": nodeid, "outcome": "passed"}
+            for nodeid in mutant["preserves"]
+        ]
+        if row.get("control_outcomes") != expected_controls:
+            raise ValueError(
+                f"mutation evidence lacks observed GREEN controls: {row['label']}")
+        result_rows.append({
+            "label": row["label"],
+            "verdict": row["verdict"],
+            "mutated_blob_sha256": row["mutated_blob_sha256"],
+            "catcher": mutant["catcher"],
+            "expected_failure": mutant["expected_failure"],
+            "actual_failures": [row["actual_failure"]],
+            "controls": row["control_outcomes"],
+            "equivalent_analysis": None,
+        })
+    document = {
+        "schema": "cut-mutation-result/2",
+        "candidate_sha": candidate_sha,
+        "candidate_tree": candidate_tree,
+        "contract_sha256": contract_sha256,
+        "environment_sha256": environment_sha256,
+        "tool_sha256": tool_sha256,
+        "spec_sha256": spec_sha256,
+        "subject_blob_sha256": next(iter(subject_hashes)),
+        "baseline": {"status": "GREEN"},
+        "declared_labels": labels,
+        "selected_labels": labels,
+        "executed_labels": labels,
+        "mutants": result_rows,
+        "status": "PASS",
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = (json.dumps(document, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
+def _write_node_evidence(path: Path, *, candidate_sha: str,
+                         candidate_tree: str, spec_sha256: str,
+                         runs: list[dict], status: str) -> None:
+    """Bind preserved raw per-run JUnit to the candidate without changing v2."""
+    document = {
+        "schema": "cut-mutation-node-evidence/1",
+        "candidate_sha": candidate_sha,
+        "candidate_tree": candidate_tree,
+        "spec_sha256": spec_sha256,
+        "runs": runs,
+        "status": status,
+    }
+    data = (json.dumps(document, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(prog="swarm-mutate")
+    ap.add_argument("--spec", help="JSON object spec, or a legacy bare mutant list")
+    ap.add_argument("--band", default="", help="test targets for legacy bare-list specs")
+    ap.add_argument("--emit-spec", metavar="BASENAME",
+                    help="write tests/mutants/BASENAME without clobbering")
+    ap.add_argument("--subject", default="",
+                    help="human-readable subject required by --emit-spec")
+    ap.add_argument("--direction", choices=("regression", "overcorrection", "all"),
+                    default="all", help="run only one mutant direction (default: all)")
+    ap.add_argument("--timeout", type=float, default=DEFAULT_BAND_TIMEOUT_SECONDS,
+                    help="seconds per pytest collection/execution (default: 900)")
+    ap.add_argument("--work", default=os.environ.get("SWARM_REPO", "."))
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--evidence-out",
+                    help="publish candidate-bound cut-mutation-result/2 outside Git")
+    ap.add_argument("--contract-sha256")
+    ap.add_argument("--environment-sha256")
+    ap.add_argument("--tool-sha256")
+    ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--recover", action="store_true",
+                    help="restore originals recorded by an interrupted battery")
+    a = ap.parse_args()
+    try:
+        _bind_invoked_runner_identity()
+    except (OSError, RuntimeError, ValueError) as exc:
+        print("BD-MUTATE-UNRUNNABLE: %s" % exc, file=sys.stderr)
+        if a.json:
+            print(json.dumps({
+                "exit": 2, "direction": a.direction,
+                "selected": 0, "total": 0, "rows": [],
+            }, indent=1))
+        return 2
+    try:
+        work = Path(a.work).resolve()
+    except (OSError, RuntimeError) as exc:
+        print(
+            "BD-MUTATE-UNRUNNABLE: work root is unavailable: "
+            f"{a.work}: {exc}",
+            file=sys.stderr,
+        )
+        if a.json:
+            print(json.dumps({
+                "exit": 2,
+                "direction": a.direction,
+                "selected": 0,
+                "total": 0,
+                "rows": [],
+            }, indent=1))
+        return 2
+
+    if not (0 < a.timeout < float("inf")):
+        ap.error("--timeout must be a positive finite number")
+
+    if a.selftest:
+        return _selftest(work)
+    conflict = (_shares_runner_git_authority(work) if a.recover
+                else _runner_repository_conflict(work))
+    if conflict:
+        print(
+            "BD-MUTATE-UNRUNNABLE: refusing work that intersects the "
+            "repository containing this swarm-mutate or shares Git authority "
+            "with it: "
+            f"{work} (runner repository: {_INVOKED_REPOSITORY}). Use a "
+            "detached scratch copy.",
+            file=sys.stderr,
+        )
+        return 2
+    if a.recover:
+        return journal_recover(work)
+    if not a.spec:
+        ap.error("--spec is required (or --selftest)")
+
+    try:
+        spec_path = Path(a.spec).resolve()
+        document = json.loads(spec_path.read_text(encoding="utf-8"))
+        schema = document.get("schema") if isinstance(document, dict) else None
+        spec, band = _normalise_spec(document, [b for b in a.band.split() if b])
+        control_spec = _declared_control(document, spec_path)
+    except (OSError, ValueError, json.JSONDecodeError) as e:
+        print(f"BD-MUTATE-UNRUNNABLE: invalid spec: {e}", file=sys.stderr)
+        return 2
+    evidence_identity = None
+    evidence_path = Path(a.evidence_out).resolve() if a.evidence_out else None
+    junit_dir = None
+    node_evidence_path = None
+    evidence_runs: list[dict] = []
+    if evidence_path is not None:
+        try:
+            if schema != EXACT_SPEC_SCHEMA or a.direction != "all":
+                raise ValueError(
+                    "--evidence-out requires swarm-mutation-spec/2 and --direction all")
+            if not all((a.contract_sha256, a.environment_sha256, a.tool_sha256)):
+                raise ValueError(
+                    "--evidence-out requires contract/environment/tool sha256 values")
+            evidence_identity = _evidence_candidate(work, spec_path, evidence_path)
+            evidence_path.parent.mkdir(parents=True, exist_ok=True)
+            node_evidence_path = Path(str(evidence_path) + ".nodes.json")
+            junit_dir = Path(str(evidence_path) + ".junit")
+            occupied = [path for path in (evidence_path, node_evidence_path, junit_dir)
+                        if path.exists()]
+            if occupied:
+                raise ValueError(
+                    f"evidence targets already exist: {[str(path) for path in occupied]}")
+            junit_dir.mkdir()
+        except (OSError, ValueError, subprocess.SubprocessError) as e:
+            print(f"BD-MUTATE-UNRUNNABLE: cannot prepare evidence: {e}",
+                  file=sys.stderr)
+            return 2
+    prepared_emit = None
+    if a.emit_spec:
+        if a.direction != "all":
+            print("BD-MUTATE-UNRUNNABLE: --emit-spec requires --direction all; "
+                  "a durable spec cannot publish mutants this run did not measure",
+                  file=sys.stderr)
+            return 2
+        try:
+            prepared_emit = _prepare_emitted_spec(
+                work, a.emit_spec, a.subject, band, spec,
+                control_spec=control_spec)
+        except (OSError, ValueError) as e:
+            print(f"BD-MUTATE-UNRUNNABLE: cannot emit spec: {e}", file=sys.stderr)
+            return 2
+    total = len(spec)
+    selected = spec if a.direction == "all" else [
+        mutant for mutant in spec if mutant["direction"] == a.direction]
+    if not selected:
+        if prepared_emit is not None:
+            prepared_emit[0].close()
+        print(f"BD-MUTATE-UNRUNNABLE: 0 of {total} mutants after "
+              f"--direction {a.direction}", file=sys.stderr)
+        return 2
+    try:
+        rc, rows = run_battery(
+            selected, band, work, verbose=not a.json, timeout=a.timeout,
+            control_spec=control_spec,
+            exact_semantics=schema == EXACT_SPEC_SCHEMA,
+            junit_dir=junit_dir, evidence_runs=evidence_runs,
+        )
+    except BaseException as primary:
+        if prepared_emit is not None:
+            prepared_emit[0].close(primary=primary)
+        raise
+    if evidence_path is not None:
+        try:
+            observed_identity = _evidence_candidate(work, spec_path, evidence_path)
+            if observed_identity != evidence_identity:
+                raise ValueError(
+                    "candidate/spec identity changed during the mutation battery")
+            _write_node_evidence(
+                node_evidence_path,
+                candidate_sha=evidence_identity[0], candidate_tree=evidence_identity[1],
+                spec_sha256=evidence_identity[2], runs=evidence_runs,
+                status="PASS" if rc == 0 else "HOLD",
+            )
+            if rc == 0:
+                _write_exact_mutation_evidence(
+                    evidence_path,
+                    candidate_sha=evidence_identity[0],
+                    candidate_tree=evidence_identity[1],
+                    spec_sha256=evidence_identity[2],
+                    contract_sha256=a.contract_sha256,
+                    environment_sha256=a.environment_sha256,
+                    tool_sha256=a.tool_sha256,
+                    spec=spec, rows=rows,
+                )
+        except (OSError, ValueError, subprocess.SubprocessError) as e:
+            print(f"BD-MUTATE-UNRUNNABLE: cannot publish evidence: {e}",
+                  file=sys.stderr)
+            rc = 2
+    if prepared_emit is not None:
+        if rc in (0, 1):
+            try:
+                _publish_emitted_spec(*prepared_emit)
+            except (OSError, RuntimeError, ValueError) as e:
+                print(f"BD-MUTATE-UNRUNNABLE: cannot publish spec: {e}",
+                      file=sys.stderr)
+                rc = 2
+        else:
+            try:
+                prepared_emit[0].close()
+            except (OSError, RuntimeError, ValueError) as e:
+                print("BD-MUTATE-UNRUNNABLE: emitted-spec owner cleanup is "
+                      "unproved: %s" % e, file=sys.stderr)
+    if a.json:
+        print(json.dumps({
+            "exit": rc,
+            "direction": a.direction,
+            "control_spec": control_spec,
+            "selected": len(selected),
+            "total": total,
+            "rows": rows,
+        }, indent=1))
+    elif rows:
+        _report(rows, control_spec)
+    return rc
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

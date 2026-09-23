@@ -1,0 +1,1164 @@
+#!/usr/bin/env python3
+"""swarm-fleet-run -- run one command across the operator's VM fleet, safely.
+
+WHAT IT IS FOR. The operator drives several test VMs over ssh and needs a
+command applied consistently across them with per-host output retained. That is
+a live capability, not a convenience: model subagents are not an equivalent,
+because they do not hold the ssh control path and leave no artifact the operator
+can re-read afterwards.
+
+WHY IT WAS REWRITTEN AT v3.66.1142. The v3.66.1140 --selftest built a fleet file
+naming `alpha 192.0.2.10` and drove main() through an "unwritable artifact root"
+refusal that held ONLY because `mkdir /proc/cannot/write/here` fails on procfs.
+Had it succeeded, control reached `ssh ... 192.0.2.10`, and
+tests/test_toolchain_534.py runs that selftest inside ci.yml's `toolchain`
+shard. No egress ever occurred, but the property was enforced by the FILESYSTEM
+and never by the code.
+
+WHAT v3.66.1144 FIXED, from a second review. Every one of these was a way to
+report success over something that had not happened:
+
+  * A runner returning rc=0 without creating a per-host log was reported `ok`.
+    A missing log means the run produced NO evidence; that is now ERROR. A
+    zero-byte EXISTING regular file is valid -- a command can legitimately print
+    nothing -- so the test is existence and regular-file-ness, not size.
+  * The reconciliation that turns un-returned targets into UNKNOWN rows ran
+    AFTER summary.json was written, so those rows never reached the persisted
+    record. Reconciliation now happens INSIDE finalisation, before the write.
+  * A failure to persist summary.json was a warning on stderr and exit 0.
+    Losing the record of a fleet that has already executed is a failure.
+  * Executor construction, submission and as_completed were outside the guarded
+    region, so a coordinator failure discarded the rows already collected.
+  * The plan printed an argv built from the bare command while the runner
+    received one carrying the commit-recording prefix. Printed and executed
+    argv were DIFFERENT on the default path, and the test that checked them
+    passed --no-record-commit, which is precisely the flag that hides it. Each
+    phase argv is now constructed exactly ONCE per target and the same objects
+    are printed, persisted, and executed.
+  * `build_command(...).strip()` silently altered a command whose trailing
+    whitespace was deliberate. strip() is now used only to decide emptiness.
+  * Addresses were filtered by a metacharacter BLACKLIST. A blacklist over a
+    field that reaches ssh's argv is the wrong shape; there is now an explicit
+    accepted grammar for the inventory's supported forms (IPv4, IPv6, DNS, with
+    an optional user@), and a normalised form is what de-duplication keys on.
+  * `Host key verification failed` was classified UNREACHABLE. It is neither
+    unreachable nor an auth failure -- it is a trust failure, and conflating it
+    with a network problem sends the operator to the wrong diagnosis.
+
+THE STRUCTURAL RULE: all process execution goes through INJECTED seams. main()
+takes `runner=` and `probe=`; nothing else in this module calls subprocess. The
+real implementations are constructed ONLY on the --execute path, so "a test
+cannot reach the network" is a property of the wiring rather than a fixture's
+luck.
+"""
+
+from __future__ import annotations
+
+import argparse
+import concurrent.futures
+import contextlib
+import datetime
+import importlib.machinery
+import importlib.util
+import ipaddress
+import json
+import os
+import pathlib
+import re
+import secrets
+import shlex
+import stat as statmod
+import subprocess
+import sys
+import time
+
+HERE = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+import bd_cut_quality as cut_quality  # noqa: E402
+DEFAULT_HOSTS = pathlib.Path.home() / ".config" / "bd" / "hosts"
+DEFAULT_ROOT = pathlib.Path.home() / ".local" / "share" / "swarm-fleet-run" / "runs"
+DEFAULT_REPO_DIR = str(HERE.parents[1])
+DEFAULT_KEEP = 20
+DEFAULT_JOBS = 8
+_SELFTEST_ACTIVE = False
+
+LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$")
+RUN_RE = re.compile(r"^\d{8}T\d{6}Z-[0-9a-f]{8}$")
+SENTINEL = ".swarm-fleet-run-owned"
+
+# An ACCEPTED grammar, not a rejected one. A blacklist over a value that becomes
+# ssh argv is the wrong shape: it must enumerate every bad character correctly
+# forever, where a whitelist only has to describe what the inventory supports.
+_DNS_LABEL = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
+_SSH_USER = re.compile(r"^[A-Za-z0-9._][A-Za-z0-9._-]{0,31}$")
+
+AUTH_PATTERNS = ("permission denied", "publickey", "password authentication",
+                 "authentication failed", "too many authentication failures",
+                 "no supported authentication methods")
+HOSTKEY_PATTERNS = ("host key verification failed",
+                    "remote host identification has changed",
+                    "no matching host key type found")
+UNREACH_PATTERNS = ("connection refused", "no route to host",
+                    "connection timed out", "network is unreachable",
+                    "could not resolve hostname", "name or service not known",
+                    "connection closed by remote host", "operation timed out")
+
+BLIND_SPOTS = (
+    "the summary line is derived from the log's TAIL. A failure earlier in a "
+    "run that ends cleanly is in the artifact but not in the summary.",
+    "the exit code is the remote shell's; a pipeline on the far side masks it "
+    "exactly as it does locally.",
+    "AUTH_FAILURE / HOST_KEY_FAILURE / UNREACHABLE are inferred from ssh's "
+    "stderr text. When it matches nothing the state is SSH_UNKNOWN -- never "
+    "success.",
+    "the recorded remote commit is what the host reported at run time; it does "
+    "not prove the command READ that tree.",
+    "retention holds the inspected run directory open, uses swarm-cut's "
+    "object-bound remover, and reports success only after fstat proves that "
+    "held inode unlinked. Rename, replacement, dangling-link and unknown "
+    "outcomes fail closed.",
+)
+
+
+class Refusal(Exception):
+    """A refusal names its own reason.
+
+    Every refusal exits 2, so a test asserting the CODE passes when any of them
+    fires -- four mutants escaped exactly that way in swarm-jobs and swarm-ab
+    (CLAUDE.md section 10). The message is the contract.
+    """
+
+
+class SubprocessRunner:
+    """One of exactly two places in this module that start a process."""
+
+    name = "subprocess"
+
+    def run(self, argv, log_path, timeout):
+        with open(log_path, "wb") as fh:
+            try:
+                p = subprocess.run(argv, stdout=fh, stderr=subprocess.STDOUT,
+                                   stdin=subprocess.DEVNULL, timeout=timeout)
+            except subprocess.TimeoutExpired:
+                return None, f"TIMEOUT after {timeout}s"
+            except FileNotFoundError as exc:
+                return None, f"launcher missing: {exc}"
+        return p.returncode, None
+
+
+class SubprocessProbe:
+    """The local-HEAD seam. Injected so execute-mode tests start NO process."""
+
+    name = "subprocess"
+
+    def local_head(self):
+        try:
+            r = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
+                               capture_output=True, text=True, timeout=10)
+            return r.stdout.strip() or "unknown"
+        except Exception:
+            return "unknown"
+
+
+def _load_bd_fleet():
+    """Import read_hosts from swarm-fleet. ONE definition of the fleet file."""
+    path = HERE / "swarm-fleet"
+    if not path.is_file():
+        return None
+    loader = importlib.machinery.SourceFileLoader("bd_fleet_for_run", str(path))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+_OWNED_REMOVER = None
+
+
+def _owned_remover_module():
+    """Load swarm-cut's established descriptor-bound directory remover.
+
+    Retention and cut cleanup share one destructive implementation.  Loading
+    the executable as a module is safe: swarm-cut's command entry point remains
+    behind its ``__main__`` guard.
+    """
+    global _OWNED_REMOVER
+    if _OWNED_REMOVER is None:
+        path = HERE / "swarm-cut"
+        loader = importlib.machinery.SourceFileLoader(
+            "bd_cut_owned_remover_for_fleet", str(path))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        module = importlib.util.module_from_spec(spec)
+        loader.exec_module(module)
+        _OWNED_REMOVER = module
+    return _OWNED_REMOVER
+
+
+# --------------------------------------------------------------- inventory
+
+def read_locality(path: pathlib.Path) -> dict:
+    """Optional THIRD column of the fleet file: `local` marks local execution.
+
+    Locality is INVENTORY DATA, never an inference.
+    """
+    out = {}
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        if len(parts) >= 3:
+            out[parts[0]] = parts[2].lower() == "local"
+        elif parts:
+            out.setdefault(parts[0], False)
+    return out
+
+
+def normalise_address(raw: str) -> str:
+    """Accept only the inventory's supported target forms; return canonical.
+
+    Accepted: IPv4, IPv6 (bare or bracketed), a DNS name, each optionally
+    prefixed `user@`. Everything else -- a path, traversal, a comma-separated
+    list, a bare `@`, an ssh option, a URL -- is refused. The canonical form is
+    what de-duplication keys on, so `Test6.` and `test6` collapse to one target
+    instead of being contacted twice.
+    """
+    if not raw:
+        raise Refusal("empty target address")
+    if any(ord(c) < 32 or ord(c) == 127 for c in raw):
+        raise Refusal(f"target {raw!r} contains a control character")
+    if any(c.isspace() for c in raw):
+        raise Refusal(f"target {raw!r} contains whitespace")
+
+    user = ""
+    host = raw
+    if "@" in raw:
+        user, _, host = raw.partition("@")
+        if "@" in host:
+            raise Refusal(f"target {raw!r} has more than one '@'")
+        if not user:
+            raise Refusal(f"target {raw!r} has an empty user before '@'")
+        if not host:
+            raise Refusal(f"target {raw!r} has an empty host after '@'")
+        if not _SSH_USER.match(user):
+            raise Refusal(f"target {raw!r} has an unsupported user part")
+        user = user + "@"
+
+    inner = host
+    bracketed = inner.startswith("[") and inner.endswith("]")
+    if bracketed:
+        inner = inner[1:-1]
+
+    try:
+        ip = ipaddress.ip_address(inner)
+    except ValueError:
+        ip = None
+    if ip is not None:
+        if ip.version == 6:
+            return f"{user}[{ip.compressed}]"
+        if bracketed:
+            raise Refusal(f"target {raw!r} brackets an IPv4 address")
+        return f"{user}{ip.compressed}"
+    if bracketed:
+        raise Refusal(f"target {raw!r} is bracketed but is not an IPv6 address")
+
+    name = host[:-1] if host.endswith(".") else host
+    if not name or len(name) > 253:
+        raise Refusal(f"target {raw!r} is not a usable host name")
+    labels = name.split(".")
+    if not all(_DNS_LABEL.match(l) for l in labels):
+        raise Refusal(
+            f"target {raw!r} is not an IPv4/IPv6 address or a DNS name. "
+            "Supported forms are 10.0.0.1, [2001:db8::1], host.example, each "
+            "optionally prefixed user@.")
+    return f"{user}{name.lower()}"
+
+
+def resolve_targets(hosts, locality, only=None):
+    """Validate, select, then dedupe -- in that order, and fail closed.
+
+    SELECTION PRECEDES DE-DUPLICATION so a label that dedup would collapse as an
+    alias stays targetable when it is the one asked for.
+    """
+    if not hosts:
+        raise Refusal("the fleet file lists no hosts. An empty fleet must not "
+                      "report as a successful run of nothing.")
+
+    seen_labels = set()
+    for label, _addr in hosts:
+        if not LABEL_RE.match(label):
+            raise Refusal(
+                f"label {label!r} is not filename-safe. A label becomes a path "
+                "component; it must match [A-Za-z0-9][A-Za-z0-9._-]{0,62} and "
+                "must not be absolute, contain a separator, '..', or control "
+                "characters.")
+        if label in seen_labels:
+            raise Refusal(
+                f"duplicate label {label!r} in the fleet file. Two hosts "
+                "sharing a label would overwrite each other's log.")
+        seen_labels.add(label)
+
+    if only is not None:
+        missing = [l for l in only if l not in seen_labels]
+        if missing:
+            raise Refusal(
+                "--only names label(s) not in the fleet file: "
+                f"{', '.join(sorted(missing))}. Known labels: "
+                f"{', '.join(sorted(seen_labels))}. Refusing before any host is "
+                "contacted rather than silently running the subset that matched.")
+        hosts = [(l, a) for l, a in hosts if l in only]
+
+    targets, collapsed, seen_addr = [], [], {}
+    for label, addr in hosts:
+        canon = normalise_address(addr)
+        if canon in seen_addr:
+            collapsed.append((label, canon, seen_addr[canon]))
+            continue
+        seen_addr[canon] = label
+        targets.append((label, canon, bool(locality.get(label, False))))
+    return targets, collapsed
+
+
+# --------------------------------------------------------------- artifacts
+
+def validate_root(raw_root: str) -> pathlib.Path:
+    """Refuse broad or escaping artifact roots, judged on the REALPATH."""
+    if ".." in pathlib.PurePath(raw_root).parts:
+        raise Refusal(f"artifact root {raw_root!r} contains '..'.")
+    root = pathlib.Path(raw_root).expanduser()
+    real = pathlib.Path(os.path.realpath(root))
+    home = pathlib.Path(os.path.realpath(pathlib.Path.home()))
+
+    if str(real) == os.sep:
+        raise Refusal("artifact root '/' is refused.")
+    if real == home:
+        raise Refusal("artifact root is the home directory itself; prune would "
+                      "be able to remove unrelated directories under it.")
+    if len(real.parts) < 4:
+        raise Refusal(
+            f"artifact root {str(real)!r} is too broad; give a dedicated "
+            "directory, not a top-level one.")
+    probe = real
+    while True:
+        if (probe / ".git").exists():
+            raise Refusal(
+                f"artifact root {str(real)!r} is inside the git work tree at "
+                f"{str(probe)!r}. Run artifacts must not land in a repository.")
+        if probe.parent == probe:
+            break
+        probe = probe.parent
+    return real
+
+
+def new_run_id(now=None) -> str:
+    """UTC stamp plus entropy -- collision-safe within the same second."""
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    return now.strftime("%Y%m%dT%H%M%SZ") + "-" + secrets.token_hex(4)
+
+
+def _identity(path):
+    """(st_dev, st_ino, is_dir) for a path, or None.
+
+    Used by BOTH of prune's passes so the pre-removal re-check compares the
+    same quantity the collection pass recorded -- and so a test can drive an
+    identity swap at one seam instead of monkeypatching os.lstat, which
+    pathlib.is_symlink() also calls and would therefore fire during collection.
+    """
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return None
+    return (st.st_dev, st.st_ino, statmod.S_ISDIR(st.st_mode))
+
+
+def prune(base: pathlib.Path, keep: int, protect=None):
+    """Remove old runs. Returns (dropped, failures).
+
+    Conditions before anything is deleted: the entry resolves BENEATH the base,
+    its name matches the run-id grammar, it carries the ownership sentinel, and
+    it is not the run currently in flight.  Inspection retains a descriptor for
+    the owned directory.  Removal is performed by swarm-cut's object-bound remover
+    and success additionally requires that descriptor's ``st_nlink == 0``.
+
+    `protect` is not an optimisation. Ordering is by NAME and the name carries a
+    wall-clock stamp, so a future-dated sibling, a same-second sibling or a clock
+    rollback can each sort the live run into the discard tail.
+
+    Linux has no inode-bound rmdir, so the shared remover first moves the held
+    root to a no-clobber private name, revalidates it there, and proves terminal
+    unlink on the held inode.  Rename, replacement, dangling-link and unknown
+    outcomes are failures, never successful retention.
+    """
+    if keep <= 0 or not base.is_dir():
+        return [], []
+    base_real = pathlib.Path(os.path.realpath(base))
+    dropped, failures = [], []
+    cleanup = contextlib.ExitStack()
+    cleanup_errors = []
+
+    class HeldDirectory:
+        def __init__(self, fd, name):
+            self.fd, self.name, self.closed = fd, name, False
+
+        def close(self):
+            if self.closed:
+                return None
+            # Mark first: close(2) may report an error after releasing the
+            # number, so retrying could close an unrelated reused descriptor.
+            self.closed = True
+            try:
+                os.close(self.fd)
+            except BaseException as error:
+                return error
+            return None
+
+    def cleanup_held(held):
+        error = held.close()
+        if error is not None:
+            cleanup_errors.append((held.name, error))
+
+    def close_now(held, phase):
+        error = held.close()
+        if error is None:
+            return True
+        if isinstance(error, (KeyboardInterrupt, SystemExit, MemoryError)):
+            raise error
+        failures.append(
+            f"{held.name}: {phase} descriptor close failed "
+            f"({type(error).__name__}: {error})")
+        return False
+
+    try:
+        owned = []
+        for entry in base.iterdir():
+            if not RUN_RE.match(entry.name):
+                continue
+            if protect is not None and entry.name == protect:
+                continue
+            if pathlib.Path(os.path.realpath(entry)).parent != base_real:
+                continue
+            try:
+                fd = os.open(
+                    entry, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            except OSError:
+                continue
+            held = HeldDirectory(fd, entry.name)
+            cleanup.callback(cleanup_held, held)
+            try:
+                st = os.fstat(fd)
+                sentinel = os.stat(
+                    SENTINEL, dir_fd=fd, follow_symlinks=False)
+                if not statmod.S_ISREG(sentinel.st_mode):
+                    close_now(held, "unowned")
+                    continue
+            except OSError:
+                close_now(held, "unowned")
+                continue
+            owned.append((entry, (st.st_dev, st.st_ino),
+                          (sentinel.st_dev, sentinel.st_ino), held))
+        owned.sort(key=lambda t: t[0].name, reverse=True)
+
+        budget = keep - (1 if protect is not None else 0)
+        if budget < 0:
+            budget = 0
+        for _entry, _ident, _sentinel_ident, held in owned[:budget]:
+            close_now(held, "retained")
+        candidates = owned[budget:]
+        try:
+            remover = _owned_remover_module() if candidates else None
+        except Exception as error:
+            for entry, _ident, _sentinel_ident, _held in candidates:
+                failures.append(
+                    f"{entry.name}: object-bound remover unavailable "
+                    f"({type(error).__name__}: {error})")
+            return dropped, failures
+        for entry, ident, sentinel_ident, held in candidates:
+            removed = False
+            try:
+                current_sentinel = os.stat(
+                    SENTINEL, dir_fd=held.fd, follow_symlinks=False)
+                if ((current_sentinel.st_dev, current_sentinel.st_ino) !=
+                        sentinel_ident or
+                        not statmod.S_ISREG(current_sentinel.st_mode)):
+                    failures.append(
+                        f"{entry.name}: ownership sentinel changed before removal")
+                else:
+                    ok, reason = remover._remove_owned_dir(
+                        str(entry), ident, held.fd)
+                    terminal = os.fstat(held.fd)
+                    if (terminal.st_dev, terminal.st_ino) != ident:
+                        failures.append(
+                            f"{entry.name}: held removal identity became unknown")
+                    elif not ok:
+                        failures.append(
+                            f"{entry.name}: "
+                            f"{reason or 'object-bound removal failed'}")
+                    elif terminal.st_nlink != 0:
+                        failures.append(
+                            f"{entry.name}: owned directory was not proved unlinked")
+                    else:
+                        removed = True
+            except Exception as exc:
+                failures.append(
+                    f"{entry.name}: object-bound removal failed "
+                    f"({type(exc).__name__}: {exc})")
+            if not close_now(held, "owned"):
+                removed = False
+            if removed:
+                dropped.append(entry.name)
+        return dropped, failures
+    finally:
+        primary = sys.exception()
+        cleanup.close()
+        control_error = None
+        for name, error in cleanup_errors:
+            note = (f"{name}: retained descriptor close failed during unwind "
+                    f"({type(error).__name__}: {error})")
+            if isinstance(error, (KeyboardInterrupt, SystemExit, MemoryError)):
+                if control_error is None:
+                    control_error = error
+                    if primary is not None and hasattr(control_error, "add_note"):
+                        control_error.add_note(
+                            "descriptor cleanup control exception superseded "
+                            f"active {type(primary).__name__}: {primary}")
+                elif hasattr(control_error, "add_note"):
+                    control_error.add_note(note)
+            elif primary is not None and hasattr(primary, "add_note"):
+                primary.add_note(note)
+            else:
+                failures.append(note)
+        if control_error is not None:
+            if primary is not None:
+                raise control_error from primary
+            raise control_error
+
+
+# --------------------------------------------------------------- execution
+
+def build_command(parts) -> str:
+    """One argument is passed VERBATIM; several are joined with shell quoting.
+
+    NOT stripped. `" ".join(...)` destroyed meaning, and so does a reflexive
+    .strip(): a command whose trailing whitespace is deliberate -- an escaped
+    trailing space, a heredoc body -- must survive. Emptiness is decided by
+    testing a stripped COPY, never by assigning one.
+    """
+    if not parts:
+        return ""
+    if len(parts) == 1:
+        return parts[0]
+    return shlex.join(parts)
+
+
+def _validate_repo_dir(repo_dir: str) -> str:
+    """Return the one explicit checkout path the remote must measure."""
+    if not repo_dir or not pathlib.PurePosixPath(repo_dir).is_absolute():
+        raise Refusal("--repo-dir must be an absolute path to the intended checkout")
+    if "\n" in repo_dir or "\r" in repo_dir or "\x00" in repo_dir:
+        raise Refusal("--repo-dir contains a newline or NUL")
+    return str(pathlib.PurePosixPath(repo_dir))
+
+
+def wrap_command(command: str, record_commit: bool,
+                 repo_dir: str = DEFAULT_REPO_DIR) -> str:
+    """The FINAL remote command, built once so printed and executed agree.
+
+    Provenance is an authorization gate, not decoration.  The payload cannot
+    run unless one explicit checkout resolves to its own top level and both Git
+    measurements succeed.  Every failure emits the same parseable UNKNOWN row
+    and exits before the operator command.
+    """
+    if not record_commit:
+        return command
+    repo_dir = _validate_repo_dir(repo_dir)
+    qrepo = shlex.quote(repo_dir)
+    unknown = ("printf 'swarm-fleet-run: commit=unknown dirty=unknown repo=%s\\n' "
+               f"{qrepo}; exit 86")
+    return (
+        f"bd_fleet_repo_input={qrepo}; "
+        "unset GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_CONFIG "
+        "GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS GIT_DIR "
+        "GIT_DISCOVERY_ACROSS_FILESYSTEM GIT_GRAFT_FILE GIT_IMPLICIT_WORK_TREE "
+        "GIT_INDEX_FILE GIT_INTERNAL_SUPER_PREFIX GIT_NAMESPACE "
+        "GIT_NO_REPLACE_OBJECTS GIT_OBJECT_DIRECTORY GIT_PREFIX "
+        "GIT_REPLACE_REF_BASE GIT_SHALLOW_FILE GIT_WORK_TREE "
+        f"2>/dev/null || {{ {unknown}; }}; "
+        f"bd_fleet_repo=$(cd -- \"$bd_fleet_repo_input\" 2>/dev/null && pwd -P) || {{ {unknown}; }}; "
+        f"[ \"$bd_fleet_repo\" = \"$bd_fleet_repo_input\" ] || {{ {unknown}; }}; "
+        "bd_fleet_top=$(git -C \"$bd_fleet_repo\" rev-parse --show-toplevel 2>/dev/null) "
+        f"|| {{ {unknown}; }}; "
+        "bd_fleet_top=$(cd -- \"$bd_fleet_top\" 2>/dev/null && pwd -P) "
+        f"|| {{ {unknown}; }}; "
+        f"[ \"$bd_fleet_top\" = \"$bd_fleet_repo\" ] || {{ {unknown}; }}; "
+        "bd_fleet_commit=$(git -C \"$bd_fleet_repo\" rev-parse --verify 'HEAD^{commit}' 2>/dev/null) "
+        f"|| {{ {unknown}; }}; "
+        f"[[ \"$bd_fleet_commit\" =~ ^[0-9a-f]{{40,64}}$ ]] || {{ {unknown}; }}; "
+        "bd_fleet_status=$(git -C \"$bd_fleet_repo\" status --porcelain=v1 "
+        "--untracked-files=normal 2>/dev/null) "
+        f"|| {{ {unknown}; }}; "
+        "bd_fleet_dirty=clean; [ -z \"$bd_fleet_status\" ] || bd_fleet_dirty=dirty; "
+        "printf 'swarm-fleet-run: commit=%s dirty=%s repo=%s\\n' "
+        "\"$bd_fleet_commit\" \"$bd_fleet_dirty\" \"$bd_fleet_repo\" "
+        "|| { printf 'swarm-fleet-run: provenance publication failed for %s\\n' "
+        "\"$bd_fleet_repo\" >&2; exit 86; }; "
+        + command)
+
+
+def build_argv(label, addr, is_local, command, connect_timeout=10):
+    """The exact argv. No shell on this side; ssh host-key checking intact.
+
+    NEVER add StrictHostKeyChecking=no. Disabling host-key verification turns a
+    fleet runner into a machine that executes the operator's commands against
+    whatever answers on that address.
+    """
+    if is_local:
+        return ["bash", "-c", command]
+    return ["ssh", "-n", "-o", "BatchMode=yes",
+            "-o", f"ConnectTimeout={connect_timeout}", addr,
+            "bash -c %s" % shlex.quote(command)]
+
+
+def build_plan(targets, command, record_commit, repo_dir=DEFAULT_REPO_DIR):
+    """One entry per target carrying the exact measurement and payload argv.
+
+    Provenance and payload are separate executions.  The coordinator must
+    persist and parse the former before it can submit the latter; an SSH pipe
+    accepting bytes is not proof that the local artifact received them.
+    """
+    entries = []
+    for label, addr, local in targets:
+        payload_argv = build_argv(label, addr, local, command)
+        provenance_command = wrap_command("", True, repo_dir) if record_commit else None
+        provenance_argv = (build_argv(label, addr, local, provenance_command)
+                           if provenance_command is not None else None)
+        entries.append({
+            "label": label, "addr": addr, "local": local,
+            "command": command, "argv": payload_argv,
+            "payload_argv": payload_argv,
+            "provenance_command": provenance_command,
+            "provenance_argv": provenance_argv,
+            "record_provenance": record_commit, "repo_dir": repo_dir,
+        })
+    return entries
+
+
+def classify(rc, err, log_text="", is_local=False):
+    """Every non-zero outcome gets a NAME, and none of them is success."""
+    if err and "TIMEOUT" in err:
+        return "TIMEOUT"
+    if err:
+        return "ERROR"
+    if rc is None:
+        return "UNKNOWN"
+    if rc == 0:
+        return "ok"
+    if rc == 255 and not is_local:
+        low = (log_text or "").lower()
+        # Host-key failure first: it is a TRUST failure, not a network one, and
+        # calling it UNREACHABLE sends the operator to the wrong diagnosis.
+        if any(p in low for p in HOSTKEY_PATTERNS):
+            return "HOST_KEY_FAILURE"
+        if any(p in low for p in AUTH_PATTERNS):
+            return "AUTH_FAILURE"
+        if any(p in low for p in UNREACH_PATTERNS):
+            return "UNREACHABLE"
+        return "SSH_UNKNOWN"
+    return "FAIL"
+
+
+def _unknown_provenance(entry):
+    if not entry.get("record_provenance"):
+        return None
+    return {"commit": "unknown", "dirty": "unknown",
+            "repo": entry.get("repo_dir", "unknown")}
+
+
+def parse_provenance(text: str, expected_repo: str):
+    """Parse the first log line or return (UNKNOWN facts, actionable error)."""
+    unknown = {"commit": "unknown", "dirty": "unknown", "repo": expected_repo}
+    if text and not text.endswith("\n"):
+        return unknown, ("provenance truncated: measurement artifact is not "
+                         "newline-terminated")
+    if "\r" in text:
+        return unknown, ("provenance malformed: measurement artifact contains "
+                         "a noncanonical carriage return")
+    lines = text.splitlines()
+    if not lines:
+        return unknown, "provenance missing: per-host log has no provenance line"
+    if len(lines) != 1:
+        return unknown, ("provenance malformed: measurement artifact must contain "
+                         f"exactly one line, found {len(lines)}")
+    match = re.fullmatch(
+        r"swarm-fleet-run: commit=([0-9a-f]{40,64}) dirty=(clean|dirty) repo=(.+)",
+        lines[0],
+    )
+    if not match:
+        return unknown, f"provenance malformed or unknown: {lines[0]!r}"
+    commit, dirty, repo = match.groups()
+    if repo != expected_repo:
+        return unknown, (f"provenance measured unexpected checkout {repo!r}; "
+                         f"expected {expected_repo!r}")
+    return {"commit": commit, "dirty": dirty, "repo": repo}, None
+
+
+def _row(entry, exit_code, err, status, wall, log, size, provenance=None,
+         provenance_log=None, provenance_size=0):
+    return {"label": entry["label"], "addr": entry["addr"],
+            "via": "local" if entry["local"] else "ssh",
+            "exit": exit_code, "error": err, "status": status,
+            "wall": wall, "log": str(log), "argv": list(entry["argv"]),
+            "bytes": size, "provenance": (provenance if provenance is not None
+                                             else _unknown_provenance(entry)),
+            "provenance_argv": (list(entry["provenance_argv"])
+                                if entry.get("provenance_argv") else None),
+            "provenance_log": (str(provenance_log)
+                               if provenance_log is not None else None),
+            "provenance_bytes": provenance_size}
+
+
+def _read_run_log(log):
+    """Return (text, size, error) for one runner-produced artifact."""
+    try:
+        st = os.lstat(log)
+        if not statmod.S_ISREG(st.st_mode):
+            return "", 0, ("per-host log is not a regular file; the run left "
+                            "no usable evidence")
+        return log.read_bytes().decode(errors="replace"), st.st_size, None
+    except FileNotFoundError:
+        return "", 0, ("the runner created no per-host log; there is no evidence "
+                        "the command ran")
+    except OSError as exc:
+        return "", 0, f"log unreadable: {type(exc).__name__}: {exc}"
+
+
+def run_one(runner, entry, logdir, timeout):
+    """Never raises. A host that blows up returns an ERROR row like any other."""
+    log = logdir / f"{entry['label']}.log"
+    started = time.time()
+    provenance = None
+    provenance_log = None
+    provenance_size = 0
+
+    if entry.get("record_provenance"):
+        provenance_log = logdir / f"{entry['label']}.provenance.log"
+        measure_rc, measure_err = None, None
+        try:
+            measure_rc, measure_err = runner.run(
+                entry["provenance_argv"], provenance_log, timeout)
+        except Exception as exc:
+            measure_err = f"{type(exc).__name__}: {exc}"
+        measure_text, provenance_size, artifact_error = _read_run_log(
+            provenance_log)
+        measure_err = measure_err or artifact_error
+        measure_status = classify(
+            measure_rc, measure_err, measure_text, entry["local"])
+        provenance, provenance_error = parse_provenance(
+            measure_text, entry.get("repo_dir", "unknown"))
+        if provenance_error:
+            measure_err = measure_err or provenance_error
+            if measure_status == "ok":
+                measure_status = "PROVENANCE_UNKNOWN"
+        if measure_status != "ok":
+            return _row(
+                entry, measure_rc, measure_err, measure_status,
+                round(time.time() - started, 1), provenance_log,
+                provenance_size, provenance, provenance_log, provenance_size)
+
+    rc, err = None, None
+    try:
+        remaining = timeout - (time.time() - started)
+        if remaining <= 0:
+            err = f"TIMEOUT after {timeout}s before payload authorization"
+        else:
+            rc, err = runner.run(entry["payload_argv"], log, remaining)
+    except Exception as exc:
+        err = f"{type(exc).__name__}: {exc}"
+    text, size, artifact_error = _read_run_log(log)
+    err = err or artifact_error
+    status = classify(rc, err, text, entry["local"])
+    return _row(entry, rc, err, status,
+                round(time.time() - started, 1), log, size, provenance,
+                provenance_log, provenance_size)
+
+
+def summarise(row, pattern=None):
+    tail = ""
+    p = pathlib.Path(row["log"]) if row["log"] else None
+    try:
+        if p is not None and p.is_file() and row["bytes"]:
+            lines = [l.rstrip() for l in
+                     p.read_text(errors="replace").splitlines() if l.strip()]
+            if pattern:
+                hits = [l for l in lines if pattern in l]
+                tail = hits[-1] if hits else f"(no match for {pattern!r})"
+            elif lines:
+                tail = lines[-1]
+    except Exception as exc:
+        tail = f"(log unreadable: {exc})"
+    code = "--" if row["exit"] is None else str(row["exit"])
+    return (f"  {row['label']:12} {row['status']:17} exit={code:<5}"
+            f" {row['wall']:7.1f}s {row['bytes']:>9,}b  "
+            f"{(row['error'] or tail)[:68]}")
+
+
+def execute_plan(runner, plan, logdir, timeout, workers):
+    """Run the plan and return (rows, coordinator_error).
+
+    EVERY requested target is reconciled into a row here, before the caller
+    persists anything. A target that produced no result becomes UNKNOWN rather
+    than vanishing, and a failure in the executor itself -- construction,
+    submission, as_completed -- still returns the rows already collected.
+    """
+    rows, coordinator_error = [], None
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            futs = {}
+            for entry in plan:
+                futs[pool.submit(run_one, runner, entry, logdir, timeout)] = entry
+            for f in concurrent.futures.as_completed(futs):
+                entry = futs[f]
+                try:
+                    rows.append(f.result())
+                except BaseException as exc:
+                    rows.append(_row(entry, None, f"{type(exc).__name__}: {exc}",
+                                     "ERROR", 0.0,
+                                     logdir / f"{entry['label']}.log", 0))
+    except BaseException as exc:
+        coordinator_error = f"{type(exc).__name__}: {exc}"
+
+    have = {r["label"] for r in rows}
+    for entry in plan:
+        if entry["label"] in have:
+            continue
+        rows.append(_row(
+            entry, None,
+            coordinator_error or "no result was recorded for this host",
+            "UNKNOWN", 0.0, logdir / f"{entry['label']}.log", 0))
+    order = [e["label"] for e in plan]
+    rows.sort(key=lambda r: order.index(r["label"]))
+    return rows, coordinator_error
+
+
+def _refuse(msg):
+    print(f"swarm-fleet-run: REFUSED: {msg}", file=sys.stderr)
+    return 2
+
+
+# --------------------------------------------------------------- main
+
+def main(argv=None, runner=None, probe=None) -> int:
+    ap = argparse.ArgumentParser(
+        description="Run one command across the fleet. Plans by default; "
+                    "--execute is required to contact a host.")
+    ap.add_argument("--hosts", default=str(DEFAULT_HOSTS))
+    ap.add_argument("--root", default=str(DEFAULT_ROOT))
+    ap.add_argument("--repo-dir", default=DEFAULT_REPO_DIR,
+                    help="absolute checkout measured for commit/dirty provenance")
+    ap.add_argument("--timeout", type=int, default=1800)
+    ap.add_argument("--jobs", type=int, default=DEFAULT_JOBS)
+    ap.add_argument("--keep", type=int, default=DEFAULT_KEEP)
+    ap.add_argument("--grep", help="display filter only; capture is always whole")
+    ap.add_argument("--only", help="comma-separated labels; all must exist")
+    ap.add_argument("--execute", action="store_true",
+                    help="actually contact the hosts (default is plan only)")
+    ap.add_argument("--no-record-commit", action="store_true")
+    ap.add_argument("--selftest", action="store_true")
+    cut_quality.add_permit_argument(ap)
+    ap.add_argument("command", nargs=argparse.REMAINDER)
+    args = ap.parse_args(argv)
+
+    if args.selftest:
+        return selftest()
+    try:
+        return _run(args, runner, probe)
+    except Refusal as exc:
+        return _refuse(str(exc))
+
+
+def _run(args, runner, probe) -> int:
+    parts = list(args.command)
+    while parts and parts[0] == "--":
+        parts.pop(0)
+    command = build_command(parts)
+    if not command.strip():          # emptiness on a COPY; the value is verbatim
+        raise Refusal("no command given. Usage: swarm-fleet-run -- <command>")
+
+    # Planning is permit-free. Execute mode refuses before reading the real
+    # inventory, creating artifacts, constructing a SubprocessRunner, or
+    # contacting a host. The private flag exists only while --selftest drives
+    # its injected fake runner in this same process.
+    if args.execute and not _SELFTEST_ACTIVE and not cut_quality.enforce(
+            args.repo_dir, args.cut_quality_permit, "pre-fleet", consumer_path=__file__):
+        return 2
+
+    hosts_path = pathlib.Path(args.hosts).expanduser()
+    if not hosts_path.is_file():
+        raise Refusal(f"no fleet file at {hosts_path} -- it is untracked; copy "
+                      "docs/repo/hosts.example there.")
+    mod = _load_bd_fleet()
+    if mod is None or not hasattr(mod, "read_hosts"):
+        raise Refusal(f"cannot load read_hosts from {HERE / 'swarm-fleet'}. "
+                      "Reimplementing the fleet parser here would be a second "
+                      "definition of the inventory; refusing instead.")
+    try:
+        hosts = mod.read_hosts(str(hosts_path))
+    except Exception as exc:
+        raise Refusal(f"{hosts_path}: {exc}")
+
+    only = None
+    if args.only is not None:
+        only = {s.strip() for s in args.only.split(",") if s.strip()}
+        if not only:
+            raise Refusal("--only was given but names no label.")
+
+    locality = read_locality(hosts_path)
+    targets, collapsed = resolve_targets(hosts, locality, only)
+    if not targets:
+        raise Refusal("no targets remain after selection.")
+    if args.jobs < 1:
+        raise Refusal("--jobs must be at least 1")
+    if args.execute and not _SELFTEST_ACTIVE and not cut_quality.enforce(
+            args.repo_dir, args.cut_quality_permit, "pre-fleet", consumer_path=__file__):
+        return 2
+    base = validate_root(args.root)
+    workers = min(args.jobs, len(targets))
+
+    repo_dir = _validate_repo_dir(args.repo_dir)
+    plan = build_plan(targets, command, not args.no_record_commit, repo_dir)
+
+    print(f"swarm-fleet-run: {'EXECUTE' if args.execute else 'PLAN (dry-run)'}"
+          f"  {len(plan)} target(s), jobs={workers}")
+    print(f"  effective command: {plan[0]['command']}")
+    if plan[0]["record_provenance"]:
+        print(f"  provenance command: {plan[0]['provenance_command']}")
+    print(f"  artifacts base: {base}")
+    for e in plan:
+        where = "LOCAL" if e["local"] else f"ssh {e['addr']}"
+        print(f"    {e['label']:12} {where}")
+        if e["record_provenance"]:
+            print("      provenance argv: " + " ".join(
+                shlex.quote(a) for a in e["provenance_argv"]))
+            print("      payload argv: " + " ".join(
+                shlex.quote(a) for a in e["payload_argv"]))
+        else:
+            print("      argv: " + " ".join(shlex.quote(a) for a in e["argv"]))
+    for label, addr, kept in collapsed:
+        print(f"  NOTE: {label} collapsed -- {addr} already covered by {kept}")
+
+    if not args.execute:
+        print("\n  PLAN ONLY. No host was contacted and no process was started.")
+        print("  Re-run with --execute to apply.")
+        return 0
+
+    run_id = new_run_id()
+    logdir = base / run_id
+    if probe is None:
+        probe = SubprocessProbe()
+    try:
+        logdir.mkdir(parents=True, exist_ok=False)
+        (logdir / SENTINEL).write_text(json.dumps({"tool": "swarm-fleet-run"}))
+        (logdir / "manifest.json").write_text(json.dumps({
+            "run_id": run_id, "command": command,
+            "effective_command": plan[0]["command"],
+            "provenance_command": plan[0]["provenance_command"],
+            "repo_dir": repo_dir,
+            "record_provenance": not args.no_record_commit,
+            "targets": [{"label": e["label"], "addr": e["addr"],
+                         "local": e["local"], "argv": e["argv"],
+                         "provenance_argv": e["provenance_argv"]}
+                        for e in plan],
+            "timeout": args.timeout, "jobs_configured": args.jobs,
+            "workers_used": workers, "local_head": probe.local_head(),
+        }, indent=2))
+    except Refusal:
+        raise
+    except Exception as exc:
+        raise Refusal(f"artifact root {logdir} is not writable ({exc}). A run "
+                      "whose output cannot be recorded is not launched.")
+
+    if runner is None:
+        runner = SubprocessRunner()
+    print(f"\n  run: {logdir}  (runner={getattr(runner, 'name', type(runner).__name__)})")
+
+    rows, coordinator_error = execute_plan(runner, plan, logdir, args.timeout,
+                                           workers)
+
+    summary_error = None
+    try:
+        (logdir / "summary.json").write_text(json.dumps(rows, indent=2))
+    except Exception as exc:
+        summary_error = f"{type(exc).__name__}: {exc}"
+        print(f"  SUMMARY NOT PERSISTED: {summary_error}", file=sys.stderr)
+
+    print(f"\n  {'host':12} {'status':17} {'exit':<6} {'wall':>7} {'stored':>10}")
+    for r in rows:
+        print(summarise(r, args.grep))
+
+    bad = [r for r in rows if r["status"] != "ok"]
+    print(f"\n  {len(rows) - len(bad)}/{len(rows)} host(s) ok."
+          f"  Full output: {logdir}/<host>.log"
+          f"  Provenance: {logdir}/<host>.provenance.log")
+    if bad:
+        print("  NOT OK: " + ", ".join(f"{r['label']}={r['status']}" for r in bad))
+    if coordinator_error:
+        print(f"  COORDINATOR FAILED: {coordinator_error}", file=sys.stderr)
+
+    dropped, failures = prune(base, args.keep, protect=run_id)
+    if dropped:
+        print(f"  retention: removed {len(dropped)} owned run(s), keeping {args.keep}")
+    if failures:
+        print("  RETENTION FAILED for: " + "; ".join(failures), file=sys.stderr)
+
+    print("\n=== WHAT THIS RUN CANNOT TELL YOU ===")
+    for i, s in enumerate(BLIND_SPOTS, 1):
+        print(f"  {i}. {s}")
+    return 1 if (bad or failures or summary_error or coordinator_error) else 0
+
+
+# --------------------------------------------------------------- selftest
+
+class _FakeRunner:
+    """Records argv; starts nothing. The hermetic guarantee lives here."""
+
+    name = "fake"
+
+    def __init__(self, rc=0, err=None, body="fake output\n"):
+        self.calls = []
+        self._rc, self._err, self._body = rc, err, body
+
+    def run(self, argv, log_path, timeout):
+        self.calls.append({"argv": list(argv), "timeout": timeout})
+        if self._body is not None:
+            if "swarm-fleet-run: commit=" in argv[-1]:
+                body = ("swarm-fleet-run: commit=" + "f" * 40
+                        + f" dirty=clean repo={DEFAULT_REPO_DIR}\n")
+            else:
+                body = self._body
+            pathlib.Path(log_path).write_text(body)
+        return self._rc, self._err
+
+
+class _FakeProbe:
+    name = "fake"
+
+    def local_head(self):
+        return "fakehead"
+
+
+def selftest() -> int:
+    """Run the hermetic checks with a scoped permit exemption."""
+    global _SELFTEST_ACTIVE
+    previous = _SELFTEST_ACTIVE
+    _SELFTEST_ACTIVE = True
+    try:
+        return _selftest_inner()
+    finally:
+        _SELFTEST_ACTIVE = previous
+
+
+def _selftest_inner() -> int:
+    """Hermetic: constructs no SubprocessRunner and no SubprocessProbe."""
+    import tempfile
+    fails = []
+
+    def check(ok, msg):
+        print(("  ok   " if ok else "  FAIL ") + msg)
+        if not ok:
+            fails.append(msg)
+
+    with tempfile.TemporaryDirectory() as td:
+        tmp = pathlib.Path(td)
+        base = tmp / "a" / "runs"
+        hosts = tmp / "hosts"
+        hosts.write_text("alpha 10.0.0.1\nbeta 10.0.0.2 local\n")
+        common = ["--hosts", str(hosts), "--root", str(base)]
+
+        fake = _FakeRunner()
+        rc = main(common + ["--execute", "--", "echo", "hi"],
+                  runner=fake, probe=_FakeProbe())
+        check(rc == 0, f"an execute run through the fake returns 0 (got {rc})")
+        check(len(fake.calls) == 4,
+              f"provenance and payload call per host (got {len(fake.calls)})")
+        ssh_calls = [c for c in fake.calls if c["argv"][0] == "ssh"]
+        check(len(ssh_calls) == 2, "both non-local phases used ssh")
+        check(not any("StrictHostKeyChecking" in a
+                      for c in ssh_calls for a in c["argv"]),
+              "host-key verification is never disabled")
+
+        dry = _FakeRunner()
+        rc = main(common + ["--", "echo", "hi"], runner=dry, probe=_FakeProbe())
+        check(rc == 0 and dry.calls == [],
+              f"dry-run is the DEFAULT and starts nothing ({len(dry.calls)})")
+
+        v = _FakeRunner()
+        rc = main(common + ["--only", "alpha,TYPO", "--execute", "--", "true"],
+                  runner=v, probe=_FakeProbe())
+        check(rc == 2 and v.calls == [],
+              "a partial --only match refuses with zero launches")
+
+        nolog = _FakeRunner(body=None)
+        rc = main(common + ["--only", "alpha", "--execute", "--", "true"],
+                  runner=nolog, probe=_FakeProbe())
+        check(rc == 1, f"rc=0 with NO log is a failure, not success (got {rc})")
+
+        check(build_command(['python3 -c "print(1)"']) == 'python3 -c "print(1)"',
+              "a single command argument is preserved verbatim")
+        check(build_command(["echo", "trailing "]) == "echo 'trailing '",
+              "trailing whitespace inside a token survives quoting")
+        check(build_command(["echo hi  "]) == "echo hi  ",
+              "a single argument is NOT stripped")
+
+        p = build_plan([("h", "10.0.0.1", False)], "echo hi", True)
+        check(p[0]["provenance_argv"][-1].find("rev-parse") != -1,
+              "the default plan carries the commit-recording prefix")
+        check(p[0]["command"] in " ".join(p[0]["argv"]) or
+              shlex.quote(p[0]["command"]) in " ".join(p[0]["argv"]),
+              "the plan's argv is built from its own effective command")
+
+        check(classify(255, None, "Host key verification failed.")
+              == "HOST_KEY_FAILURE", "host-key failure is its own state")
+        check(classify(255, None, "Permission denied (publickey).")
+              == "AUTH_FAILURE", "ssh auth failure is named")
+        check(classify(255, None, "No route to host") == "UNREACHABLE",
+              "ssh unreachable is named")
+        check(classify(255, None, "mystery") == "SSH_UNKNOWN",
+              "an unrecognised 255 is SSH_UNKNOWN and not success")
+
+        check(normalise_address("Test6.") == "test6",
+              "a DNS name normalises for de-duplication")
+        for bad_addr in ("/etc/passwd", "../up", "a,b", "@", "user@", "@host",
+                         "-oProxyCommand=x", "http://h/", "h:22"):
+            try:
+                normalise_address(bad_addr)
+                check(False, f"{bad_addr!r} was accepted as a target")
+            except Refusal:
+                pass
+        check(True, "malformed targets are refused by the accepted grammar")
+
+        cur = "20260101T000000Z-cccccccc"
+        for name in (cur, "29991231T235959Z-ffffffff", "20250101T000000Z-aaaaaaaa"):
+            d = base / name
+            d.mkdir(parents=True, exist_ok=True)
+            (d / SENTINEL).write_text("{}")
+        foreign = base / "please-do-not-delete-me"
+        foreign.mkdir(parents=True, exist_ok=True)
+        dropped, failures = prune(base, 1, protect=cur)
+        check((base / cur).is_dir(),
+              "the CURRENT run survives prune with --keep 1 and a future sibling")
+        check(foreign.is_dir(), "prune leaves an unowned directory alone")
+        check(not failures, f"prune reported failures: {failures}")
+        check("29991231T235959Z-ffffffff" in dropped
+              and "20250101T000000Z-aaaaaaaa" in dropped,
+              f"prune removed the stale runs it should ({dropped})")
+
+    if fails:
+        print(f"\nSELFTEST FAIL: {len(fails)} check(s) failed")
+        for f in fails:
+            print(f"  - {f}")
+        return 1
+    print("\nSELFTEST PASS")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
