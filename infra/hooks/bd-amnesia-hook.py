@@ -31,9 +31,9 @@ from typing import Any
 
 # Default Constants
 DEFAULT_INTERVAL = 5.0
-DEFAULT_TRIGGER_TOKENS = 150_000
-DEFAULT_TARGET_TOKENS = 45_000
-DEFAULT_RECENT_RESERVE = 30_000
+DEFAULT_TRIGGER_TOKENS = 90_000
+DEFAULT_TARGET_TOKENS = 35_000
+DEFAULT_RECENT_RESERVE = 25_000
 DEFAULT_MIN_TURN_PRESERVE = 15
 DEFAULT_MIN_SIZE_BYTE_FLOOR = 300_000
 DEFAULT_MAX_AGE_HOURS = 24.0
@@ -137,6 +137,38 @@ def dump_record(rec: Any) -> str:
 
 def estimate_tokens_from_chars(text_len: int) -> int:
     return max(1, int(text_len / CHARS_PER_TOKEN))
+
+
+def get_thresholds_for_file(
+    file_path: Path,
+    parsed_records: list[dict[str, Any]],
+    default_trigger: int = DEFAULT_TRIGGER_TOKENS,
+    default_target: int = DEFAULT_TARGET_TOKENS,
+) -> tuple[int, int]:
+    """
+    Tiered thresholds per operator optimization directive:
+    - Opus/Orchestrator seats: 75,000 ceiling, 30,000 target ($1.50/M cache read tax reduction).
+    - Fable/Haiku/Worker/Codex seats: 150,000 ceiling, 60,000 target (preserves cheap context).
+    """
+    path_str = str(file_path).lower()
+    if any(k in path_str for k in ["-pm", "-antigravity", "-council", "-opus"]):
+        return 75_000, 30_000
+
+    for rec in parsed_records:
+        msg = rec.get("message")
+        if isinstance(msg, dict):
+            m = str(msg.get("model", "")).lower()
+            if "opus" in m:
+                return 75_000, 30_000
+            elif "fable" in m or "haiku" in m or "sonnet" in m:
+                return 150_000, 60_000
+        m_top = str(rec.get("model", "")).lower()
+        if "astra" in m_top or "opus" in m_top:
+            return 75_000, 30_000
+        elif "terra" in m_top or "sol" in m_top:
+            return 150_000, 60_000
+
+    return default_trigger, default_target
 
 
 # ============================================================================
@@ -992,6 +1024,11 @@ class AmnesiaDaemon:
 
             dialect = detect_dialect(parsed_records)
 
+            # Tiered thresholds per operator directive (75k Opus, 150k Fable/Haiku/Terra)
+            file_trigger, file_target = get_thresholds_for_file(
+                file_path, parsed_records, self.trigger_tokens, self.target_tokens
+            )
+
             if dialect == TranscriptDialect.CLAUDE_DAG:
                 parser = ClaudeDAGParser(raw_lines)
                 branch = parser.get_active_branch()
@@ -1008,8 +1045,8 @@ class AmnesiaDaemon:
                 tombstoner = SemanticTombstoner(
                     parser=parser,
                     indexer=self.indexer,
-                    trigger_tokens=self.trigger_tokens,
-                    target_tokens=self.target_tokens,
+                    trigger_tokens=file_trigger,
+                    target_tokens=file_target,
                     min_turn_preserve=self.min_turn_preserve,
                     recent_reserve=self.recent_reserve,
                 )
@@ -1019,8 +1056,8 @@ class AmnesiaDaemon:
                 codex_tombstoner = CodexStreamTombstoner(
                     raw_lines=raw_lines,
                     indexer=self.indexer,
-                    trigger_tokens=self.trigger_tokens,
-                    target_tokens=self.target_tokens,
+                    trigger_tokens=file_trigger,
+                    target_tokens=file_target,
                     min_turn_preserve=self.min_turn_preserve,
                 )
                 est_tokens = estimate_tokens_from_chars(sum(len(l) for l in raw_lines))
@@ -1038,20 +1075,20 @@ class AmnesiaDaemon:
                 last_checked_ts=time.time(),
             )
 
-            if est_tokens <= self.trigger_tokens:
+            if est_tokens <= file_trigger:
                 logger.debug(
-                    f"{file_path.name}: {est_tokens} tokens <= threshold ({self.trigger_tokens})"
+                    f"{file_path.name}: {est_tokens} tokens <= threshold ({file_trigger})"
                 )
                 return False
 
             logger.info(
                 f"THRESHOLD BREACH: {file_path.name} has ~{est_tokens} tokens "
-                f"({st_init.st_size / 1024 / 1024:.2f} MB > limit {self.trigger_tokens})"
+                f"({st_init.st_size / 1024 / 1024:.2f} MB > limit {file_trigger})"
             )
 
             if self.dry_run:
                 logger.info(
-                    f"[DRY-RUN] Would prune {file_path.name} from {est_tokens} to {self.target_tokens}"
+                    f"[DRY-RUN] Would prune {file_path.name} from {est_tokens} to {file_target}"
                 )
                 return True
 

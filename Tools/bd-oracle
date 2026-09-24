@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+exec python3 "./../infra/scripts/bd-web-oracle-client.py" ""

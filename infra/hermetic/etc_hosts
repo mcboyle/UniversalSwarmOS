@@ -35,5 +35,7 @@ ff02::2 ip6-allrouters
 10.0.70.184     spr-pool03.mesh.local spr-pool03 node3
 10.0.70.185 spr-pool04.mesh.local spr-pool04 node4
 10.0.70.149     spr-pool05.mesh.local spr-pool05 fresh149
+10.0.70.181     ora-win01.mesh.local ora-win01 bittorrent
+10.0.10.137     ora-gpu01.mesh.local ora-gpu01 battlestation
 # END MESH.LOCAL CLUSTER HOSTS
 
