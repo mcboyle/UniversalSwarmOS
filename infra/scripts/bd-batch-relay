@@ -19,7 +19,15 @@ from pathlib import Path
 
 # Ensure lib directory is importable
 repo_root = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(repo_root))
+for candidate in [
+    repo_root,
+    Path("/home/mboyle/UniversalSwarmOS"),
+    Path("/home/mboyle/teamwork_projects/lifecycle_optimizer"),
+]:
+    if (candidate / "lib" / "relay_daemon.py").is_file():
+        if str(candidate) not in sys.path:
+            sys.path.insert(0, str(candidate))
+        break
 
 from lib.relay_daemon import RelayDaemon  # type: ignore[import-not-found]
 
