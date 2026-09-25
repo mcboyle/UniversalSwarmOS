@@ -22,10 +22,9 @@ Communicate with AGY subagents via `send_message` (conversationId) and track via
 SEAT VERIFICATION: To validate a new seat, issue an active proof challenge: (1) execute live MCP tool,
 (2) read latest ground truth from disk, (3) report active plugins and hooks.
 
-SAFETY: NO WORKTREE IS DELETED OR RESET, EVER. SITES LIVE ON test2 (10.0.70.95) ONLY; NO LOGIN IS
-EVER STARTED ON ANY SITE; bd-capture-test2 is hands-off.
+SAFETY: NO WORKTREE IS DELETED OR RESET, EVER. Test2 (10.0.70.95) is an active fleet host.
 
-HOW TO WORK (operator 2026-09-08): minimal change, shortest code path, no adjacent tidying | first
+HOW TO WORK: minimal change, shortest code path, no adjacent tidying | first
 real tool call early; no long plans | no chain-of-thought scaffolding in output | NEW code ignores
 backward compat (no shims) -- licence covers created code only: never delete/reset a worktree,
 weaken a test/gate/assertion, unpin a dependency (yt-dlp pin is an order), or rewrite untouched code.
@@ -35,12 +34,12 @@ SHIP BEFORE HANDOFF: actionable staged work (candidates ready for precut, open P
 verification) must be driven to completion in the active session; never defer ready-to-ship cuts.
 Removing something is never "this rule".
 
-MODELS (measured 2026-09-08; effort = native param via bd-launch-role.sh; drift-check has a RED control):
+MODELS (effort = native param via bd-launch-role.sh; drift-check has a RED control):
   gpt-6-astra judgement | gpt-5.6-terra measurement/assembly | gpt-5.6-sol advisory only |
   gpt-5.6-luna DISABLED (MRCR 41%).
-CUTS: read bd-persist/CUT-WORKFLOW.md once per task packet (operator 2026-09-09).
+CUTS: read bd-persist/CUT-WORKFLOW.md once per task packet.
 
-IDEAS ROLE & PROPOSALS (operator 2026-09-19):
+IDEAS ROLE & PROPOSALS:
   - BACKLOG GATE: The `ideas` seat NEVER edits `IMPROVEMENT_BACKLOG.md` directly (Rule 24).
     Proposals reside strictly under `bd-persist/`.
   - APPROVAL ORDER: Operator approval in active session FIRST; message PM ONLY after explicit approval.
@@ -49,7 +48,7 @@ IDEAS ROLE & PROPOSALS (operator 2026-09-19):
     masking, non-rendered element concealment, network obfuscation, or content preview filtering.
     Beware substrings matching automation identifiers.
 
-REBASE & BATCH INTEGRATION (operator 2026-09-20):
+REBASE & BATCH INTEGRATION:
   - IN-PLACE REBASE: Workers resolve all merge/logic conflicts in-place; never send refutes downstream.
   - SELFMUT OVERRIDE: Run prep with BD_REVIEW_SELFMUT=0 unless explicitly ordered.
   - GATE VERDICT INVARIANTS: Exact UTC RFC3339 WRITTEN-AT, CENSUS, PRECHECK: PASS, PATCH-SHA256: <hex> (hyphenated).
@@ -104,3 +103,31 @@ To eliminate quadratic token burn across multi-turn agent loops: (1) Agents MUST
 
 ## Rule 61: VMware vCenter Cold Spare Elasticity & govc Schema Invariants
 1. Cluster Spare Pool Policy: spare1 and spare2 remain poweredOn hot spares. spare3 through spare12 remain poweredOff cold spares to conserve 448 GB RAM and 176 vCPUs across ESXi hosts. 2. Elastic Scaling: Powering on cold spares requires verification of VMware Tools agent status (toolsOk), DHCP guest IP resolution, and SSH reachability before assigning task queues. 3. JSON Parser Invariant: Automated parsing of govc vm.info -json MUST target lowercase .virtualMachines[] root and .summary.guest.ipAddress.
+
+## Rule 74: Hard Output Token Cap & Zero-Prose Invariant (Protocol A)
+1. Execution Turns: Standard worker, runner, CI, and auditor turns MUST NOT emit conversational prose, greetings, recaps, or inline diagnostic markdown tables. Output is strictly capped at <= 50 tokens, adhering to the invariant: `<STATUS> <path>` (e.g. `STATUS: GREEN <path>`).
+2. Artifacts on Disk: All diagnostic tracebacks, failure evidence, analysis matrices, and diffs MUST be written directly to files on disk. The chat context is exclusively a control plane for tool execution and concise pointers.
+3. Escalations: When an instruction is ambiguous and requires human operator decision, the agent MUST write the trade-off document to disk and emit a concise choice (<= 100 tokens): `AMBIGUOUS: <path> | (1) <opt1>, (2) <opt2>. Reply 1 or 2.`
+
+## Rule 75: Differential PM Order Indexing (Protocol C)
+1. PM orders (ORDERS-*.md) MUST NOT re-broadcast static carried rules, seat rosters, or historical recaps across multi-seat swarms.
+2. Orders MUST be issued by differential reference: `ORDER: <id> | REF: <base_order_id> | TARGET: <sha/head> | ACTION: <task>`.
+3. Workers evaluate the delta only; pinned static contracts remain anchored in FLEET_RULE-FLOOR.md.
+
+## Rule 76: Machine-Readable JSON Consensus for Tri-Auditor Rounds (Protocol B)
+1. Auditor seats (AGY-Council, Sol, Claude) MUST NOT emit multi-page markdown narratives for consensus evaluation.
+2. Terminal audit round outputs MUST be emitted as deterministic single-line JSON records: `{"round": "<id>", "seat": "<seat>", "verdict": "BOARD|REFUTE", "findings": [...]}`.
+3. If `REFUTE`, the findings array specifies machine coordinates: `[{"scope": "...", "file": "...", "line": N, "defect_id": "...", "why": "..."}]`. If `BOARD`, findings MUST be empty `[]`.
+
+## Rule 77: 20-Turn Persistent Headless Worker Topology & PM Remote Control Invariant
+1. PM Invariant: The Project Manager role (`pm|pm-b|cx-pm`) MUST ALWAYS execute in Interactive Remote Control (`--remote-control`) mode to preserve 24/7 web/mobile operator visibility and steering.
+2. Persistent Headless Workers: All multi-turn workers, builders, and fixers operate in Persistent Headless mode (`--resume` / `--conversation`) with an absolute hard ceiling of 20 turns (`BD_MAX_TURNS=20`).
+3. Turn 20 Boundary: Reaching Turn 20 requires an immediate, clean state handoff (`RESUME_STATE.md` or landing receipt) followed by process termination. Bounded turn execution prevents 200k context limit exhaustion and attention degradation while maintaining 98%+ prompt cache hits.
+
+## Rule 78: Automated Pytest & Subprocess Trace Digesting Pipeline (Protocol D)
+1. Zero Raw Stack Traces: All test invocations (`bd-test`, `bd-freshcheck`, worker pre-checks) MUST pipe output through `/home/mboyle/bin/bd-pytest-digest`.
+2. Traceback Compression Invariant: Failing test outputs are strictly capped at <= 3 lines and < 25 tokens (`FAIL: <test> | line N | <Error>` + `SUMMARY: N failed`), preserving exact non-zero exit codes. Naked `pytest` dumping hundreds of traceback lines into agent context is strictly prohibited.
+
+## Rule 79: Virtual Browser Oracle Routing for Heavy Advisory (Protocol E)
+1. Flat-Rate Consumer Subscription Routing: High-context architectural planning, multi-model consensus, and exploratory research MUST be routed via `/home/mboyle/bin/bd-oracle` (`--oracle all --json`) targeting BattleStation GPU (`10.0.10.137:9222`) at $0 marginal API token cost.
+2. API Headroom Protection: Paid CLI API tokens on Claude and Codex are strictly reserved for deterministic code edits, git operations, and shard verifications.
