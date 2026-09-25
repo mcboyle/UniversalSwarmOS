@@ -9,6 +9,8 @@ model_list:
     litellm_params: {model: ollama/qwen2.5-coder:7b, api_base: http://10.0.70.228:11434}
   - model_name: qwen2.5-coder-7b
     litellm_params: {model: ollama/qwen2.5-coder:7b-16k, api_base: http://10.0.10.137:11434}
+  - model_name: qwen2.5-coder-7b-16k
+    litellm_params: {model: ollama/qwen2.5-coder:7b-16k, api_base: http://10.0.10.137:11434}
   - model_name: qwen3-8b
     litellm_params: {model: ollama/qwen3:8b, api_base: http://10.0.70.125:11434}
   - model_name: llama-guard3-8b
