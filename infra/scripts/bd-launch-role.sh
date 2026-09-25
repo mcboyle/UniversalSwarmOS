@@ -68,15 +68,15 @@ model_for() {
     # Fable was previously the model for pm/fable/panel/adjudicator/flakecourt. It is now held for a
     # single ADVISORY seat, so the fleet has one Fable reading rather than several -- an advisor that
     # runs the same model as the seat it advises is not a second opinion.
-    fable|fable-b)                                      echo opus ;;
-    pm|pm-b)                                            echo fable ;;   # O688 operator 2026-09-15: PM->FABLE (supersedes 2026-09-08 for pm only)
-    panel|panel-b)                                      echo fable ;;
-    flakecourt|flakecourt-a|flakecourt-b)               echo fable ;;
-    adjudicator|adjudicator-b)                          echo fable ;;
-    advisor|advisor-b)                                  echo fable ;;
-    integrator|integrator-b|integrator-c|integrator-d)  echo fable ;;
-    trainer|registrar)                                  echo fable ;;
-    review-correctness|review-shape)                    echo fable ;;
+    fable|fable-b)                                      echo claude-opus-5-5 ;;
+    pm|pm-b)                                            echo claude-opus-5-5 ;;   # Claude 5.5 high (Operator 2026-09-25)
+    panel|panel-b)                                      echo claude-opus-5-5 ;;   # OPUS 5.5 Medium (Operator 2026-09-25)
+    flakecourt|flakecourt-a|flakecourt-b)               echo claude-opus-5-5 ;;
+    adjudicator|adjudicator-b)                          echo claude-opus-5-5 ;;
+    advisor|advisor-b)                                  echo claude-opus-5-5 ;;
+    integrator|integrator-b|integrator-c|integrator-d)  echo claude-opus-5-5 ;;
+    trainer|registrar)                                  echo claude-opus-5-5 ;;
+    review-correctness|review-shape)                    echo claude-opus-5-5 ;;
     # ** OPERATOR 2026-09-12 (item 16): review-lite = the single lens for T0/T1 and the T2 shape lens.
     #    review-correctness (T2/T3 correctness) and review-shape (T3) stay opus. Dispatch T0/T1 as review-lite. **
     review-lite|review-lite-b)                          echo sonnet ;; # O635 2026-09-14: operator, lite (T1 shape) lenses sonnet; correctness/shape stay opus
@@ -116,13 +116,13 @@ effort_for() {
   # EFFORT FOLLOWS CONSEQUENCE, NOT SENIORITY. The question is what a wrong answer costs and whether
   # it can be undone by re-running something.
   case "$1" in
-    fable|fable-b|pm|pm-b|cx-pm|panel|panel-b|flakecourt|flakecourt-a|flakecourt-b) echo high ;;
-    adjudicator|adjudicator-b)                          echo high ;;
-    review-correctness|review-shape)                    echo high ;;
+    pm|pm-b|cx-pm|dispatch)                             echo high ;;
+    fable|fable-b|panel|panel-b|flakecourt|flakecourt-a|flakecourt-b) echo medium ;;
+    adjudicator|adjudicator-b)                          echo medium ;;
+    review-correctness|review-shape)                    echo medium ;;
     review-lite|review-lite-b)                          echo medium ;;
-    integrator|integrator-b|integrator-c|integrator-d)  echo high ;;
-    trainer|registrar)                                  echo high ;;
-    dispatch)                                           echo high ;;
+    integrator|integrator-b|integrator-c|integrator-d)  echo medium ;;
+    trainer|registrar)                                  echo medium ;;
     triage)                                             echo low ;;    # O860c
     worker|worker-b)                                    echo medium ;;
     briefauthor|briefauthor-2)                          echo medium ;;
