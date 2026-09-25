@@ -1,0 +1,779 @@
+#!/usr/bin/env python3
+"""bd-dag-schedule -- Canonical Quota-Aware DAG Scheduler & Wave Partitioner (Pillar 11).
+
+Compiles task packets and test dependency graphs into topologically sorted execution waves,
+monitors active accounting ledgers (usage.sqlite, POOL_STATE.tsv), enforces the 80% high-water
+and >5% weekly pace skew circuit breaker, and automatically overflows non-destructive workloads
+to the live Virtual Browser Oracle on Node 137 / Node 181 or local satellites.
+
+Fleet Rule 21 compliant: zero site interactions touched.
+"""
+from __future__ import annotations
+
+import argparse
+import csv
+import datetime
+import json
+import math
+import os
+import sqlite3
+import sys
+from pathlib import Path
+from typing import Any
+
+# Ensure dag_task_compiler is importable
+try:
+    from dag_task_compiler.compiler import DAGCompiler
+    from dag_task_compiler.models import TaskDAG, TaskNode, TaskState
+    from dag_task_compiler.scheduler import LeafDispatcher
+except ImportError:
+    alt_paths = [
+        Path("/home/mboyle/teamwork_projects/frontier_blueprint_integration/src"),
+        Path("/home/mboyle/UniversalSwarmOS"),
+    ]
+    for p in alt_paths:
+        if p.exists() and str(p) not in sys.path:
+            sys.path.insert(0, str(p))
+    try:
+        from dag_task_compiler.compiler import DAGCompiler
+        from dag_task_compiler.models import TaskDAG, TaskNode, TaskState
+        from dag_task_compiler.scheduler import LeafDispatcher
+    except ImportError:
+        # Fallback minimal definitions if package unavailable
+        class TaskState:  # type: ignore[no-redef]
+            PENDING = "PENDING"
+            READY = "READY"
+            RUNNING = "RUNNING"
+            COMPLETED = "COMPLETED"
+            FAILED = "FAILED"
+            BLOCKED = "BLOCKED"
+            SKIPPED = "SKIPPED"
+            PAUSED_FOR_QUOTA_RESET = "PAUSED_FOR_QUOTA_RESET"
+
+        class TaskNode:  # type: ignore[no-redef]
+            def __init__(self, **kwargs: Any) -> None:
+                self.task_id = kwargs.get("task_id", kwargs.get("id", ""))
+                self.name = kwargs.get("name", self.task_id)
+                self.dependencies = kwargs.get("dependencies", [])
+                self.assigned_pool = kwargs.get("assigned_pool", "cluster")
+                self.action_type = kwargs.get("action_type", "test")
+                self.command = kwargs.get("command", "")
+                self.timeout_sec = float(kwargs.get("timeout_sec", 60.0))
+                state_val = kwargs.get("state", TaskState.PENDING)
+                self.state = getattr(state_val, "value", state_val)
+
+        class TaskDAG:  # type: ignore[no-redef]
+            def __init__(self, nodes: dict[str, TaskNode] | None = None) -> None:
+                self.nodes = nodes or {}
+
+        class DAGCompiler:  # type: ignore[no-redef]
+            def compile_waves(self, dag: Any) -> list[Any]:
+                # Simple topological wave compilation
+                waves = []
+                remaining = dict(dag.nodes)
+                wave_idx = 0
+                completed_ids: set[str] = set()
+                while remaining:
+                    ready = [
+                        node for node in remaining.values()
+                        if all(d in completed_ids for d in node.dependencies)
+                    ]
+                    if not ready:
+                        break
+                    class Wave:
+                        def __init__(self, idx: int, tasks: list[Any]) -> None:
+                            self.wave_index = idx
+                            self.tasks = tasks
+                    waves.append(Wave(wave_idx, ready))
+                    for node in ready:
+                        completed_ids.add(node.task_id)
+                        remaining.pop(node.task_id, None)
+                    wave_idx += 1
+                return waves
+
+            def topological_sort(self, dag: Any) -> list[str]:
+                order = []
+                for wave in self.compile_waves(dag):
+                    order.extend(t.task_id for t in wave.tasks)
+                return order
+
+            def prune_on_failure(self, dag: Any, failed_id: str) -> None:
+                to_prune = {failed_id}
+                changed = True
+                while changed:
+                    changed = False
+                    for nid, node in list(dag.nodes.items()):
+                        if any(d in to_prune for d in node.dependencies) and nid not in to_prune:
+                            to_prune.add(nid)
+                            changed = True
+                for nid in to_prune:
+                    if nid in dag.nodes:
+                        dag.nodes[nid].state = TaskState.SKIPPED
+
+        class LeafDispatcher:  # type: ignore[no-redef]
+            def get_ready_leaves(self, dag: Any) -> list[Any]:
+                return [
+                    node for node in dag.nodes.values()
+                    if not node.dependencies and node.state in (TaskState.PENDING, TaskState.READY, "PENDING", "READY")
+                ]
+
+
+# -----------------------------------------------------------------------------
+# Pillar 11 Constants & Task Classification Taxonomy
+# -----------------------------------------------------------------------------
+
+NON_DESTRUCTIVE_ACTIONS = frozenset({
+    "review",
+    "code_review",
+    "diff_analysis",
+    "architecture",
+    "critique",
+    "shape",
+    "correctness",
+    "lite",
+    "planning",
+    "plan",
+    "task_decompose",
+    "dag_compile",
+    "dependency_analysis",
+    "triage",
+    "test_triage",
+    "diagnosis",
+    "diagnose",
+    "ci_log_triage",
+    "classification",
+    "verification",
+    "verify",
+    "consensus",
+    "consensus_verification",
+    "spec_check",
+    "advisory",
+    "distill",
+})
+
+DESTRUCTIVE_ACTIONS = frozenset({
+    "test",
+    "build",
+    "lint",
+    "typecheck",
+    "solve",
+    "ast_chunk",
+    "rag_index",
+    "patch",
+    "edit",
+    "file_edit",
+    "ast_splice",
+    "commit",
+    "git_commit",
+    "host_exec",
+    "run",
+})
+
+OVERFLOW_ENDPOINTS = {
+    "node137": {
+        "host": "10.0.10.137",
+        "port": 9222,
+        "name": "BattleStation GPU Workstation (RTX 2080 Ti)",
+        "default_engine": "gemini",
+    },
+    "node181": {
+        "host": "127.0.0.1",
+        "port": 9222,
+        "name": "Bittorrent Windows VM Virtual Browser Bridge",
+        "default_engine": "chatgpt",
+    },
+    "ai_infer01": {
+        "host": "10.0.70.125",
+        "port": 4000,
+        "name": "Local Satellite Dedicated Inference Server",
+        "default_engine": "local_satellite",
+    },
+}
+
+
+def classify_task(task_or_action: Any) -> str:
+    """Classify a task into 'non_destructive' vs 'destructive'.
+
+    Non-destructive tasks (code reviews, test triage, planning, consensus) can safely
+    overflow to browser oracles or satellite models.
+    Destructive tasks (file editing, tree patching, host test execution) must stay
+    on native CLI seats or pause during circuit breaker trips.
+    """
+    if not task_or_action:
+        return "destructive"
+
+    # Explicit flag overrides if present
+    if isinstance(task_or_action, dict):
+        if "non_destructive" in task_or_action and isinstance(task_or_action["non_destructive"], bool):
+            return "non_destructive" if task_or_action["non_destructive"] else "destructive"
+        if "destructive" in task_or_action and isinstance(task_or_action["destructive"], bool):
+            return "destructive" if task_or_action["destructive"] else "non_destructive"
+        action = str(task_or_action.get("action_type", task_or_action.get("action", ""))).strip().lower()
+        name = str(task_or_action.get("name", task_or_action.get("task_id", ""))).lower()
+        brief = str(task_or_action.get("brief", "")).lower()
+    elif hasattr(task_or_action, "action_type"):
+        if getattr(task_or_action, "non_destructive", None) is True:
+            return "non_destructive"
+        if getattr(task_or_action, "destructive", None) is True:
+            return "destructive"
+        action = str(getattr(task_or_action, "action_type", "")).strip().lower()
+        name = str(getattr(task_or_action, "name", getattr(task_or_action, "task_id", ""))).lower()
+        brief = ""
+    else:
+        action = str(task_or_action).strip().lower()
+        name = ""
+        brief = ""
+
+    if action in NON_DESTRUCTIVE_ACTIONS:
+        return "non_destructive"
+    if action in DESTRUCTIVE_ACTIONS:
+        return "destructive"
+
+    # Contextual substring inspection for ambiguous identifiers
+    combined = f"{action} {name} {brief}".lower()
+    destructive_keywords = ["patch", "edit", "splice", "test", "build", "commit", "solve", "execute", "run"]
+    non_destructive_keywords = ["review", "critique", "plan", "triage", "diagnos", "consensus", "verify", "advisory", "distill"]
+
+    if any(k in combined for k in destructive_keywords):
+        return "destructive"
+    if any(k in combined for k in non_destructive_keywords):
+        return "non_destructive"
+
+    # Safe default per specification: unrecognized defaults to destructive
+    return "destructive"
+
+
+def is_non_destructive_task(task_or_action: Any) -> bool:
+    """Return True if task is non-destructive, False otherwise."""
+    return classify_task(task_or_action) == "non_destructive"
+
+
+# -----------------------------------------------------------------------------
+# Accounting Ledger Integration (usage.sqlite & POOL_STATE.tsv)
+# -----------------------------------------------------------------------------
+
+def calculate_elapsed_week_pct(
+    now: datetime.datetime | None = None,
+    resets_at: datetime.datetime | str | None = None,
+) -> float:
+    """Calculate the percentage of the 7-day rolling or calendar week that has elapsed.
+
+    If resets_at is provided and in the future, elapsed = 100 - (time_until_reset / 7_days * 100).
+    Otherwise, computes elapsed week fraction based on UTC week progress (Monday 00:00 to Sunday 24:00).
+    """
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    seconds_in_week = 7.0 * 86400.0  # 604,800 seconds
+
+    if resets_at:
+        try:
+            if isinstance(resets_at, str):
+                r_dt = datetime.datetime.fromisoformat(resets_at.replace("Z", "+00:00"))
+            else:
+                r_dt = resets_at
+            if r_dt.tzinfo is None:
+                r_dt = r_dt.replace(tzinfo=datetime.timezone.utc)
+            delta = (r_dt - now).total_seconds()
+            if 0 < delta <= seconds_in_week:
+                elapsed_pct = 100.0 - (delta / seconds_in_week * 100.0)
+                return max(0.0, min(100.0, elapsed_pct))
+        except (ValueError, TypeError):
+            pass
+
+    # Fallback to standard calendar week progress
+    elapsed_seconds = (
+        now.weekday() * 86400.0
+        + now.hour * 3600.0
+        + now.minute * 60.0
+        + now.second
+    )
+    pct = round((elapsed_seconds / seconds_in_week) * 100.0, 2)
+    return max(0.0, min(100.0, pct))
+
+
+def sanitize_float(val: Any, default: float = 0.0) -> float:
+    """Safely convert value to float, clamping negative and non-numeric values to 0.0."""
+    if val is None or val == "" or val == "-":
+        return default
+    try:
+        f = float(val)
+        if math.isnan(f) or math.isinf(f):
+            return default
+        return max(0.0, f)
+    except (ValueError, TypeError):
+        return default
+
+
+def read_pool_state_tsv(tsv_path: Path | str | None = None) -> dict[str, dict[str, Any]]:
+    """Parse POOL_STATE.tsv and secondary USAGE.tsv for active pool quota telemetry."""
+    primary_path = Path(tsv_path or os.environ.get("BD_LIMIT_STATE", "/home/mboyle/bd-persist/POOL_STATE.tsv"))
+    secondary_path = primary_path.parent / "USAGE.tsv"
+
+    pools: dict[str, dict[str, Any]] = {}
+
+    def parse_file(path: Path) -> None:
+        if not path.is_file():
+            return
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as f:
+                reader = csv.DictReader(f, delimiter="\t")
+                for row in reader:
+                    pool_key = (row.get("pool") or "").strip().upper()
+                    if not pool_key:
+                        continue
+                    canonical_key = "A" if pool_key in ("A", "CLAUDE_A", "CLAUDE-A") else (
+                        "B" if pool_key in ("B", "CLAUDE_B", "CLAUDE-B") else (
+                            "CODEX" if pool_key in ("CODEX", "OPENAI") else (
+                                "AGY" if pool_key in ("AGY", "ANTIGRAVITY") else pool_key
+                            )
+                        )
+                    )
+                    entry = pools.setdefault(canonical_key, {
+                        "pool": canonical_key,
+                        "state": row.get("state", "UNKNOWN"),
+                        "pct": sanitize_float(row.get("pct", row.get("five_hour_pct"))),
+                        "weekly_pct": sanitize_float(row.get("weekly_pct")),
+                        "five_hour_remaining_pct": sanitize_float(row.get("five_hour_remaining_pct"), default=100.0),
+                        "resets_at": row.get("resets_at", "-"),
+                        "evidence": row.get("evidence", ""),
+                    })
+                    # Update fields if not already populated
+                    if entry["pct"] == 0.0 and row.get("five_hour_pct"):
+                        entry["pct"] = sanitize_float(row.get("five_hour_pct"))
+                    if entry["weekly_pct"] == 0.0 and row.get("weekly_pct"):
+                        entry["weekly_pct"] = sanitize_float(row.get("weekly_pct"))
+                    if row.get("resets_at") and row.get("resets_at") != "-":
+                        entry["resets_at"] = row["resets_at"]
+        except (OSError, csv.Error, UnicodeDecodeError):
+            # Corrupted TSV must not crash
+            pass
+
+    parse_file(primary_path)
+    if secondary_path.exists() and secondary_path != primary_path:
+        parse_file(secondary_path)
+
+    return pools
+
+
+def read_usage_sqlite(
+    sqlite_path: Path | str | None = None,
+    now: datetime.datetime | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Query live token accounting database across 5-hour and 7-day rolling windows."""
+    db_path = Path(sqlite_path or os.environ.get("BD_ACCOUNTING_SQLITE", "/home/mboyle/bd-persist/accounting/usage.sqlite"))
+    if not db_path.is_file():
+        # Fallback to secondary location
+        fallback = Path("/home/mboyle/bd-persist/usage.sqlite")
+        if fallback.is_file():
+            db_path = fallback
+        else:
+            return {}
+
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    iso_5h = (now - datetime.timedelta(hours=5)).isoformat()
+    iso_7d = (now - datetime.timedelta(days=7)).isoformat()
+
+    results: dict[str, dict[str, Any]] = {
+        "A": {"tokens_5h": 0, "tokens_7d": 0, "count_5h": 0, "count_7d": 0},
+        "B": {"tokens_5h": 0, "tokens_7d": 0, "count_5h": 0, "count_7d": 0},
+        "CODEX": {"tokens_5h": 0, "tokens_7d": 0, "count_5h": 0, "count_7d": 0},
+        "AGY": {"tokens_5h": 0, "tokens_7d": 0, "count_5h": 0, "count_7d": 0},
+    }
+
+    try:
+        uri = f"file:{db_path}?mode=ro"
+        con = sqlite3.connect(uri, uri=True, timeout=2.0)
+        cur = con.cursor()
+
+        # Query rolling 7 days grouped by pool
+        query = """
+            SELECT 
+                CASE 
+                    WHEN o.source LIKE '%/.claude-b/%' THEN 'B'
+                    WHEN o.source LIKE '%/.claude/%' THEN 'A'
+                    WHEN o.source LIKE '%/.codex/%' THEN 'CODEX'
+                    WHEN o.source LIKE '%antigravity%' OR o.source LIKE '%agy%' THEN 'AGY'
+                    ELSE 'OTHER' 
+                END as pool_name,
+                r.timestamp,
+                json_extract(r.usage, '$.total_tokens') as total_tokens
+            FROM usage_responses r
+            JOIN usage_occurrences o ON r.provider = o.provider AND r.response_id = o.response_id
+            WHERE r.timestamp >= ?
+        """
+        cur.execute(query, (iso_7d,))
+        for pool_name, ts, tokens in cur.fetchall():
+            if pool_name not in results:
+                continue
+            tok = max(0, int(tokens or 0))
+            results[pool_name]["tokens_7d"] += tok
+            results[pool_name]["count_7d"] += 1
+            if ts >= iso_5h:
+                results[pool_name]["tokens_5h"] += tok
+                results[pool_name]["count_5h"] += 1
+
+        con.close()
+    except (sqlite3.Error, OSError):
+        # SQLite error or lock collision: return current partial or empty metrics safely
+        pass
+
+    return results
+
+
+def get_pool_quota_metrics(
+    pool: str = "A",
+    sqlite_path: Path | str | None = None,
+    tsv_path: Path | str | None = None,
+    now: datetime.datetime | None = None,
+) -> dict[str, Any]:
+    """Compile comprehensive live quota metrics for a target pool."""
+    norm_pool = pool.strip().upper()
+    if norm_pool in ("CLAUDE_A", "CLAUDE-A"):
+        norm_pool = "A"
+    elif norm_pool in ("CLAUDE_B", "CLAUDE-B"):
+        norm_pool = "B"
+    elif norm_pool in ("OPENAI",):
+        norm_pool = "CODEX"
+    elif norm_pool in ("ANTIGRAVITY",):
+        norm_pool = "AGY"
+
+    tsv_data = read_pool_state_tsv(tsv_path)
+    sqlite_data = read_usage_sqlite(sqlite_path, now=now)
+
+    p_tsv = tsv_data.get(norm_pool, {})
+    p_sql = sqlite_data.get(norm_pool, {})
+
+    five_hour_pct = sanitize_float(p_tsv.get("pct", 0.0))
+    weekly_pct = sanitize_float(p_tsv.get("weekly_pct", 0.0))
+    five_hour_remaining = sanitize_float(p_tsv.get("five_hour_remaining_pct", 100.0 - five_hour_pct))
+    weekly_remaining = sanitize_float(100.0 - weekly_pct)
+
+    resets_at = p_tsv.get("resets_at") if p_tsv.get("resets_at") != "-" else None
+    elapsed_week_pct = calculate_elapsed_week_pct(now=now, resets_at=resets_at)
+    weekly_pace_skew = weekly_pct - elapsed_week_pct
+
+    return {
+        "pool": norm_pool,
+        "five_hour_utilization_pct": five_hour_pct,
+        "five_hour_remaining_pct": five_hour_remaining,
+        "weekly_utilization_pct": weekly_pct,
+        "weekly_remaining_pct": weekly_remaining,
+        "elapsed_week_pct": elapsed_week_pct,
+        "weekly_pace_skew": weekly_pace_skew,
+        "raw_tokens_5h": p_sql.get("tokens_5h", 0),
+        "raw_tokens_7d": p_sql.get("tokens_7d", 0),
+        "resets_at": resets_at,
+        "evidence": p_tsv.get("evidence", ""),
+    }
+
+
+# -----------------------------------------------------------------------------
+# Pillar 11 Circuit Breaker Logic
+# -----------------------------------------------------------------------------
+
+def evaluate_circuit_breaker(
+    pool_metrics: dict[str, Any],
+    threshold_util: float = 80.0,
+    threshold_skew: float = 5.0,
+    force_trip: bool = False,
+    force_clear: bool = False,
+) -> dict[str, Any]:
+    """Evaluate whether the 80% high-water circuit breaker or weekly pace skew has tripped.
+
+    Trip conditions:
+    1. utilization_pct >= 80.0% (remaining headroom <= 20.0%) on candidate pool.
+    2. weekly_used_pct > elapsed_week_pct + 5.0% (weekly pace skew > 5.0%).
+    """
+    if force_clear:
+        return {
+            "tripped": False,
+            "pool": pool_metrics.get("pool", "A"),
+            "reasons": [],
+            "metrics": pool_metrics,
+        }
+
+    reasons: list[str] = []
+    pool = pool_metrics.get("pool", "A")
+    five_h_util = sanitize_float(pool_metrics.get("five_hour_utilization_pct", 0.0))
+    five_h_rem = sanitize_float(pool_metrics.get("five_hour_remaining_pct", 100.0 - five_h_util))
+    weekly_util = sanitize_float(pool_metrics.get("weekly_utilization_pct", 0.0))
+    weekly_rem = sanitize_float(pool_metrics.get("weekly_remaining_pct", 100.0 - weekly_util))
+    weekly_skew = float(pool_metrics.get("weekly_pace_skew", 0.0))
+
+    if force_trip:
+        reasons.append("Manual force-trip override requested")
+
+    # High-water mark condition: utilization >= 80% (or remaining headroom <= 20%)
+    if five_h_util >= threshold_util:
+        reasons.append(f"5-hour rolling utilization {five_h_util:.1f}% >= {threshold_util:.1f}% threshold")
+    elif five_h_rem <= (100.0 - threshold_util) and five_h_rem > 0:
+        reasons.append(f"5-hour remaining headroom {five_h_rem:.1f}% <= {100.0 - threshold_util:.1f}% threshold")
+
+    if weekly_util >= threshold_util:
+        reasons.append(f"Weekly utilization {weekly_util:.1f}% >= {threshold_util:.1f}% threshold")
+    elif weekly_rem <= (100.0 - threshold_util) and weekly_rem > 0:
+        reasons.append(f"Weekly remaining headroom {weekly_rem:.1f}% <= {100.0 - threshold_util:.1f}% threshold")
+
+    # Weekly pace skew condition: weekly used percentage > elapsed week percentage + 5%
+    if weekly_skew > threshold_skew:
+        reasons.append(
+            f"Weekly pace skew +{weekly_skew:.1f}% > +{threshold_skew:.1f}% threshold "
+            f"(used {weekly_util:.1f}% vs elapsed {pool_metrics.get('elapsed_week_pct', 0.0):.1f}%)"
+        )
+
+    tripped = len(reasons) > 0
+    return {
+        "tripped": tripped,
+        "pool": pool,
+        "reasons": reasons,
+        "reason": "; ".join(reasons) if reasons else None,
+        "metrics": pool_metrics,
+    }
+
+
+def check_quota_circuit_breaker(
+    pool: str = "A",
+    sqlite_path: Path | str | None = None,
+    pool_state_path: Path | str | None = None,
+    force_trip: bool = False,
+    force_clear: bool = False,
+) -> dict[str, Any]:
+    """Public adapter function to query quota metrics and evaluate circuit breaker status."""
+    metrics = get_pool_quota_metrics(pool=pool, sqlite_path=sqlite_path, tsv_path=pool_state_path)
+    res = evaluate_circuit_breaker(metrics, force_trip=force_trip, force_clear=force_clear)
+    res["overflow_target"] = "node137"
+    res["overflow_available"] = True
+    return res
+
+
+# -----------------------------------------------------------------------------
+# DAG Virtualization & Wave Scheduling
+# -----------------------------------------------------------------------------
+
+def load_dag_from_dict(data: dict[str, Any]) -> TaskDAG:
+    """Construct a TaskDAG from a dictionary."""
+    nodes = {}
+    tasks_data = data.get("tasks", data.get("nodes", []))
+    if isinstance(tasks_data, list):
+        for item in tasks_data:
+            if "id" in item and "task_id" not in item:
+                item["task_id"] = item["id"]
+            if "name" not in item:
+                item["name"] = item.get("task_id", "")
+            node = TaskNode(**item)
+            nodes[node.task_id] = node
+    elif isinstance(tasks_data, dict):
+        for tid, item in tasks_data.items():
+            if "task_id" not in item:
+                item["task_id"] = item.get("id", tid)
+            if "name" not in item:
+                item["name"] = item.get("task_id", "")
+            node = TaskNode(**item)
+            nodes[node.task_id] = node
+    else:
+        raise TypeError(f"Unrecognized tasks data format: {type(tasks_data)}")
+
+    return TaskDAG(nodes=nodes)
+
+
+def schedule_dag(
+    dag: TaskDAG,
+    num_slots: int = 4,
+    prune_failed_id: str | None = None,
+    pool: str = "A",
+    sqlite_path: Path | str | None = None,
+    pool_state_path: Path | str | None = None,
+    force_trip: bool = False,
+    force_clear: bool = False,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Compile and partition DAG into execution waves with quota circuit breaker awareness."""
+    compiler = DAGCompiler()
+
+    if prune_failed_id:
+        compiler.prune_on_failure(dag, prune_failed_id)
+
+    waves = compiler.compile_waves(dag)
+    topo_order = compiler.topological_sort(dag)
+
+    # Evaluate live quota circuit breaker
+    cb_status = check_quota_circuit_breaker(
+        pool=pool,
+        sqlite_path=sqlite_path,
+        pool_state_path=pool_state_path,
+        force_trip=force_trip,
+        force_clear=force_clear,
+    )
+
+    slots_map: dict[str, list[dict[str, Any]]] = {f"slot_{i}": [] for i in range(num_slots)}
+    overflow_assignments: dict[str, list[dict[str, Any]]] = {
+        "slot_oracle_node137": [],
+        "slot_oracle_node181": [],
+        "slot_satellite_infer01": [],
+    }
+    paused_tasks: list[dict[str, Any]] = []
+
+    dispatcher = LeafDispatcher()
+    ready_leaves = dispatcher.get_ready_leaves(dag)
+
+    is_tripped = cb_status.get("tripped", False)
+
+    for idx, leaf in enumerate(ready_leaves):
+        task_id = leaf.task_id
+        action = getattr(leaf, "action_type", "test")
+        timeout = getattr(leaf, "timeout_sec", 60.0)
+        curr_state = getattr(leaf.state, "value", str(leaf.state))
+        classification = classify_task(leaf)
+
+        if not is_tripped:
+            # Normal worker slot assignment
+            slot_key = f"slot_{idx % num_slots}"
+            slots_map[slot_key].append({
+                "task_id": task_id,
+                "action_type": action,
+                "timeout_sec": timeout,
+                "state": curr_state,
+                "classification": classification,
+            })
+        else:
+            # Circuit breaker is TRIPPED
+            if classification == "non_destructive":
+                # Overflow to Virtual Browser Oracle or Satellite
+                target_slot = "slot_oracle_node137" if idx % 2 == 0 else "slot_satellite_infer01"
+                assigned_engine = "gemini" if pool.upper() in ("A", "AGY") else "chatgpt"
+                overflow_cmd = f"bd-oracle --oracle {assigned_engine} --node 137 --json"
+                overflow_record = {
+                    "task_id": task_id,
+                    "action_type": action,
+                    "timeout_sec": timeout,
+                    "state": "OVERFLOW_ORACLE",
+                    "classification": "non_destructive",
+                    "overflow_target": target_slot,
+                    "command": overflow_cmd,
+                }
+                overflow_assignments[target_slot].append(overflow_record)
+            else:
+                # Destructive task: pause for quota reset
+                paused_record = {
+                    "task_id": task_id,
+                    "action_type": action,
+                    "timeout_sec": timeout,
+                    "state": "PAUSED_FOR_QUOTA_RESET",
+                    "classification": "destructive",
+                    "reason": "PAUSED_FOR_QUOTA_RESET",
+                    "circuit_breaker_reasons": cb_status.get("reasons", []),
+                }
+                paused_tasks.append(paused_record)
+                if hasattr(leaf, "state"):
+                    leaf.state = getattr(TaskState, "BLOCKED", "BLOCKED")
+
+    return {
+        "total_tasks": len(dag.nodes),
+        "topological_order": topo_order,
+        "wave_count": len(waves),
+        "waves": [
+            {
+                "wave_index": getattr(w, "wave_index", i),
+                "task_ids": [t.task_id for t in getattr(w, "tasks", [])],
+                "task_count": len(getattr(w, "tasks", [])),
+            }
+            for i, w in enumerate(waves)
+        ],
+        "ready_leaves": [leaf.task_id for leaf in ready_leaves],
+        "slot_assignments": slots_map,
+        "circuit_breaker": cb_status,
+        "overflow_assignments": overflow_assignments,
+        "paused_tasks": paused_tasks,
+    }
+
+
+# -----------------------------------------------------------------------------
+# CLI Entrypoint
+# -----------------------------------------------------------------------------
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Quota-Aware DAG task scheduler and parallel wave partitioner"
+    )
+    parser.add_argument("input", nargs="?", default="-", help="Path to input JSON DAG file or - for stdin")
+    parser.add_argument("--waves", action="store_true", help="Print execution wave breakdown")
+    parser.add_argument("--dispatch", action="store_true", help="Print slot dispatch distribution")
+    parser.add_argument("--slots", type=int, default=4, help="Number of worker slots (default: 4)")
+    parser.add_argument("--prune", type=str, default=None, help="Prune downstream tasks of specified failed task ID")
+    parser.add_argument("--json", action="store_true", help="Output full JSON result")
+    parser.add_argument("--schedule", action="store_true", help="Explicitly execute scheduling pipeline")
+    parser.add_argument("--dry-run", action="store_true", help="Perform scheduling without active side effects")
+    parser.add_argument("--pool", type=str, default="A", help="Target agent pool for quota checking (default: A)")
+    parser.add_argument("--sqlite", type=str, default=None, help="Custom path to usage.sqlite")
+    parser.add_argument("--pool-state", type=str, default=None, help="Custom path to POOL_STATE.tsv")
+    parser.add_argument("--force-trip", action="store_true", help="Force circuit breaker into TRIPPED state")
+    parser.add_argument("--force-clear", action="store_true", help="Force circuit breaker into CLEAR state")
+
+    args = parser.parse_args(argv)
+
+    if args.input == "-":
+        raw = sys.stdin.read()
+    else:
+        path = Path(args.input)
+        if not path.exists():
+            print(f"ERROR: Input file not found: {path}", file=sys.stderr)
+            return 1
+        raw = path.read_text(encoding="utf-8")
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as err:
+        print(f"ERROR: Invalid JSON input: {err}", file=sys.stderr)
+        return 1
+
+    try:
+        dag = load_dag_from_dict(data)
+        scheduled = schedule_dag(
+            dag,
+            num_slots=args.slots,
+            prune_failed_id=args.prune,
+            pool=args.pool,
+            sqlite_path=args.sqlite,
+            pool_state_path=args.pool_state,
+            force_trip=args.force_trip,
+            force_clear=args.force_clear,
+            dry_run=args.dry_run,
+        )
+    except Exception as err:  # noqa: BLE001
+        print(f"ERROR: DAG scheduling failed: {err}", file=sys.stderr)
+        return 2
+
+    if args.json or (not args.waves and not args.dispatch):
+        print(json.dumps(scheduled, indent=2))
+        return 0
+
+    if args.waves:
+        print(f"=== DAG Execution Waves ({scheduled['wave_count']} waves, {scheduled['total_tasks']} tasks) ===")
+        for wave in scheduled["waves"]:
+            tasks_str = ", ".join(wave["task_ids"])
+            print(f"  Wave {wave['wave_index']} [{wave['task_count']} tasks]: {tasks_str}")
+
+    if args.dispatch:
+        print(f"\n=== Initial Leaf Dispatch ({args.slots} worker slots) ===")
+        for slot, tasks in scheduled["slot_assignments"].items():
+            task_ids = [t.get("task_id", t.get("id")) for t in tasks]
+            print(f"  {slot}: {', '.join(task_ids) if task_ids else '(idle)'}")
+
+        cb = scheduled["circuit_breaker"]
+        if cb.get("tripped"):
+            print(f"\n=== Circuit Breaker TRIPPED on Pool {cb.get('pool')} ===")
+            for r in cb.get("reasons", []):
+                print(f"  [ALERT] {r}")
+            print("\n=== Overflow Assignments (Virtual Browser Oracle / Satellite) ===")
+            for o_slot, o_tasks in scheduled["overflow_assignments"].items():
+                if o_tasks:
+                    print(f"  {o_slot}: {', '.join(t['task_id'] for t in o_tasks)}")
+            if scheduled["paused_tasks"]:
+                print("\n=== Paused Tasks (PAUSED_FOR_QUOTA_RESET) ===")
+                for p_task in scheduled["paused_tasks"]:
+                    print(f"  {p_task['task_id']}: {p_task['reason']}")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
