@@ -14,7 +14,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 DEFAULT_MIN_RUN = 3
 WORKER_COMPACTION_CEILING = 150000
@@ -88,7 +88,7 @@ class ContextWatermarkFilter:
         return True
 
     def collapse_events(
-        self, events: list[dict[str, Any] | str]
+        self, events: Sequence[dict[str, Any] | str]
     ) -> list[dict[str, Any] | str]:
         """Collapses consecutive passing tool executions into 1-line event tombstones."""
         collapsed: list[dict[str, Any] | str] = []
