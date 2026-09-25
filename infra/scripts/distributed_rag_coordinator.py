@@ -40,6 +40,7 @@ DEFAULT_CONTROLLER_NODE = "10.0.70.164"
 
 MAX_CHUNK_TOKENS = 512
 DEFAULT_BATCH_SIZE = 32
+DEFAULT_EMBEDDING_KEEP_ALIVE = 0  # Guarantees instant VRAM eviction on Node 137 to preserve > 3,000 MiB free headroom
 
 logging.basicConfig(
     level=logging.INFO,
@@ -237,21 +238,33 @@ def _process_file_worker(file_path_str: str) -> list[dict[str, Any]]:
 class LANEmbeddingStreamer:
     """Streams embedding batches across LAN directly to Node 137 Ollama."""
 
-    def __init__(self, target_host: str = DEFAULT_NODE_137_HOST, target_port: int = DEFAULT_NODE_137_PORT) -> None:
+    def __init__(
+        self,
+        target_host: str = DEFAULT_NODE_137_HOST,
+        target_port: int = DEFAULT_NODE_137_PORT,
+        keep_alive: int | str = DEFAULT_EMBEDDING_KEEP_ALIVE,
+    ) -> None:
         self.target_host = target_host
         self.target_port = target_port
         self.base_url = f"http://{target_host}:{target_port}"
+        self.keep_alive = keep_alive
 
-    def stream_batch(self, chunks: list[dict[str, Any]], model: str = "bge-m3") -> list[list[float]]:
-        """Stream a batch of chunks to Node 137 and return embedding vectors."""
+    def stream_batch(
+        self,
+        chunks: list[dict[str, Any]],
+        model: str = "bge-m3",
+        keep_alive: int | str | None = None,
+    ) -> list[list[float]]:
+        """Stream a batch of chunks to Node 137 and return embedding vectors with instant VRAM eviction."""
         if not chunks:
             return []
 
+        ka = self.keep_alive if keep_alive is None else keep_alive
         texts = [c["content"] for c in chunks]
         if model == "bge-m3":
-            # bge-m3 uses /api/embed with {"model": "bge-m3", "input": [...]}
+            # bge-m3 uses /api/embed with {"model": "bge-m3", "input": [...], "keep_alive": 0}
             url = f"{self.base_url}/api/embed"
-            payload = {"model": "bge-m3", "input": texts}
+            payload = {"model": "bge-m3", "input": texts, "keep_alive": ka}
             req = urllib.request.Request(
                 url,
                 data=json.dumps(payload).encode("utf-8"),
@@ -263,7 +276,7 @@ class LANEmbeddingStreamer:
         else:
             # nomic-embed-text or generic: try /api/embed, fallback to /api/embeddings
             url = f"{self.base_url}/api/embed"
-            payload = {"model": model, "input": texts}
+            payload = {"model": model, "input": texts, "keep_alive": ka}
             try:
                 req = urllib.request.Request(
                     url,
@@ -278,7 +291,7 @@ class LANEmbeddingStreamer:
                 embs = []
                 for t in texts:
                     url_single = f"{self.base_url}/api/embeddings"
-                    payload_single = {"model": model, "prompt": t}
+                    payload_single = {"model": model, "prompt": t, "keep_alive": ka}
                     req_s = urllib.request.Request(
                         url_single,
                         data=json.dumps(payload_single).encode("utf-8"),
@@ -288,6 +301,7 @@ class LANEmbeddingStreamer:
                         d = json.loads(r.read().decode("utf-8"))
                         embs.append(d.get("embedding", []))
                 return embs
+
 
 
 class DistributedRAGCoordinator:
