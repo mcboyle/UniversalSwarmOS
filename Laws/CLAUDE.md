@@ -128,3 +128,9 @@ When you resolve an undocumented bug, derive a new workflow, or optimize a syste
 
 ## VIRTUAL BROWSER ORACLE REASONING COMPLETION INVARIANT
 When extracting responses from reasoning models (ChatGPT o1/o3, Gemini Ultra, Claude Max) via Chrome DevTools Protocol, clients must NEVER prematurely return on interim thinking/working states (e.g. .result-thinking, "Thinking", or "Thought for X seconds"). Clients must wait for completion indicator disappearance (e.g. stop-button absence) and extract strictly non-thinking markdown elements.
+
+## Rule 60: Single-Turn Compound Execution Protocol
+To eliminate quadratic token burn across multi-turn agent loops: (1) Agents MUST chain inspection, modification, verification, and diff generation into a single execution pipeline where deterministic (bd-compound-exec). (2) Enforce set -eo pipefail fail-fast semantics with exact exit code propagation. (3) Subtasks must achieve completion in <= 2 turns. Multi-turn conversational hand-holding for sequential tool calls is prohibited.
+
+## Rule 61: VMware vCenter Cold Spare Elasticity & govc Schema Invariants
+1. Cluster Spare Pool Policy: spare1 and spare2 remain poweredOn hot spares. spare3 through spare12 remain poweredOff cold spares to conserve 448 GB RAM and 176 vCPUs across ESXi hosts. 2. Elastic Scaling: Powering on cold spares requires verification of VMware Tools agent status (toolsOk), DHCP guest IP resolution, and SSH reachability before assigning task queues. 3. JSON Parser Invariant: Automated parsing of govc vm.info -json MUST target lowercase .virtualMachines[] root and .summary.guest.ipAddress.
