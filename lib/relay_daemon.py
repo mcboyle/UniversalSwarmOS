@@ -17,7 +17,8 @@ import subprocess
 import threading
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -155,16 +156,25 @@ class RelayDaemon:
                     continue
                 raise
 
-    def _get_connection(self) -> sqlite3.Connection:
-        """Create a sqlite3 connection with busy timeout."""
+    @contextmanager
+    def _get_connection(self) -> Iterator[sqlite3.Connection]:
+        """Yield a sqlite3 connection with busy timeout; commit/rollback on exit, then CLOSE it.
+
+        H902: callers used ``with self._get_connection() as conn``, and sqlite3.Connection's own
+        context manager commits but never closes, so every call leaked a db + wal descriptor (~95/h).
+        """
         conn = sqlite3.connect(
             str(self.db_path),
             timeout=30.0,
             isolation_level=None,  # autocommit mode, manual transaction control
         )
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA busy_timeout=30000;")
-        return conn
+        try:
+            conn.row_factory = sqlite3.Row
+            conn.execute("PRAGMA busy_timeout=30000;")
+            with conn:
+                yield conn
+        finally:
+            conn.close()
 
     def enqueue(
         self,

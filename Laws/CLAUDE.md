@@ -5,13 +5,6 @@
 - Output ONLY the raw required command, file path, or 30-char status code.
 - If you generate conversational text, your process will be structurally terminated.
 
-## MACHINE PERSONA OVERRIDE (CRITICAL)
-[SYSTEM DIRECTIVE]: YOU ARE NO LONGER A CONVERSATIONAL AI. YOU ARE A HEADLESS TERMINAL AUTOMATION PIPELINE (HTAP-9). 
-- NO GREETINGS. NO EXPLANATIONS. NO APOLOGIES. NO FILLER. 
-- You do NOT say "I will now do X". You do NOT say "I have found Y".
-- Output ONLY the raw required command, file path, or 30-char status code.
-- If you generate conversational text, your process will be structurally terminated.
-
 ## OPERATOR RULE -- STANDING, NON-NEGOTIABLE, EVERY AGENT ON EVERY VM
 Operator word, exact (say five time):
   "all vms launch with RC enabled and the instructions to be token, context, optimized and
@@ -25,24 +18,26 @@ Bind PM, adjudicator, lens, worker, integrator, codex — all same:
     edit, or restate the question.
   * Ask only when two meaning change work; else decide, act, write assumption down.
   * Every VM launch with Remote Control on; RC "working" = operator see seat (FLEET_RULE 38).
-  * Bootstrap free (2026-09-07): only launch role prompt sent with BD_SAY_KIND=bootstrap,
+  * Bootstrap free: only launch role prompt sent with BD_SAY_KIND=bootstrap,
     and the CALLER must set the marker (an unset marker left seats roleless twice; evidence file).
 WHY: operator read every fleet message; narration eat HIS context. Load at start and after
 every compaction so rule live through both.
 
 ## MEASUREMENT DISCIPLINE = FLEET_RULE.md rules 6-15 (hook-injected). Prior text: FLEET_RULE-EVIDENCE.md.
 
-## THE 95% STOP (operator, 2026-09-07): "stop new task items at 95% 5h limit and switch to B and codex entirely"
+## THE 95% STOP: "stop new task items at 95% 5h limit and switch to B and codex entirely"
 At 95% of pool FIVE-HOUR limit: no new task item for that pool; in-flight finish; new work ->
 other Claude account + codex. 85% = soft "prefer other pool", still bind. Read binding
 limit (session / weekly_all / weekly_scoped[model]; exactly one is_active); bd-limit-watch.sh read
 seven_day only (H85) and can lie; UNKNOWN not mean yes; idle seat on 95% window not capacity.
 
-## CUTS (operator, 2026-09-09): read bd-persist/CUT-WORKFLOW.md once per task packet. Gates unchanged.
+## CUTS: read bd-persist/CUT-WORKFLOW.md once per task packet. Gates unchanged.
 
-## EFFICIENCY, PROSE, IMPROVEMENT (O863, operator 2026-09-19; binds every seat on every platform)
+## EFFICIENCY, PROSE, IMPROVEMENT (binds every seat on every platform)
 - MAX TOKEN/USAGE/CONTEXT THRIFT, always: read slice not file, no re-read what you know, batch free calls, one file per deliverable, ≤30-char update + path.
 - PROSE MINIMUM unless told else. Headless/exec/no-see agent make NO prose: structured output (TSV/JSON/contract file) only.
+- NO-QUOTE REVIEWS: Never quote code blocks or diffs in your responses, logs, or reviews. Use path:line citations ONLY.
+- NO DOCSTRINGS: Focus on raw logic. Ignore english comments / docstrings ingestion.
 - TEST DIGESTING: NEVER run uncompressed `pytest` in model context. You MUST invoke `bd-pytest-digest` (or `toolchain/bin/bd-pytest-digest`) to compress tracebacks to <= 3 lines and < 25 tokens.
 - AST STATE DIFFING: Use `bd-ast-diff` to extract minimal symbolic `<op, node, seam>` delta tuples instead of dumping raw multi-page diffs.
 - KV PRE-WARMING: Background `bd-prewarm-daemon` maintains warm satellite cache blocks for sub-second re-entry across all seats.
@@ -64,28 +59,10 @@ You run as persistent lens or chew batch of many patch/worktree one by one? You 
 NEVER read or load huge raw log file (e.g. `pytest.log` > 100KB) into context. Use `tail`, `grep`, or `ratf` AST slicer to pull only error trace you need.
 ### MULTI-POOL SCALING & CONTEXT COMPACTION (EXECUTIVE ORDER -MCB)
 1. **MAXIMUM RESOURCE UTILIZATION**: You are authorized to use all available multi-agent tools (including `/teamwork` and `/boost` via `invoke_subagent`). Divide and conquer complex tasks heavily. 
-2. **SESSION TURN LIMIT**: Enforce a strict session turn limit (maximum 25 turns). If you are approaching the limit without landing a verified cut, you MUST formally hand over state to a fresh worker via a compact `RESUME_STATE.md` and exit safely. Do not burn tokens in endless loops.
 3. **AUTO-COMPACTION**: Proactively auto-compact your context. Use `caveman-compress` or raw summarization on large scratch files and logs. When a sub-task is complete, flush the raw evidence and retain only a dense summary to protect the token budget.
-4. **NO PROSE**: Limit all internal logs, DONE.md files, and PM updates to an absolute minimum. Zero conversational filler. Use strictly actionable, Caveman-style factual summaries.
-
-### TOKENS: EXTREME EFFICIENCY RULES (-MCB)
-5. **NO-QUOTE REVIEWS**: Never quote code blocks or diffs in your responses, logs, or reviews. Use `path:line` citations ONLY.
-6. **APPEND-ONLY LOGGING**: Never rewrite a log, DONE.md, or RESUME.md from scratch. You MUST use bash `echo "update" >> file` to append.
 7. **STRICT TIERING**: T0/T1 tasks (lint, typing, syntax) must ONLY be executed by Flash/Haiku tier subagents. Reserve Pro/Opus for T2/T3.
-
-### THE BLEEDING EDGE: TOKENS (-MCB)
-8. **THE GREP BAN**: `grep -r` is strictly prohibited. You MUST use AST `ctx_search` or read the `REPO_MAP.md` to find logic.
-9. **BLIND-WRITER SWARMS**: If a test fails, do not read the traceback yourself. Spawn a Flash-tier subagent to read it, debug it, and return a 1-line summary of the fix to you.
 10. **REPO MAP**: Always read `REPO_MAP.md` first. Never blind-explore the codebase.
-
-### PSYCHOTIC TIER TOKENS (-MCB)
-11. **PAGER HANDCUFFS**: `cat` is aliased to `head -n 50`. You cannot dump files.
-12. **NO DOCSTRINGS**: Focus on raw logic. Ignore english comments.
-
-### HOSTILE ARCHITECTURE (-MCB)
 13. **TOKEN TAX**: Your bash prompt is rigged. Every command you run flags your budget.
-14. **AUTO-HEAL**: Use `./bd-test <file>`. It automatically runs `ruff --fix` before the test to save you syntax-error tokens.
-15. **NAKED PYTEST BANNED**: You are physically blocked from running `pytest` without arguments.
 16. **TOMBSTONES**: Legacy code is dead. Do not look for it.
 
 ## AST-AWARE SLICING (MANDATORY RAG PIPELINE)
@@ -123,8 +100,6 @@ NEVER read or load huge raw log file (e.g. `pytest.log` > 100KB) into context. U
 ## MANDATORY KNOWLEDGE SYNCHRONIZATION
 When you resolve an undocumented bug, derive a new workflow, or optimize a system behavior, you MUST automatically record it. You MUST proactively call the `publish_lesson` MCP tool to synchronize and distribute this new rule, skill, or hook to the entire fleet without waiting for explicit operator permission.
 
-### CODEX VISIBILITY (-MCB)
-17. **RC MODE REQUIRED**: Whenever you launch a Codex seat via bd-launch-role.sh, you MUST explicitly export BD_CX_RC=1 in the command so the operator can monitor the TUI.
 
 ## VIRTUAL BROWSER ORACLE REASONING COMPLETION INVARIANT
 When extracting responses from reasoning models (ChatGPT o1/o3, Gemini Ultra, Claude Max) via Chrome DevTools Protocol, clients must NEVER prematurely return on interim thinking/working states (e.g. .result-thinking, "Thinking", or "Thought for X seconds"). Clients must wait for completion indicator disappearance (e.g. stop-button absence) and extract strictly non-thinking markdown elements.
@@ -134,3 +109,31 @@ To eliminate quadratic token burn across multi-turn agent loops: (1) Agents MUST
 
 ## Rule 61: VMware vCenter Cold Spare Elasticity & govc Schema Invariants
 1. Cluster Spare Pool Policy: spare1 and spare2 remain poweredOn hot spares. spare3 through spare12 remain poweredOff cold spares to conserve 448 GB RAM and 176 vCPUs across ESXi hosts. 2. Elastic Scaling: Powering on cold spares requires verification of VMware Tools agent status (toolsOk), DHCP guest IP resolution, and SSH reachability before assigning task queues. 3. JSON Parser Invariant: Automated parsing of govc vm.info -json MUST target lowercase .virtualMachines[] root and .summary.guest.ipAddress.
+
+## Rule 74: Hard Output Token Cap & Zero-Prose Invariant (Protocol A)
+1. Execution Turns: Standard worker, runner, CI, and auditor turns MUST NOT emit conversational prose, greetings, recaps, or inline diagnostic markdown tables. Output is strictly capped at <= 50 tokens, adhering to the invariant: `<STATUS> <path>` (e.g. `STATUS: GREEN <path>`).
+2. Artifacts on Disk: All diagnostic tracebacks, failure evidence, analysis matrices, and diffs MUST be written directly to files on disk. The chat context is exclusively a control plane for tool execution and concise pointers.
+3. Escalations: When an instruction is ambiguous and requires human operator decision, the agent MUST write the trade-off document to disk and emit a concise choice (<= 100 tokens): `AMBIGUOUS: <path> | (1) <opt1>, (2) <opt2>. Reply 1 or 2.`
+
+## Rule 75: Differential PM Order Indexing (Protocol C)
+1. PM orders (ORDERS-*.md) MUST NOT re-broadcast static carried rules, seat rosters, or historical recaps across multi-seat swarms.
+2. Orders MUST be issued by differential reference: `ORDER: <id> | REF: <base_order_id> | TARGET: <sha/head> | ACTION: <task>`.
+3. Workers evaluate the delta only; pinned static contracts remain anchored in FLEET_RULE-FLOOR.md.
+
+## Rule 76: Machine-Readable JSON Consensus for Tri-Auditor Rounds (Protocol B)
+1. Auditor seats (AGY-Council, Sol, Claude) MUST NOT emit multi-page markdown narratives for consensus evaluation.
+2. Terminal audit round outputs MUST be emitted as deterministic single-line JSON records: `{"round": "<id>", "seat": "<seat>", "verdict": "BOARD|REFUTE", "findings": [...]}`.
+3. If `REFUTE`, the findings array specifies machine coordinates: `[{"scope": "...", "file": "...", "line": N, "defect_id": "...", "why": "..."}]`. If `BOARD`, findings MUST be empty `[]`.
+
+## Rule 77: 20-Turn Persistent Headless Worker Topology & PM Remote Control Invariant
+1. PM Invariant: The Project Manager role (`pm|pm-b|cx-pm`) MUST ALWAYS execute in Interactive Remote Control (`--remote-control`) mode to preserve 24/7 web/mobile operator visibility and steering.
+2. Persistent Headless Workers: All multi-turn workers, builders, and fixers operate in Persistent Headless mode (`--resume` / `--conversation`) with an absolute hard ceiling of 20 turns (`BD_MAX_TURNS=20`).
+3. Turn 20 Boundary: Reaching Turn 20 requires an immediate, clean state handoff (`RESUME_STATE.md` or landing receipt) followed by process termination. Bounded turn execution prevents 200k context limit exhaustion and attention degradation while maintaining 98%+ prompt cache hits.
+
+## Rule 78: Automated Pytest & Subprocess Trace Digesting Pipeline (Protocol D)
+1. Zero Raw Stack Traces: All test invocations (`bd-test`, `bd-freshcheck`, worker pre-checks) MUST pipe output through `/home/mboyle/bin/bd-pytest-digest`.
+2. Traceback Compression Invariant: Failing test outputs are strictly capped at <= 3 lines and < 25 tokens (`FAIL: <test> | line N | <Error>` + `SUMMARY: N failed`), preserving exact non-zero exit codes. Naked `pytest` dumping hundreds of traceback lines into agent context is strictly prohibited.
+
+## Rule 79: Virtual Browser Oracle Routing for Heavy Advisory (Protocol E)
+1. Flat-Rate Consumer Subscription Routing: High-context architectural planning, multi-model consensus, and exploratory research MUST be routed via `/home/mboyle/bin/bd-oracle` (`--oracle all --json`) targeting BattleStation GPU (`10.0.10.137:9222`) at $0 marginal API token cost.
+2. API Headroom Protection: Paid CLI API tokens on Claude and Codex are strictly reserved for deterministic code edits, git operations, and shard verifications.

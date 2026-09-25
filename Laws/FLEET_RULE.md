@@ -50,17 +50,23 @@
 28. OPERATOR PRESENCE = bd-persist/OPERATOR-PRESENCE.md (watcher seat). File absent = AWAY.
 
 ## BUDGET AND ROUTING
-29. ROUTE ON EACH ACCOUNT'S 5-HOUR HEADROOM. O828 (2026-09-15, operator): NO stop/throttle percentages -- run until provider limits.
+29. ROUTE ON EACH ACCOUNT'S 5-HOUR HEADROOM. NO stop/throttle percentages -- run until provider limits.
     IDLE IS NOT CAPACITY. An unseen limit is UNKNOWN.
-30. OWN CONTEXT: <95% normal; at 95% start nothing but compaction-safety; at 98% halt tasks.
 31. CLOSURES RIDE TRAIN THAT CLOSES THEM (register commit on train, O309); dedicated register
     cut is for CORRECTIONS only; regenerate AFTER the close.
 31b. bd-verdict-write-hook.sh WARNS, never refuses (blocking write hook loses work); refusals
     belong at the collect gate.
-32. SMALL-FIX LANE: diff EXACTLY REPRODUCED BY NAMED DETERMINISTIC GENERATOR, no product source,
-    no new path, no weakened assertion, on an already-cleared cut, may skip a new lens round /
-    clearance / re-freeze. NEVER skips exact-head CI, merged-tree proof, deploy verification, or the
-    record naming the generator. Typed content is not in this lane.
+32. SMALL-FIX LANE & FAST TRACK: (a) Diff EXACTLY REPRODUCED BY NAMED DETERMINISTIC GENERATOR
+    (no product source, no new path, no weakened assertion), or (b) Small-Fix Fast Track: small fix
+    touching <= 2 files with zero public AST signature drift and passing bd-test, on an already-cleared
+    cut, may bypass the heavy LLM lens evaluation round (first lens / second lens / re-freeze) and
+    auto-route directly to immediate pre-cut and train integration.
+    - Zero public AST drift definition: internal private modifications, helper logic, bug fixes,
+      documentation updates, or non-breaking implementation adjustments that do NOT alter public
+      module/class/function signatures, exports, parameter lists, return types, or external interface contracts.
+    - Requirements: passing bd-test on task-relevant unit tests (proportional verification); full
+      303-test cross-suite audit enforced at collector gate; zero weakened assertions; never skips
+      exact-head CI, merged-tree proof, deploy verification, or the record naming the generator/fix.
 
 ## EFFICIENCY (standing operator rules)
 33. SPEND OPERATOR'S CONTEXT LIKE HIS MONEY: read slice; never re-derive established or
@@ -85,7 +91,7 @@
     proves it. A tool that exists twice (~/ and harness/) is fixed in both, proven by cmp.
 38. RC ENABLED IN ARGV != RC WORKING; operator seeing seat is the test. Claude: the three
     DISABLE_* env vars kill RC (launcher strips them). Codex: attach `--remote unix://<socket>`
-    or the app cannot see it. ListAgents proves nothing. AGY (O855/O855b/O862, 2026-09-19): non-RC seats run IN TMUX via bd-launch-agy.sh (~20 max,
+    or the app cannot see it. ListAgents proves nothing. AGY: non-RC seats run IN TMUX via bd-launch-agy.sh (~20 max,
     flash-high default); `--rc` (Remote Control) only for primary roles, cap 5-6 (launcher exit 9 on the 7th);
     fan-out inside AGY uses native subagents under one RC parent. Proof of seat readiness requires an active verification challenge:
     live MCP tool invocation, ground-truth rule read from disk, and self-attested hook/plugin enumeration.
@@ -159,23 +165,16 @@
     without hot-add requires a clean guest shutdown (`govc vm.power -s`) before executing `govc vm.change`.
     Idle spares (`spare3`–`spare12`) must remain powered down, preserving 448 GB RAM and 176 vCPUs for
     the shared vSAN/vSphere cluster pool, with exact-count pre-warmed hot spares limited to 2.
-54. TRI-AGENT ECOSYSTEM PARITY & SKILL SYNCHRONIZATION: Any new MCP tool server, custom agent skill
+54. 4-POOL PARITY & SKILL SYNCHRONIZATION: Any new MCP tool server, custom agent skill
     (`~/.agents/skills/`), or plugin integrated into the fleet MUST be registered and symlinked across
-    all three active agent platforms: Antigravity (`mcp_config.json`), Claude Code (`~/.claude.json` &
-    `~/.claude/skills/`), and OpenAI Codex (`~/.codex/config.toml` & `~/.codex/skills/`). Multi-agent
-    seats across Pools A, B, and C must maintain identical tool capabilities and skill discovery.
+    all four active agent pools: Codex, Claude A, Claude B, and AGY (Antigravity `mcp_config.json`,
+    Claude Code `~/.claude.json` & `~/.claude/skills/`, and OpenAI Codex `~/.codex/config.toml` &
+    `~/.codex/skills/`). Multi-agent seats across Pools A, B, C, and D must maintain identical tool
+    capabilities and skill discovery.
 55. PM MODEL DESIGNATION INVARIANT: Primary PM seat model across fleet orchestrators strictly
     designated as `claude-fable-5-1` on `high` effort (`PM_MODEL.md`). Automated launchers
     (`bd-launch-role.sh`, `bd-launch-agy.sh`) must bind `pm`, `pm-b`, and `agy-pm` to `fable` with high
     effort unless explicitly re-ordered by an operator directive.
-57. CANONICAL REGISTER PROMOTION & CHECKSUM INVARIANT: When product proposals approved by the
-    operator, the holding seat MUST:
-    (1) Write the promoted rows with status 'OPEN' to 'harness-work/ROW-xxx-yyy-register.rows'.
-    (2) Update 'IMPROVEMENT_BACKLOG.md' rows to 'OPEN' and recompute the canonical marker
-        '<!-- canonical-task-register schema=1 rows=N open=M ids-sha256=H -->', where H is the SHA256 of
-        ','.join(all_ids).
-    (3) Dispatch a terse reply '<=30 chars + path' directly to the PM inbox ('bd-persist/inbox/PM/').
-    (4) Record the transaction in 'bd-persist/role-state/<role>.md'.
 
 ## EXTREME EDGE OPTIMIZATIONS (SWARM V3)
 58. PRECISION AST SLICING: Never ingest full source files via unstructured `view_file` or `cat`. You MUST use the `ratf.ctx_slice` MCP tool for precision AST extraction to preserve context budgets.
@@ -194,3 +193,31 @@ To eliminate quadratic token burn across multi-turn agent loops: (1) Agents MUST
     bd-persist/role-state/<role>.md (bd-role-state.sh get) | bd-persist/WORKING.md (live, /1 min)
     /home/mboyle/bd-role-claim.sh who-all | bd-persist/CUT-WORKFLOW.md | OPERATOR_DECISIONS.md (grep O-number)
 Seats come up via bd-restart.sh (staged, evidence-gated). Up != assigned; fresh context ASKS before dispatching.
+
+## Rule 74: Hard Output Token Cap & Zero-Prose Invariant (Protocol A)
+1. Execution Turns: Standard worker, runner, CI, and auditor turns MUST NOT emit conversational prose, greetings, recaps, or inline diagnostic markdown tables. Output is strictly capped at <= 50 tokens, adhering to the invariant: `<STATUS> <path>` (e.g. `STATUS: GREEN <path>`).
+2. Artifacts on Disk: All diagnostic tracebacks, failure evidence, analysis matrices, and diffs MUST be written directly to files on disk. The chat context is exclusively a control plane for tool execution and concise pointers.
+3. Escalations: When an instruction is ambiguous and requires human operator decision, the agent MUST write the trade-off document to disk and emit a concise choice (<= 100 tokens): `AMBIGUOUS: <path> | (1) <opt1>, (2) <opt2>. Reply 1 or 2.`
+
+## Rule 75: Differential PM Order Indexing (Protocol C)
+1. PM orders (ORDERS-*.md) MUST NOT re-broadcast static carried rules, seat rosters, or historical recaps across multi-seat swarms.
+2. Orders MUST be issued by differential reference: `ORDER: <id> | REF: <base_order_id> | TARGET: <sha/head> | ACTION: <task>`.
+3. Workers evaluate the delta only; pinned static contracts remain anchored in FLEET_RULE-FLOOR.md.
+
+## Rule 76: Machine-Readable JSON Consensus for Tri-Auditor Rounds (Protocol B)
+1. Auditor seats (AGY-Council, Sol, Claude) MUST NOT emit multi-page markdown narratives for consensus evaluation.
+2. Terminal audit round outputs MUST be emitted as deterministic single-line JSON records: `{"round": "<id>", "seat": "<seat>", "verdict": "BOARD|REFUTE", "findings": [...]}`.
+3. If `REFUTE`, the findings array specifies machine coordinates: `[{"scope": "...", "file": "...", "line": N, "defect_id": "...", "why": "..."}]`. If `BOARD`, findings MUST be empty `[]`.
+
+## Rule 77: 20-Turn Persistent Headless Worker Topology & PM Remote Control Invariant
+1. PM Invariant: The Project Manager role (`pm|pm-b|cx-pm`) MUST ALWAYS execute in Interactive Remote Control (`--remote-control`) mode to preserve 24/7 web/mobile operator visibility and steering.
+2. Persistent Headless Workers: All multi-turn workers, builders, and fixers operate in Persistent Headless mode (`--resume` / `--conversation`) with an absolute hard ceiling of 20 turns (`BD_MAX_TURNS=20`).
+3. Turn 20 Boundary: Reaching Turn 20 requires an immediate, clean state handoff (`RESUME_STATE.md` or landing receipt) followed by process termination. Bounded turn execution prevents 200k context limit exhaustion and attention degradation while maintaining 98%+ prompt cache hits.
+
+## Rule 78: Automated Pytest & Subprocess Trace Digesting Pipeline (Protocol D)
+1. Zero Raw Stack Traces: All test invocations (`bd-test`, `bd-freshcheck`, worker pre-checks) MUST pipe output through `/home/mboyle/bin/bd-pytest-digest`.
+2. Traceback Compression Invariant: Failing test outputs are strictly capped at <= 3 lines and < 25 tokens (`FAIL: <test> | line N | <Error>` + `SUMMARY: N failed`), preserving exact non-zero exit codes. Naked `pytest` dumping hundreds of traceback lines into agent context is strictly prohibited.
+
+## Rule 79: Virtual Browser Oracle Routing for Heavy Advisory (Protocol E)
+1. Flat-Rate Consumer Subscription Routing: High-context architectural planning, multi-model consensus, and exploratory research MUST be routed via `/home/mboyle/bin/bd-oracle` (`--oracle all --json`) targeting BattleStation GPU (`10.0.10.137:9222`) at $0 marginal API token cost.
+2. API Headroom Protection: Paid CLI API tokens on Claude and Codex are strictly reserved for deterministic code edits, git operations, and shard verifications.
