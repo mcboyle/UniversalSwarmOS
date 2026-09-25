@@ -1,0 +1,19 @@
+{
+  "title": "RFC-0013: Executive Council vs PM Separation of Concerns",
+  "date": "2026-09-25T07:22:30Z",
+  "authority": "Operator Directive O1390",
+  "division_of_responsibilities": {
+    "PM (bd-opus-high-B)": [
+      "Seat launching, scaling, and capacity orchestration",
+      "Queue and brief dispatching",
+      "Train progression and precut integration",
+      "Daily / hourly status digests"
+    ],
+    "AGY-Council (Executive Oversight)": [
+      "End-to-end system validation and health auditing",
+      "High-tier structural debugging and defect fixes beyond PM scope",
+      "Fleet lesson synthesis, codification, and cross-pool sync (/learn)",
+      "Continuous autonomous stall prevention and watchdog supervision"
+    ]
+  }
+}
