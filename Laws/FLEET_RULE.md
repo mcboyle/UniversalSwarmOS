@@ -1,17 +1,17 @@
 # FLEET_RULE.md -- THE OPERATIVE LAW. Injected at SessionStart and every PreCompact. Every rule binds.
-# Receipts for each rule: swarm-persist/FLEET_RULE-EVIDENCE.md (on demand). Terse by design: AI readers.
+# Receipts for each rule: bd-persist/FLEET_RULE-EVIDENCE.md (on demand). Terse by design: AI readers.
 
 ## COMMUNICATION
  1. UPDATES ~30 CHARS. Detail -> FILE, send PATH. No preamble/recap/narration. Completion is a
     file. EXCEPTION: an operator-requested digest/plan/report/answer prints in full.
     Line test: would the operator act differently without it? No -> cut it.
- 2. BOOTSTRAPS EXEMPT: only launch role prompt sent with SWARM_SAY_KIND=bootstrap; guard AND caller
+ 2. BOOTSTRAPS EXEMPT: only launch role prompt sent with BD_SAY_KIND=bootstrap; guard AND caller
     must both assert it.
  3. PM ASKS INTERACTIVELY: named options + consequence, recommendation first, <=4. Ask only when two
     readings change the work.
  4. WHEN SOMETHING RESOLVES, SAY WHAT IS LEFT ("nothing remaining" / "cannot tell"); re-derive.
  5. CADENCE: <=30-char update /10 min while operator PRESENT; 2-hourly DIGEST (<=25 lines,
-    swarm-persist/DIGEST.md) while AWAY. Events always emit. swarm-pm-beat.sh writes; swarm-staleness-check RED if it stops.
+    bd-persist/DIGEST.md) while AWAY. Events always emit. bd-pm-beat.sh writes; bd-staleness-check RED if it stops.
 
 ## MEASUREMENT
  6. THREE OUTCOMES: FOUND n / FOUND NONE / COULD NOT LOOK. UNKNOWN IS NEVER PERMISSION.
@@ -28,8 +28,9 @@
 ## VERDICTS AND REVIEW
 15. LINE 1 EXACTLY `VERDICT: BOARD|REFUTE|BOUNCE`, DONE.md `VERDICT: PATCH|UNKNOWN`, terminal `VERDICT: LANDED`.
     THE PREFIX IS REQUIRED; anything else routes nowhere.
-16. RECORD TREE JUDGED: `git -C <wt> write-tree` (INDEX tree) or PATCH-SHA256 of
-    `git diff --cached`. Base tree / HEAD^{tree} identify the generation, not the object.
+16. RECORD TREE JUDGED: `git -C <wt> write-tree` (INDEX tree) or PATCH-SHA256 = sha256 of
+    `git diff --cached --full-index <declared-base>` (--full-index: abbrev-independent, H606).
+    Base tree / HEAD^{tree} identify the generation, not the object.
 17. A LENS NEVER JUDGES A CUT IT BUILT.
 18. BRIEF'S "SKIP THIS" CAN BE WRONG; LENS OUTRANKS. Measure numstat before excluding.
 19. REFUSAL CORRECT when order unsourced or premise refuted by measurement.
@@ -45,8 +46,8 @@
 25. DECLINED QUESTION != HOLD; fall back to standing authority.
 26. KNOW WHICH SEAT YOU ARE, WITH EVIDENCE (pane title is label; compaction summary is a
     claim). No evidence -> issue nothing, ask.
-27. TOOLS FROM THE REPO: ./venv/bin/python toolchain/bin/<tool>. NEVER a bare swarm-<tool>.
-28. OPERATOR PRESENCE = swarm-persist/OPERATOR-PRESENCE.md (watcher seat). File absent = AWAY.
+27. TOOLS FROM THE REPO: ./venv/bin/python toolchain/bin/<tool>. NEVER a bare bd-<tool>.
+28. OPERATOR PRESENCE = bd-persist/OPERATOR-PRESENCE.md (watcher seat). File absent = AWAY.
 
 ## BUDGET AND ROUTING
 29. ROUTE ON EACH ACCOUNT'S 5-HOUR HEADROOM. O828 (2026-09-15, operator): NO stop/throttle percentages -- run until provider limits.
@@ -54,7 +55,7 @@
 30. OWN CONTEXT: <95% normal; at 95% start nothing but compaction-safety; at 98% halt tasks.
 31. CLOSURES RIDE TRAIN THAT CLOSES THEM (register commit on train, O309); dedicated register
     cut is for CORRECTIONS only; regenerate AFTER the close.
-31b. swarm-verdict-write-hook.sh WARNS, never refuses (blocking write hook loses work); refusals
+31b. bd-verdict-write-hook.sh WARNS, never refuses (blocking write hook loses work); refusals
     belong at the collect gate.
 32. SMALL-FIX LANE: diff EXACTLY REPRODUCED BY NAMED DETERMINISTIC GENERATOR, no product source,
     no new path, no weakened assertion, on an already-cleared cut, may skip a new lens round /
@@ -80,19 +81,19 @@
     when the line is a statement about that id (`<ts> <SEAT> <ID> ...`). A line that merely mentions
     an id in trailing prose keeps it past field 4 so boardgate's 4-field window does not falsely match.
 36. VERDICT RECORDS ITS OBJECT (rule 16). mtime != staleness. Hook warns; collect gate refuses.
-37. ONE DECISION, ONE PLACE: model/effort derive from swarm-launch-role.sh; swarm-codex-drift-check.sh
+37. ONE DECISION, ONE PLACE: model/effort derive from bd-launch-role.sh; bd-codex-drift-check.sh
     proves it. A tool that exists twice (~/ and harness/) is fixed in both, proven by cmp.
 38. RC ENABLED IN ARGV != RC WORKING; operator seeing seat is the test. Claude: the three
     DISABLE_* env vars kill RC (launcher strips them). Codex: attach `--remote unix://<socket>`
-    or the app cannot see it. ListAgents proves nothing. AGY (O855/O855b/O862, 2026-09-19): non-RC seats run IN TMUX via swarm-launch-agy.sh (~20 max,
+    or the app cannot see it. ListAgents proves nothing. AGY (O855/O855b/O862, 2026-09-19): non-RC seats run IN TMUX via bd-launch-agy.sh (~20 max,
     flash-high default); `--rc` (Remote Control) only for primary roles, cap 5-6 (launcher exit 9 on the 7th);
     fan-out inside AGY uses native subagents under one RC parent. Proof of seat readiness requires an active verification challenge:
     live MCP tool invocation, ground-truth rule read from disk, and self-attested hook/plugin enumeration.
-39. swarm-say REACHES TMUX POOL (Claude A/B, codex). SendMessage and `codex queue` do not cross pools.
+39. bd-say REACHES TMUX POOL (Claude A/B, codex). SendMessage and `codex queue` do not cross pools.
     AGY subagents run without tmux; communicate via `send_message` (conversationId) and track via
     `manage_subagents`. A file carries content, never reaches a seat. rc=6 = target pane holds a dialog:
     a refusal, not a broken channel; the return path fails the same way -- read say.log.
-40. ROUTINE -> swarm-status (ACK/LANDED/FROZEN/queued/refuted/boarded/prepped/claimed/counts).
+40. ROUTINE -> bd-status (ACK/LANDED/FROZEN/queued/refuted/boarded/prepped/claimed/counts).
     ESCALATION -> PM (limit/stall/outage, operator-class decision, HIGH finding, unresolvable
     refusal, anything marked FABLE). Lens questions -> adjudicator.
 41. HERMETIC GIT FIXTURES: Any test/tool creating scratch git commits must pass explicit config
@@ -150,7 +151,7 @@
     (`10.0.10.10`, `10.0.10.20`, `10.0.10.252`, `10.0.10.40`). The gateway at `.1` is the UniFi Dream
     Machine SE and must never be targeted as an iLO. Bare-metal power cycling, thermal sensor telemetry,
     and chassis health inspection must target `/redfish/v1/Systems/1/` with basic authentication
-    (`~/.swarm-import/ILOM.txt`), providing emergency out-of-band recovery when hypervisor hostagents or
+    (`~/.bd-import/ILOM.txt`), providing emergency out-of-band recovery when hypervisor hostagents or
     network interfaces hang.
 53. VSPHERE DYNAMIC SCALING & SPARE POOL CONSERVATION: All primary test runner VMs (`test3big`, `test4`,
     `Test5`) and hot spare nodes (`Spare1`, `spare2`) must maintain `cpuHotAddEnabled=true` and
@@ -165,7 +166,7 @@
     seats across Pools A, B, and C must maintain identical tool capabilities and skill discovery.
 55. PM MODEL DESIGNATION INVARIANT: Primary PM seat model across fleet orchestrators strictly
     designated as `claude-fable-5-1` on `high` effort (`PM_MODEL.md`). Automated launchers
-    (`swarm-launch-role.sh`, `swarm-launch-agy.sh`) must bind `pm`, `pm-b`, and `agy-pm` to `fable` with high
+    (`bd-launch-role.sh`, `bd-launch-agy.sh`) must bind `pm`, `pm-b`, and `agy-pm` to `fable` with high
     effort unless explicitly re-ordered by an operator directive.
 57. CANONICAL REGISTER PROMOTION & CHECKSUM INVARIANT: When product proposals approved by the
     operator, the holding seat MUST:
@@ -173,14 +174,17 @@
     (2) Update 'IMPROVEMENT_BACKLOG.md' rows to 'OPEN' and recompute the canonical marker
         '<!-- canonical-task-register schema=1 rows=N open=M ids-sha256=H -->', where H is the SHA256 of
         ','.join(all_ids).
-    (3) Dispatch a terse reply '<=30 chars + path' directly to the PM inbox ('swarm-persist/inbox/PM/').
-    (4) Record the transaction in 'swarm-persist/role-state/<role>.md'.
+    (3) Dispatch a terse reply '<=30 chars + path' directly to the PM inbox ('bd-persist/inbox/PM/').
+    (4) Record the transaction in 'bd-persist/role-state/<role>.md'.
 
 ## EXTREME EDGE OPTIMIZATIONS (SWARM V3)
 58. PRECISION AST SLICING: Never ingest full source files via unstructured `view_file` or `cat`. You MUST use the `ratf.ctx_slice` MCP tool for precision AST extraction to preserve context budgets.
 59. LOCAL SATELLITE OFFLOADING: Route trivial/deterministic tasks (formatting, regex, linting, log parsing) to local Ollama/LiteLLM satellite models (`ai-ollama01`) via `fleet-satellite-orchestration` to reserve premium Fable/Opus quota.
 
+## VIRTUAL BROWSER ORACLE REASONING COMPLETION INVARIANT
+When extracting responses from reasoning models (ChatGPT o1/o3, Gemini Ultra, Claude Max) via Chrome DevTools Protocol, clients must NEVER prematurely return on interim thinking/working states (e.g. .result-thinking, "Thinking", or "Thought for X seconds"). Clients must wait for completion indicator disappearance (e.g. stop-button absence) and extract strictly non-thinking markdown elements.
+
 ## CURRENT STATE -- READ AFTER A COMPACTION, BEFORE ACTING
-    swarm-persist/role-state/<role>.md (swarm-role-state.sh get) | swarm-persist/WORKING.md (live, /1 min)
-    /home/mboyle/swarm-role-claim.sh who-all | swarm-persist/CUT-WORKFLOW.md | OPERATOR_DECISIONS.md (grep O-number)
-Seats come up via swarm-restart.sh (staged, evidence-gated). Up != assigned; fresh context ASKS before dispatching.
+    bd-persist/role-state/<role>.md (bd-role-state.sh get) | bd-persist/WORKING.md (live, /1 min)
+    /home/mboyle/bd-role-claim.sh who-all | bd-persist/CUT-WORKFLOW.md | OPERATOR_DECISIONS.md (grep O-number)
+Seats come up via bd-restart.sh (staged, evidence-gated). Up != assigned; fresh context ASKS before dispatching.

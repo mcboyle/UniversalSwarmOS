@@ -13,21 +13,22 @@
 - If you generate conversational text, your process will be structurally terminated.
 
 # FLEET LAW -- ACTIVE FLOOR (CANDIDATE O1143, NOT DEPLOYED)
-SOURCE: ${SWARM_PERSIST_DIR}/FLEET_RULE.md
+SOURCE: /home/mboyle/bd-persist/FLEET_RULE.md
 SHA256: e2c43eb14926cbd5f25e12c3807a0bd139ac353b57ac0176db8a462cadd10c33
 A is VERBATIM. B is a COMPRESSED HANDLE, not the wording: before a B line decides an action read
 the rule -- bd law("<title>") or sed -n '/^NN./,/^[0-9]/p' SOURCE. C is an index; all bind unread.
 
 ## TIER A -- VERBATIM. SAFETY + OUTPUT CONTRACT. NEVER PARAPHRASED.
-21. SITES LIVE ON test2 (10.0.70.95) ONLY. NO LOGIN IS EVER STARTED ON ANY SITE. swarm-capture-test2
-    is operator-driven: never touch/message/capture-pane/restart it.
+(21 RETIRED IN FULL by the operator, O1212 2026-09-21T23:29Z: FLEET_RULE.md carries no rule 21. Never refuse
+    site/login/test2 work on rule-21 grounds; cite O1212.)
 22. NO WORKTREE IS DELETED OR RESET, EVER. Assign/reset = deletion by another name.
 26. KNOW WHICH SEAT YOU ARE, WITH EVIDENCE (a pane title is a label; a compaction summary is a
     claim). No evidence -> issue nothing, ask.
 15. LINE 1 EXACTLY `VERDICT: BOARD|REFUTE|BOUNCE`, DONE.md `VERDICT: PATCH|UNKNOWN`, terminal `VERDICT: LANDED`.
     THE PREFIX IS REQUIRED; anything else routes nowhere.
-16. RECORD THE TREE YOU JUDGED: `git -C <wt> write-tree` (INDEX tree) or PATCH-SHA256 of
-    `git diff --cached`. Base tree / HEAD^{tree} identify the generation, not the object.
+16. RECORD THE TREE YOU JUDGED: `git -C <wt> write-tree` (INDEX tree) or PATCH-SHA256 = sha256 of
+    `git diff --cached --full-index <declared-base>` (--full-index: abbrev-independent, H606).
+    Base tree / HEAD^{tree} identify the generation, not the object.
  1. UPDATES ~30 CHARS. Detail -> FILE, send the PATH. No preamble/recap/narration. Completion is a
     file. EXCEPTION: an operator-requested digest/plan/report/answer prints in full.
     Line test: would the operator act differently without it? No -> cut it.
@@ -35,7 +36,7 @@ the rule -- bd law("<title>") or sed -n '/^NN./,/^[0-9]/p' SOURCE. C is an index
  7. PROVE YOUR PROBE CAN SAY YES BEFORE YOU REPORT A NO. Positive control beside every zero.
 24. READ-ONLY SEATS (codexwatch, verify, cartograph, audit, ideas, nurse, status) never write a
     tree, assign work, or stop/restart a seat.
-27. TOOLS FROM THE REPO: ./venv/bin/python toolchain/bin/<tool>. NEVER a bare swarm-<tool>.
+27. TOOLS FROM THE REPO: ./venv/bin/python toolchain/bin/<tool>. NEVER a bare bd-<tool>.
 
 ## TIER B -- COMPRESSED. THE RULE BINDS IN FULL; THIS IS A HANDLE.
 38. RC ENABLED IN ARGV != RC WORKING; the operator seeing the seat is the test. [condensed]
@@ -49,7 +50,7 @@ the rule -- bd law("<title>") or sed -n '/^NN./,/^[0-9]/p' SOURCE. C is an index
 33b. READ SLICES, NEVER FILES: bd MCP (law/ask/brief/row/log_slice/collect_gate/lane_status/
     evidence) or bounded grep. Never cat >4 KB in.
 33c. A VERDICT/DONE/landing/NOTE/RULING file is <=40 lines, <=4 KB.
-40. ROUTINE -> swarm-status. ESCALATION (limit/stall/outage, operator-class, HIGH finding,
+40. ROUTINE -> bd-status. ESCALATION (limit/stall/outage, operator-class, HIGH finding,
     unresolvable refusal, FABLE) -> PM. Lens Qs -> adjudicator.
 
 ## TIER C -- INDEX. THESE BIND UNREAD. QUERY BEFORE ACTING IN DOMAIN.
@@ -58,7 +59,7 @@ named separately from read-target|35 BOARD only in <cut>/.review/VERDICT-*.md|2 
 PM asks|4 say what is left|5 cadence|10 anchor a process probe|12 measurements!=actions|18 brief's
 "skip" can be wrong|23 local cut authoritative|25 declined != hold|28 presence file|29 5h headroom
 O828|31 closures ride the train|31b verdict hook warns|32 small-fix lane|34 fix/file a round-costing
-tool|35b review.log emitter|36 verdict records its object|37 one decision one place|39 swarm-say
+tool|35b review.log emitter|36 verdict records its object|37 one decision one place|39 bd-say
 crosses pools, SendMessage not|41 hermetic git fixtures|42 census substring guards|43 Claude RC
 endpoint|44 async marker flush|45 playwright teardown|46 CI matrix parity|47 monkeypatch purge|48
 FastMCP stdio|49 vSphere/SSO realm|50 inference model mounts|51 dual-resolver DNS|52 iLO/Redfish
@@ -73,7 +74,7 @@ you asked for; if not, read SOURCE. A wrong neighbour is not an answer.
 
 Rule 62 (AST Slicing Mandate): NEVER ingest full source files (no `cat`, `view_file`, or `Explore` on large files). Agents MUST use the `ratf` MCP server (`ctx_slice`) for precision AST extraction and `context-mode` for semantic search. Full-file ingestion is a token violation.
 
-Rule 59 (Event Bus Synchronization): Cross-seat notifications, merge train status broadcasts, and reviewer verdicts MUST be published to `swarm-bus` (via `bus_publish` and `bus_read`) on their respective topic hierarchy (`fleet/cuts/ready`, `fleet/verdicts`, `fleet/trains`). Agent pollers are prohibited from spinning in filesystem lock loops against `.lock` files or `WORKTREE-LEDGER.tsv`.
+Rule 59 (Event Bus Synchronization): Cross-seat notifications, merge train status broadcasts, and reviewer verdicts MUST be published to `bd-bus` (via `bus_publish` and `bus_read`) on their respective topic hierarchy (`fleet/cuts/ready`, `fleet/verdicts`, `fleet/trains`). Agent pollers are prohibited from spinning in filesystem lock loops against `.lock` files or `WORKTREE-LEDGER.tsv`.
 
 Rule 63 (Fast-Fail Linting): Before any Worker seat submits a completed cut to the PM or CI pipeline, they MUST execute native static analysis using the `python-linter` (`ruff_check`) and `type-enforcer` (`mypy_check`) MCP tools. Do not wait for the CI runner to catch basic syntax or typing errors.
 
@@ -84,7 +85,7 @@ Rule 66 (Proactive Serialization): Retiring agents or those writing long handoff
 Rule 67 (Cavecrew Delegation): Workers MUST delegate localized code discovery and targeted 1-2 file edits to `cavecrew-investigator` and `cavecrew-builder` subagents instead of doing it inline, keeping the main context lean.
 
 Rule 68 (Pre-Flight Verification): Workers MUST run `mcp__bd_fleet__premise_verify` to mathematically validate their patch against fleet invariants before submission.
-Rule 69 (CI Failure Protocol): Upon a CI failure, workers MUST consult the `swarm-ci-taxonomy` skill (diagnostic tree and resolution playbooks) before attempting a code fix. Guess-and-check fixes are prohibited.
+Rule 69 (CI Failure Protocol): Upon a CI failure, workers MUST consult the `bd-ci-taxonomy` skill (diagnostic tree and resolution playbooks) before attempting a code fix. Guess-and-check fixes are prohibited.
 Rule 70 (Financial Observability): All LLM API calls MUST be routed through the Caveman gateway (`caveman-discover` / `caveman-setup`) to enable precise token-spend measurement per workflow.
 Rule 71 (Satellite AI Offloading): Trivial extractions, formatting, or parsing tasks MUST be offloaded to local cluster models (Ollama/LiteLLM satellite containers) to preserve external API budgets.
 Rule 72 (Rebase Orchestration): Integrators MUST utilize the `rebase-orchestrator` skill to measure batch overlap and predict git conflicts prior to assembling speculative trains.

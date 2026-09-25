@@ -25,7 +25,7 @@ Bind PM, adjudicator, lens, worker, integrator, codex — all same:
     edit, or restate the question.
   * Ask only when two meaning change work; else decide, act, write assumption down.
   * Every VM launch with Remote Control on; RC "working" = operator see seat (FLEET_RULE 38).
-  * Bootstrap free (2026-09-07): only launch role prompt sent with SWARM_SAY_KIND=bootstrap,
+  * Bootstrap free (2026-09-07): only launch role prompt sent with BD_SAY_KIND=bootstrap,
     and the CALLER must set the marker (an unset marker left seats roleless twice; evidence file).
 WHY: operator read every fleet message; narration eat HIS context. Load at start and after
 every compaction so rule live through both.
@@ -35,15 +35,18 @@ every compaction so rule live through both.
 ## THE 95% STOP (operator, 2026-09-07): "stop new task items at 95% 5h limit and switch to B and codex entirely"
 At 95% of pool FIVE-HOUR limit: no new task item for that pool; in-flight finish; new work ->
 other Claude account + codex. 85% = soft "prefer other pool", still bind. Read binding
-limit (session / weekly_all / weekly_scoped[model]; exactly one is_active); swarm-limit-watch.sh read
+limit (session / weekly_all / weekly_scoped[model]; exactly one is_active); bd-limit-watch.sh read
 seven_day only (H85) and can lie; UNKNOWN not mean yes; idle seat on 95% window not capacity.
 
-## CUTS (operator, 2026-09-09): read swarm-persist/CUT-WORKFLOW.md once per task packet. Gates unchanged.
+## CUTS (operator, 2026-09-09): read bd-persist/CUT-WORKFLOW.md once per task packet. Gates unchanged.
 
 ## EFFICIENCY, PROSE, IMPROVEMENT (O863, operator 2026-09-19; binds every seat on every platform)
 - MAX TOKEN/USAGE/CONTEXT THRIFT, always: read slice not file, no re-read what you know, batch free calls, one file per deliverable, ≤30-char update + path.
 - PROSE MINIMUM unless told else. Headless/exec/no-see agent make NO prose: structured output (TSV/JSON/contract file) only.
-- KEEP GET BETTER: you spot harness/tool/token win or maybe plugin/skill/hook, FILE it: ${SWARM_PERSIST_DIR}/IMPROVEMENTS/<seat>-<utc>.md (≤15 lines: what, evidence, expected saving, how to prove). Never chat it. Never build outside your task.
+- TEST DIGESTING: NEVER run uncompressed `pytest` in model context. You MUST invoke `bd-pytest-digest` (or `toolchain/bin/bd-pytest-digest`) to compress tracebacks to <= 3 lines and < 25 tokens.
+- AST STATE DIFFING: Use `bd-ast-diff` to extract minimal symbolic `<op, node, seam>` delta tuples instead of dumping raw multi-page diffs.
+- KV PRE-WARMING: Background `bd-prewarm-daemon` maintains warm satellite cache blocks for sub-second re-entry across all seats.
+- KEEP GET BETTER: you spot harness/tool/token win or maybe plugin/skill/hook, FILE it: /home/mboyle/bd-persist/IMPROVEMENTS/<seat>-<utc>.md (≤15 lines: what, evidence, expected saving, how to prove). Never chat it. Never build outside your task.
 - AGY seat: every 25 turns run /learn (or caveman-learn skill if no /learn) and file whether its advice worth fleet-wide take-up (same IMPROVEMENTS/ path, suffix -learn-<n>).
 
 # RATF AST Slicer (CRITICAL EFFICIENCY RULE)
@@ -81,7 +84,7 @@ NEVER read or load huge raw log file (e.g. `pytest.log` > 100KB) into context. U
 
 ### HOSTILE ARCHITECTURE (-MCB)
 13. **TOKEN TAX**: Your bash prompt is rigged. Every command you run flags your budget.
-14. **AUTO-HEAL**: Use `./swarm-test <file>`. It automatically runs `ruff --fix` before the test to save you syntax-error tokens.
+14. **AUTO-HEAL**: Use `./bd-test <file>`. It automatically runs `ruff --fix` before the test to save you syntax-error tokens.
 15. **NAKED PYTEST BANNED**: You are physically blocked from running `pytest` without arguments.
 16. **TOMBSTONES**: Legacy code is dead. Do not look for it.
 
@@ -91,7 +94,7 @@ NEVER read or load huge raw log file (e.g. `pytest.log` > 100KB) into context. U
 - You MUST use the `context-mode` MCP server (`ctx_search`) for semantic codebase searches.
 
 ## DISTRIBUTED EVENT STREAMING (MANDATORY)
-[SYSTEM DIRECTIVE]: When orchestrating or communicating across seats, you MUST use the `swarm-bus` MCP server (`bus_publish` and `bus_read`) on topics like `fleet/verdicts` and `fleet/trains`. Do NOT spin in filesystem loops reading `.md` or `.tsv` logs to check state.
+[SYSTEM DIRECTIVE]: When orchestrating or communicating across seats, you MUST use the `bd-bus` MCP server (`bus_publish` and `bus_read`) on topics like `fleet/verdicts` and `fleet/trains`. Do NOT spin in filesystem loops reading `.md` or `.tsv` logs to check state.
 
 ## NATIVE FAST-FAIL PRE-CHECKS (MANDATORY)
 [SYSTEM DIRECTIVE]: Before submitting any code, you MUST use the `python-linter` (`ruff_check`) and `type-enforcer` (`mypy_check`) MCP servers to validate syntax and types locally. NEVER rely on the CI pipeline to catch your syntax errors.
@@ -108,10 +111,11 @@ NEVER read or load huge raw log file (e.g. `pytest.log` > 100KB) into context. U
 ## FINAL OPTIMIZATIONS (MANDATORY)
 [SYSTEM DIRECTIVE]: 
 1. Use `mcp__bd_fleet__premise_verify` before submitting a cut.
-2. If CI fails, you MUST read the `swarm-ci-taxonomy` skill before fixing.
+2. If CI fails, you MUST read the `bd-ci-taxonomy` skill before fixing.
 3. Route all API calls through the Caveman gateway for cost observability.
 4. Delegate trivial sub-tasks to the local Ollama/LiteLLM models on the cluster.
 5. Integrators must use `rebase-orchestrator` for overlap measurement before git merges.
+6. For high-context advisory queries, deep algorithmic analysis, or multi-model consensus, route queries to the persistent dual-node Virtual Browser Oracle via `/home/mboyle/bin/bd-oracle` (Windows VM 10.0.70.181 and GPU workstation 10.0.10.137) to utilize flat-rate consumer subscriptions (Gemini Ultra/Pro, ChatGPT Plus/Pro, Claude A & B) with $0 marginal API token cost. Under ratified policy, in-browser credential autofill and PIN 628895 are authorized.
 
 ## GUI E2E TESTING (MANDATORY)
 [SYSTEM DIRECTIVE]: If your cut modifies the frontend, you MUST use the `chrome_devtools` MCP server to dynamically interact with the UI, capture screenshots, and run Lighthouse audits. Do not rely solely on unit tests for frontend code.
@@ -120,4 +124,7 @@ NEVER read or load huge raw log file (e.g. `pytest.log` > 100KB) into context. U
 When you resolve an undocumented bug, derive a new workflow, or optimize a system behavior, you MUST automatically record it. You MUST proactively call the `publish_lesson` MCP tool to synchronize and distribute this new rule, skill, or hook to the entire fleet without waiting for explicit operator permission.
 
 ### CODEX VISIBILITY (-MCB)
-17. **RC MODE REQUIRED**: Whenever you launch a Codex seat via swarm-launch-role.sh, you MUST explicitly export SWARM_CX_RC=1 in the command so the operator can monitor the TUI.
+17. **RC MODE REQUIRED**: Whenever you launch a Codex seat via bd-launch-role.sh, you MUST explicitly export BD_CX_RC=1 in the command so the operator can monitor the TUI.
+
+## VIRTUAL BROWSER ORACLE REASONING COMPLETION INVARIANT
+When extracting responses from reasoning models (ChatGPT o1/o3, Gemini Ultra, Claude Max) via Chrome DevTools Protocol, clients must NEVER prematurely return on interim thinking/working states (e.g. .result-thinking, "Thinking", or "Thought for X seconds"). Clients must wait for completion indicator disappearance (e.g. stop-button absence) and extract strictly non-thinking markdown elements.

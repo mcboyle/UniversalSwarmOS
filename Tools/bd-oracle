@@ -1,2 +1,3 @@
 #!/usr/bin/env bash
-exec python3 "./../infra/scripts/bd-web-oracle-client.py" ""
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec python3 "$DIR/../infra/scripts/bd-web-oracle-client.py" "$@"

@@ -240,7 +240,16 @@ def query_chatgpt(tab: Dict[str, Any], prompt: str, timeout: int = 120) -> str:
                 """(() => {
                     const stop = document.querySelector('button[data-testid="stop-button"], button[aria-label*="Stop"]');
                     const msgs = document.querySelectorAll('[data-message-author-role="assistant"]');
-                    let text = msgs.length > 0 ? msgs[msgs.length - 1].textContent.trim() : "";
+                    let text = "";
+                    if (msgs.length > 0) {
+                        const last = msgs[msgs.length - 1];
+                        const mds = Array.from(last.querySelectorAll('.markdown:not(.result-thinking)'));
+                        if (mds.length > 0) {
+                            text = mds[mds.length - 1].textContent.trim();
+                        } else {
+                            text = last.textContent.trim();
+                        }
+                    }
                     return { isGenerating: !!stop, count: msgs.length, text: text };
                 })()""",
                 24,
@@ -250,12 +259,13 @@ def query_chatgpt(tab: Dict[str, Any], prompt: str, timeout: int = 120) -> str:
                 count = state.get("count", 0)
                 is_gen = state.get("isGenerating", False)
                 if count > initial_count and text:
+                    # If generation is complete (stop button gone), return text
                     if not is_gen:
                         return text
-                    # Text stabilization fallback
-                    if text == last_text and len(text) > 0:
+                    # Stagnation fallback: only after 15s idle and text is not transient indicator
+                    if text == last_text and len(text) > 0 and text.lower() not in ("thinking", "thought", "working"):
                         stable_count += 1
-                        if stable_count >= 3:  # unchanged for ~1.5s
+                        if stable_count >= 30:  # unchanged for ~15s
                             return text
                     else:
                         last_text = text
@@ -370,9 +380,43 @@ def resolve_targets(host: str = "127.0.0.1") -> Dict[str, Dict[str, Any]]:
     return targets
 
 
+def check_status(as_json: bool = False):
+    """Scan and report health and active oracle targets across all known nodes."""
+    nodes = {
+        "181 (Bittorrent VM)": "127.0.0.1",
+        "137 (BattleStation GPU)": "10.0.10.137",
+    }
+    status_report = {}
+    for node_label, host in nodes.items():
+        targets = resolve_targets(host)
+        all_tabs = get_tabs(host)
+        status_report[node_label] = {
+            "host": host,
+            "cdp_reachable": len(all_tabs) > 0,
+            "total_page_tabs": len(all_tabs),
+            "oracles_discovered": list(targets.keys()),
+            "details": {
+                name: {"title": tab.get("title"), "url": tab.get("url")}
+                for name, tab in targets.items()
+            },
+        }
+
+    if as_json:
+        print(json.dumps(status_report, indent=2))
+    else:
+        print("=== BOYLENET VIRTUAL BROWSER ORACLE FLEET STATUS ===")
+        for node_label, data in status_report.items():
+            print(f"\nNode: {node_label} ({data['host']}:9222)")
+            print(f"  CDP Bridge: {'ONLINE' if data['cdp_reachable'] else 'OFFLINE'}")
+            print(f"  Active Tabs: {data['total_page_tabs']}")
+            print(f"  Available Oracles: {', '.join(data['oracles_discovered']) if data['oracles_discovered'] else 'NONE'}")
+            for name, d in data["details"].items():
+                print(f"    - {name:<10}: {d['title']} ({d['url']})")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Unified Boylenet Virtual Browser Oracle Client")
-    parser.add_argument("prompt", help="Prompt query to submit to the oracle")
+    parser.add_argument("prompt", nargs="?", default=None, help="Prompt query to submit to the oracle")
     parser.add_argument(
         "--oracle",
         choices=["gemini", "chatgpt", "claude-a", "claude-b", "all"],
@@ -390,8 +434,16 @@ def main():
     parser.add_argument("--json", action="store_true", help="Output results in structured JSON format")
     parser.add_argument("--consensus", action="store_true", help="Evaluate consensus matrix across oracle verdicts")
     parser.add_argument("--unanimous", action="store_true", help="Require unanimous agreement for consensus")
+    parser.add_argument("--status", action="store_true", help="Display health and discovery status of all virtual browser oracle nodes")
 
     args = parser.parse_args()
+
+    if args.status:
+        check_status(as_json=args.json)
+        return
+
+    if not args.prompt:
+        parser.error("the following arguments are required: prompt (or specify --status)")
 
     # Determine host
     if args.host:
