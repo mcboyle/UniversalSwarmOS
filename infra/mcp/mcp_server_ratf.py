@@ -87,6 +87,9 @@ def ctx_slice(
     lang: str | None = "python",
     endpoint: str | None = "",
     timeout: float | None = 15,
+    skeleton: bool | None = False,
+    symbol: str | None = "",
+    file_path: str | None = "",
 ) -> str:
     """Query or parse code using the Tree-sitter AST server at 127.0.0.1:8095.
 
@@ -94,15 +97,18 @@ def ctx_slice(
         code: Source code string to parse or query.
         pattern: AST pattern to match (ast-grep query). If provided, sends a query request.
         lang: Target language for pattern query (default: python).
-        endpoint: Specific endpoint override ('parse', 'query', 'health'). If empty, determined automatically.
+        endpoint: Specific endpoint override ('parse', 'query', 'health', 'skeleton', 'symbol'). If empty, determined automatically.
         timeout: Request timeout in seconds (default: 15).
+        skeleton: If True, request AST skeleton projection (bodies folded to ...).
+        symbol: If provided, extract the definition of this symbol.
+        file_path: Path to source file on disk (optional).
     """
     if endpoint is not None and not isinstance(endpoint, str):
-        return f"Error: Unsupported endpoint '{endpoint}'. Supported endpoints: 'parse', 'query', 'health'."
+        return f"Error: Unsupported endpoint '{endpoint}'. Supported endpoints: 'parse', 'query', 'health', 'skeleton', 'symbol'."
 
     ep = endpoint.strip().lower() if endpoint else ""
-    if ep and ep not in ("parse", "query", "health"):
-        return f"Error: Unsupported endpoint '{endpoint}'. Supported endpoints: 'parse', 'query', 'health'."
+    if ep and ep not in ("parse", "query", "health", "skeleton", "symbol"):
+        return f"Error: Unsupported endpoint '{endpoint}'. Supported endpoints: 'parse', 'query', 'health', 'skeleton', 'symbol'."
 
     if timeout is None:
         timeout = 15
@@ -116,16 +122,35 @@ def ctx_slice(
     code_str = "" if code is None else str(code)
     pattern_str = "" if pattern is None else str(pattern)
     lang_str = "python" if not lang else str(lang)
+    symbol_str = "" if symbol is None else str(symbol).strip()
+    file_path_str = "" if file_path is None else str(file_path).strip()
+    is_skeleton = bool(skeleton) or (ep == "skeleton")
 
     base_url = "http://127.0.0.1:8095"
 
     try:
-        if ep == "health" or (not ep and not code_str and not pattern_str):
+        if ep == "health" or (not ep and not code_str and not pattern_str and not is_skeleton and not symbol_str and not file_path_str):
             req = urllib.request.Request(f"{base_url}/health", method="GET")
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 return resp.read().decode("utf-8", errors="replace")
 
-        if ep == "query" or (not ep and pattern_str):
+        if is_skeleton:
+            payload_dict = {}
+            if code_str:
+                payload_dict["code"] = code_str
+            if file_path_str:
+                payload_dict["file_path"] = file_path_str
+            payload = json.dumps(payload_dict).encode("utf-8")
+            target = f"{base_url}/skeleton"
+        elif symbol_str or ep == "symbol":
+            payload_dict = {"symbol": symbol_str}
+            if code_str:
+                payload_dict["code"] = code_str
+            if file_path_str:
+                payload_dict["file_path"] = file_path_str
+            payload = json.dumps(payload_dict).encode("utf-8")
+            target = f"{base_url}/symbol"
+        elif ep == "query" or (not ep and pattern_str):
             payload = json.dumps(
                 {"pattern": pattern_str, "code": code_str, "lang": lang_str}
             ).encode("utf-8")
@@ -156,6 +181,7 @@ def ctx_slice(
         ValueError,
     ) as exc:
         return f"Error connecting to AST server: {exc}"
+
 
 
 @mcp.tool()
