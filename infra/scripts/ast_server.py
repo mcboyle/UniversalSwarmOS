@@ -108,7 +108,7 @@ def get_symbol_def(code: str, symbol: str) -> dict:
     """Finds a symbol definition in the given code and returns start/end lines and snippet."""
     tree = ast.parse(code)
     parts = symbol.strip().split(".")
-    found_node = None
+    found_node: ast.AST | None = None
 
     if len(parts) == 1:
         target = parts[0]
