@@ -1,0 +1,11 @@
+{
+  "title": "RFC-0014: Operator Signature Provenance and Seat Attribution Invariant",
+  "date": "2026-09-25T09:25:00Z",
+  "authority": "PM Order PM-TO-AGY-20260925T0925Z-MCB-SIGNATURE.md (Operator O1393)",
+  "invariants": [
+    "A message signed -MCB is treated as coming directly from the operator.",
+    "Seats MUST NOT append -MCB to their own status lines or tool outputs.",
+    "Seats MUST sign lines with their own seat name (e.g. [AGY-Council], [bd-agy-council-pro], [bd-agy-worker-g1]).",
+    "Use -MCB ONLY when quoting the operator verbatim, with explicit source attribution."
+  ]
+}
