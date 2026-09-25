@@ -5,7 +5,7 @@ import hashlib
 import json
 import logging
 import subprocess
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 HOST = "0.0.0.0"
@@ -21,6 +21,7 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
+logger = logging.getLogger("ast_server")
 
 
 class SkeletonTransformer(ast.NodeTransformer):
@@ -82,9 +83,7 @@ class SkeletonTransformer(ast.NodeTransformer):
             start_idx = 1
 
         for item in node.body[start_idx:]:
-            if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                new_body.append(self.visit(item))
-            elif isinstance(item, ast.ClassDef):
+            if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 new_body.append(self.visit(item))
             elif isinstance(item, (ast.AnnAssign, ast.Assign)):
                 new_body.append(item)
@@ -183,7 +182,7 @@ class ASTServerHandler(BaseHTTPRequestHandler):
 
         try:
             payload = json.loads(body.decode("utf-8"))
-        except Exception as e:
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
             self.send_response(400)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
@@ -226,7 +225,8 @@ class ASTServerHandler(BaseHTTPRequestHandler):
                     ["/home/mboyle/.local/bin/ast-grep", "run", "--pattern", pattern, "--lang", lang, "--stdin"],
                     input=code.encode("utf-8"),
                     capture_output=True,
-                    timeout=5
+                    timeout=5,
+                    check=False,
                 )
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
@@ -236,7 +236,7 @@ class ASTServerHandler(BaseHTTPRequestHandler):
                     "matches": proc.stdout.decode("utf-8"),
                     "returncode": proc.returncode
                 }).encode("utf-8"))
-            except Exception as e:
+            except (OSError, subprocess.SubprocessError) as e:
                 self.send_response(500)
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
@@ -260,7 +260,7 @@ class ASTServerHandler(BaseHTTPRequestHandler):
                     return
                 try:
                     code = p.read_text(encoding="utf-8", errors="replace")
-                except Exception as e:
+                except OSError as e:
                     self.send_response(500)
                     self.send_header("Content-Type", "application/json")
                     self.end_headers()
@@ -289,7 +289,7 @@ class ASTServerHandler(BaseHTTPRequestHandler):
                 try:
                     skeleton = cache_file.read_text(encoding="utf-8")
                     cached = True
-                except Exception:
+                except OSError:
                     cached = False
 
             if not cached:
@@ -307,7 +307,7 @@ class ASTServerHandler(BaseHTTPRequestHandler):
                         "lineno": se.lineno
                     }).encode("utf-8"))
                     return
-                except Exception as e:
+                except (ValueError, TypeError) as e:
                     self.send_response(500)
                     self.send_header("Content-Type", "application/json")
                     self.end_headers()
@@ -359,7 +359,7 @@ class ASTServerHandler(BaseHTTPRequestHandler):
                     return
                 try:
                     code = p.read_text(encoding="utf-8", errors="replace")
-                except Exception as e:
+                except OSError as e:
                     self.send_response(500)
                     self.send_header("Content-Type", "application/json")
                     self.end_headers()
@@ -397,7 +397,7 @@ class ASTServerHandler(BaseHTTPRequestHandler):
                     "error": str(se),
                     "lineno": se.lineno
                 }).encode("utf-8"))
-            except Exception as e:
+            except (ValueError, TypeError) as e:
                 self.send_response(500)
                 self.send_header("Content-Type", "application/json")
                 self.end_headers()
@@ -410,13 +410,13 @@ class ASTServerHandler(BaseHTTPRequestHandler):
         self.send_response(404)
         self.end_headers()
 
-    def log_message(self, format, *args):
-        logging.info("%s - - [%s] %s" % (self.client_address[0], self.log_date_time_string(), format % args))
+    def log_message(self, format_str, *args):
+        logger.info(f"{self.client_address[0]} - - [{self.log_date_time_string()}] {format_str % args}")
 
 
 def main():
     server = HTTPServer((HOST, PORT), ASTServerHandler)
-    logging.info(f"Tree-sitter AST Server listening on {HOST}:{PORT}")
+    logger.info(f"Tree-sitter AST Server listening on {HOST}:{PORT}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

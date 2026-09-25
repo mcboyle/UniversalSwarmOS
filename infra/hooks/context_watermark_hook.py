@@ -11,11 +11,10 @@ Prevents premature token compaction against the 150,000 (worker) and 250,000
 
 import argparse
 import json
-import os
 import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any
 
 DEFAULT_MIN_RUN = 3
 WORKER_COMPACTION_CEILING = 150000
@@ -46,7 +45,7 @@ class ContextWatermarkFilter:
         self.worker_ceiling = worker_ceiling
         self.orchestrator_ceiling = orchestrator_ceiling
 
-    def is_passing_event(self, event: Union[Dict[str, Any], str]) -> bool:
+    def is_passing_event(self, event: dict[str, Any] | str) -> bool:
         """Determines whether a tool execution event was successful (Exit 0, no errors)."""
         if isinstance(event, str):
             for pat in ERROR_PATTERNS:
@@ -59,14 +58,12 @@ class ContextWatermarkFilter:
 
         # Explicit exit code check
         exit_code = event.get("exit_code")
-        if exit_code is not None:
-            if exit_code != 0:
-                return False
+        if exit_code is not None and exit_code != 0:
+            return False
 
         returncode = event.get("returncode")
-        if returncode is not None:
-            if returncode != 0:
-                return False
+        if returncode is not None and returncode != 0:
+            return False
 
         if event.get("is_error") is True:
             return False
@@ -91,11 +88,11 @@ class ContextWatermarkFilter:
         return True
 
     def collapse_events(
-        self, events: List[Union[Dict[str, Any], str]]
-    ) -> List[Union[Dict[str, Any], str]]:
+        self, events: list[dict[str, Any] | str]
+    ) -> list[dict[str, Any] | str]:
         """Collapses consecutive passing tool executions into 1-line event tombstones."""
-        collapsed: List[Union[Dict[str, Any], str]] = []
-        passing_streak: List[Union[Dict[str, Any], str]] = []
+        collapsed: list[dict[str, Any] | str] = []
+        passing_streak: list[dict[str, Any] | str] = []
 
         def flush_streak():
             nonlocal passing_streak, collapsed
@@ -138,14 +135,13 @@ class ContextWatermarkFilter:
         return collapsed
 
     def filter_transcript_records(
-        self, records: List[Dict[str, Any]]
-    ) -> Tuple[List[Dict[str, Any]], int, int]:
+        self, records: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], int, int]:
         """Processes structured transcript records, tombstoning runs of successful tool results."""
-        initial_chars = sum(len(json.dumps(r)) for r in records)
         initial_tokens = estimate_tokens(json.dumps(records))
 
-        filtered_records: List[Dict[str, Any]] = []
-        streak_nodes: List[Dict[str, Any]] = []
+        filtered_records: list[dict[str, Any]] = []
+        streak_nodes: list[dict[str, Any]] = []
 
         def flush_record_streak():
             nonlocal streak_nodes, filtered_records

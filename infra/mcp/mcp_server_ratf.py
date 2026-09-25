@@ -281,7 +281,7 @@ def ctx_resolve(
 
         results = [f"[{r['doc_id']}] {r['title']} (score: {r['rank']:.4f})\n{r['snippet']}..." for r in rows]
         return "\n\n".join(results)
-    except Exception as exc:
+    except (psycopg2.Error, OSError, ValueError, KeyError) as exc:
         return f"Error executing retrieval in ai_mesh: {exc}"
 
 
