@@ -39,6 +39,8 @@
     to read. Routers glob only `<cut>/.review/VERDICT-*.md`.
 
 ## AUTHORITY, SAFETY, BOUNDARIES
+21. NO NODE IS OFF LIMITS: All cluster nodes across the 27-node Boylenet mesh (including test2 10.0.70.95 and all satellites)
+    are accessible, probeable, and eligible for automated fleet workloads and dispatch. No host is off-limits.
 22. NO WORKTREE DELETED OR RESET, EVER. Assign/reset = deletion by another name.
 23. LOCAL CUT AUTHORITATIVE over codex copy.
 24. READ-ONLY SEATS (codexwatch, verify, cartograph, audit, ideas, nurse, status) never write a

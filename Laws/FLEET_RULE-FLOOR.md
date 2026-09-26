@@ -12,6 +12,7 @@ A is VERBATIM. B is a COMPRESSED HANDLE, not the wording: before a B line decide
 the rule -- bd law("<title>") or sed -n '/^NN./,/^[0-9]/p' SOURCE. C is an index; all bind unread.
 
 ## TIER A -- VERBATIM. SAFETY + OUTPUT CONTRACT. NEVER PARAPHRASED.
+21. NO NODE IS OFF LIMITS: All 27 nodes (including test2 10.0.70.95) are accessible and eligible for automated operations; no host is off-limits.
 22. NO WORKTREE IS DELETED OR RESET, EVER. Assign/reset = deletion by another name.
 26. KNOW WHICH SEAT YOU ARE, WITH EVIDENCE (a pane title is a label; a compaction summary is a
     claim). No evidence -> issue nothing, ask.
@@ -49,7 +50,7 @@ the rule -- bd law("<title>") or sed -n '/^NN./,/^[0-9]/p' SOURCE. C is an index
 14 decision written with its evidence|20 write-target
 named separately from read-target|35 BOARD only in <cut>/.review/VERDICT-*.md|2 bootstrap exempt|3
 PM asks|4 say what is left|5 cadence|10 anchor a process probe|12 measurements!=actions|18 brief's
-"skip" can be wrong|23 local cut authoritative|25 declined != hold|28 presence file|29 5h headroom|31 closures ride the train|31b verdict hook warns|32 small-fix lane & fast track|34 fix/file a round-costing
+"skip" can be wrong|21 no node is off limits|23 local cut authoritative|25 declined != hold|28 presence file|29 5h headroom|31 closures ride the train|31b verdict hook warns|32 small-fix lane & fast track|34 fix/file a round-costing
 tool|35b review.log emitter|36 verdict records its object|37 one decision one place|39 bd-say
 crosses pools, SendMessage not|41 hermetic git fixtures|42 census substring guards|43 Claude RC
 endpoint|44 async marker flush|45 playwright teardown|46 CI matrix parity|47 monkeypatch purge|48

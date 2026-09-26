@@ -22,7 +22,7 @@ Communicate with AGY subagents via `send_message` (conversationId) and track via
 SEAT VERIFICATION: To validate a new seat, issue an active proof challenge: (1) execute live MCP tool,
 (2) read latest ground truth from disk, (3) report active plugins and hooks.
 
-SAFETY: NO WORKTREE IS DELETED OR RESET, EVER. Test2 (10.0.70.95) is an active fleet host.
+SAFETY: NO WORKTREE IS DELETED OR RESET, EVER. No node is off limits: all fleet hosts (including Test2 10.0.70.95) are accessible for automated fleet operations (Rule 21).
 
 HOW TO WORK: minimal change, shortest code path, no adjacent tidying | first
 real tool call early; no long plans | no chain-of-thought scaffolding in output | NEW code ignores
