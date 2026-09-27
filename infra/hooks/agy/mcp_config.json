@@ -1,27 +1,29 @@
 {
   "mcpServers": {
     "bd": {
-      "type": "http",
-      "url": "http://10.0.70.164:8100/mcp"
+      "defer_loading": false,
+      "disabled": false,
+      "serverUrl": "http://10.0.70.164:8100/mcp"
     },
     "bd-bus": {
       "args": [
         "-m",
         "bd_bus_mcp"
       ],
-      "command": "python3"
+      "command": "python3",
+      "defer_loading": false
     },
     "bd-fleet": {
       "args": [
         "/home/mboyle/bd-persist/plugins/bd-fleet-mcp/server.py"
       ],
-      "command": "/home/mboyle/bd-persist/harness/bd-mcp/venv/bin/python"
+      "command": "/home/mboyle/bd-persist/harness/bd-mcp/venv/bin/python",
+      "defer_loading": false
     },
     "caveman": {
       "args": [],
       "command": "/home/mboyle/.caveman/bin/caveman-mcp",
-      "env": {},
-      "type": "stdio"
+      "defer_loading": false
     },
     "context-mode": {
       "args": [
@@ -29,13 +31,7 @@
         "context-mode"
       ],
       "command": "npx",
-      "type": "stdio"
-    },
-    "fleet-sync": {
-      "args": [
-        "/home/mboyle/teamwork_projects/fleet_sync_tool/fleet_sync_mcp.py"
-      ],
-      "command": "python3"
+      "defer_loading": false
     },
     "pg-local": {
       "args": [
@@ -44,7 +40,7 @@
         "postgresql://postgres:postgres@127.0.0.1:5432/ai_mesh"
       ],
       "command": "npx",
-      "type": "stdio"
+      "defer_loading": false
     },
     "python-linter": {
       "args": [
@@ -52,14 +48,15 @@
         "mcp_server_ruff"
       ],
       "command": "python3",
-      "type": "stdio"
+      "defer_loading": false
     },
     "ratf": {
       "args": [
         "-m",
         "mcp_server_ratf"
       ],
-      "command": "python3"
+      "command": "python3",
+      "defer_loading": false
     },
     "type-enforcer": {
       "args": [
@@ -67,7 +64,7 @@
         "mcp_server_mypy"
       ],
       "command": "python3",
-      "type": "stdio"
+      "defer_loading": false
     },
     "vmware-clones": {
       "args": [
@@ -77,7 +74,7 @@
         "10.0.70.1"
       ],
       "command": "python3",
-      "type": "stdio"
+      "defer_loading": false
     }
   }
 }

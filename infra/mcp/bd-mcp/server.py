@@ -38,6 +38,74 @@ ArgModelBase.model_dump_one_level = _custom_model_dump_one_level
 mcp = FastMCP("bd")
 
 
+def sort_keys_recursive(val: Any) -> Any:
+    """Recursively sort dictionary keys for deterministic canonicalization."""
+    if isinstance(val, dict):
+        return {k: sort_keys_recursive(v) for k, v in sorted(val.items())}
+    if isinstance(val, list):
+        return [sort_keys_recursive(x) for x in val]
+    return val
+
+
+def serialize_tools_canonical(tools: list | None = None) -> str:
+    """Canonicalize and serialize tool schemas with sorted keys and alphabetical ordering."""
+    if tools is None:
+        raw_tools = mcp._tool_manager.list_tools()
+        tools_data = []
+        for t in raw_tools:
+            item = {
+                "name": t.name,
+                "description": t.description or "",
+                "inputSchema": t.parameters if isinstance(t.parameters, dict) else {},
+            }
+            if hasattr(t, "output_schema") and t.output_schema:
+                item["outputSchema"] = t.output_schema
+            tools_data.append(item)
+    else:
+        tools_data = tools
+
+    sorted_tools = sorted([sort_keys_recursive(t) for t in tools_data], key=lambda x: x.get("name", ""))
+    return json.dumps(sorted_tools, sort_keys=True, separators=(',', ':'), ensure_ascii=True)
+
+
+def _apply_mcp_canonicalization(mcp_server: FastMCP):
+    orig_list = mcp_server._tool_manager.list_tools
+    def sorted_list():
+        items = orig_list()
+        for t in items:
+            if hasattr(t, "parameters") and isinstance(t.parameters, dict):
+                t.parameters = sort_keys_recursive(t.parameters)
+            if hasattr(t, "output_schema") and isinstance(t.output_schema, dict):
+                t.output_schema = sort_keys_recursive(t.output_schema)
+        return sorted(items, key=lambda t: t.name)
+    mcp_server._tool_manager.list_tools = sorted_list
+
+    if hasattr(mcp_server, "_mcp_server") and hasattr(mcp_server._mcp_server, "request_handlers"):
+        import mcp.types as types
+        orig_handler = mcp_server._mcp_server.request_handlers.get(types.ListToolsRequest)
+        if orig_handler:
+            async def sorted_list_tools_handler(req: types.ListToolsRequest):
+                result = await orig_handler(req)
+                if hasattr(result, "root") and hasattr(result.root, "tools"):
+                    result.root.tools.sort(key=lambda t: t.name)
+                    for t in result.root.tools:
+                        if hasattr(t, "inputSchema") and isinstance(t.inputSchema, dict):
+                            t.inputSchema = sort_keys_recursive(t.inputSchema)
+                return result
+            mcp_server._mcp_server.request_handlers[types.ListToolsRequest] = sorted_list_tools_handler
+
+    import mcp.types as types
+    def deterministic_model_dump_json(self, *args, **kwargs):
+        d = self.model_dump(by_alias=True, exclude_none=True)
+        return json.dumps(sort_keys_recursive(d), sort_keys=True, separators=(',', ':'), ensure_ascii=True)
+
+    types.JSONRPCResponse.model_dump_json = deterministic_model_dump_json
+    types.JSONRPCNotification.model_dump_json = deterministic_model_dump_json
+
+_apply_mcp_canonicalization(mcp)
+
+
+
 # ---------------------------------------------------------------- helpers
 def _refuse_forbidden(*texts: str):
     for t in texts:
@@ -622,11 +690,25 @@ async def _selftest() -> int:
     finally:
         if old_bd_seat is not None:
             os.environ["BD_SEAT"] = old_bd_seat
+    # R2: Verify 0-byte tool schema diff across consecutive turns
+    s1 = serialize_tools_canonical()
+    for turn in range(2, 21):
+        s_turn = serialize_tools_canonical()
+        if s_turn != s1:
+            diff_len = abs(len(s_turn.encode('utf-8')) - len(s1.encode('utf-8')))
+            print(f"FAIL tool schema diff between turns is {diff_len} bytes"); fails += 1
+            break
+    else:
+        print("OK   0-byte tool schema diff across 20 turns verified")
+
     print("SELFTEST", "PASS" if fails == 0 else f"FAIL ({fails})")
     return 0 if fails == 0 else 1
 
 
 if __name__ == "__main__":
+    if "--canonical-schemas" in sys.argv or "--tools" in sys.argv:
+        print(serialize_tools_canonical())
+        sys.exit(0)
     if "--selftest" in sys.argv:
         sys.exit(asyncio.run(_selftest()))
     if "--http" in sys.argv:

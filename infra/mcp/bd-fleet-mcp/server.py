@@ -24,7 +24,76 @@ PERSIST = Path(os.environ.get('BD_PERSIST', str(HOME / 'bd-persist')))
 HARNESS = Path(os.environ.get('BD_HARNESS', str(PERSIST / 'harness')))
 REPO = Path(os.environ.get('BD_REPO', str(HOME / 'BulkDownloader')))
 RECENT_SAY_CACHE = Path(os.environ.get('BD_SAY_CACHE', str(Path(__file__).parent / 'state/say-recent.json')))
+_default_schema = HOME / '.gemini/antigravity-cli/mcp'
+if not _default_schema.is_dir():
+    _default_schema = Path('/home/mboyle/.gemini/antigravity-cli/mcp')
+SCHEMA_DIR = Path(os.environ.get('BD_MCP_SCHEMA_DIR', str(_default_schema)))
 mcp = FastMCP('bd-fleet')
+
+def sort_keys_recursive(val: Any) -> Any:
+    """Recursively sort dictionary keys for deterministic canonicalization."""
+    if isinstance(val, dict):
+        return {k: sort_keys_recursive(v) for k, v in sorted(val.items())}
+    if isinstance(val, list):
+        return [sort_keys_recursive(x) for x in val]
+    return val
+
+def serialize_tools_canonical(tools: list | None = None) -> str:
+    """Canonicalize and serialize tool schemas with sorted keys and alphabetical ordering."""
+    if tools is None:
+        raw_tools = mcp._tool_manager.list_tools()
+        tools_data = []
+        for t in raw_tools:
+            item = {
+                "name": t.name,
+                "description": t.description or "",
+                "inputSchema": t.parameters if isinstance(t.parameters, dict) else {},
+            }
+            if hasattr(t, "output_schema") and t.output_schema:
+                item["outputSchema"] = t.output_schema
+            tools_data.append(item)
+    else:
+        tools_data = tools
+
+    sorted_tools = sorted([sort_keys_recursive(t) for t in tools_data], key=lambda x: x.get("name", ""))
+    return json.dumps(sorted_tools, sort_keys=True, separators=(',', ':'), ensure_ascii=True)
+
+def _apply_mcp_canonicalization(mcp_server: FastMCP):
+    orig_list = mcp_server._tool_manager.list_tools
+    def sorted_list():
+        items = orig_list()
+        for t in items:
+            if hasattr(t, "parameters") and isinstance(t.parameters, dict):
+                t.parameters = sort_keys_recursive(t.parameters)
+            if hasattr(t, "output_schema") and isinstance(t.output_schema, dict):
+                t.output_schema = sort_keys_recursive(t.output_schema)
+        return sorted(items, key=lambda t: t.name)
+    mcp_server._tool_manager.list_tools = sorted_list
+
+    if hasattr(mcp_server, "_mcp_server") and hasattr(mcp_server._mcp_server, "request_handlers"):
+        import mcp.types as types
+        orig_handler = mcp_server._mcp_server.request_handlers.get(types.ListToolsRequest)
+        if orig_handler:
+            async def sorted_list_tools_handler(req: types.ListToolsRequest):
+                result = await orig_handler(req)
+                if hasattr(result, "root") and hasattr(result.root, "tools"):
+                    result.root.tools.sort(key=lambda t: t.name)
+                    for t in result.root.tools:
+                        if hasattr(t, "inputSchema") and isinstance(t.inputSchema, dict):
+                            t.inputSchema = sort_keys_recursive(t.inputSchema)
+                return result
+            mcp_server._mcp_server.request_handlers[types.ListToolsRequest] = sorted_list_tools_handler
+
+    import mcp.types as types
+    def deterministic_model_dump_json(self, *args, **kwargs):
+        d = self.model_dump(by_alias=True, exclude_none=True)
+        return json.dumps(sort_keys_recursive(d), sort_keys=True, separators=(',', ':'), ensure_ascii=True)
+
+    types.JSONRPCResponse.model_dump_json = deterministic_model_dump_json
+    types.JSONRPCNotification.model_dump_json = deterministic_model_dump_json
+
+_apply_mcp_canonicalization(mcp)
+
 
 def _run_cmd(cmd, timeout=30.0):
     return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, errors='replace')
@@ -238,9 +307,9 @@ def _cache_transaction(record):
     finally:
         if lock is not None:lock.close()
 
-@mcp.tool()
-def say_validate(target: str, message: str, sender: Optional[str] = None, record_send: bool = False) -> dict:
-    """Validate target and terse content; --record reserves attempts atomically, never proves delivery."""
+def _say_static(target, message, sender):
+    """Everything that needs no cache: names, sender, registry, length. Runs OUTSIDE the cache lock
+    (H704: who-all is a subprocess; holding the 2 s lock across it timed out concurrent senders)."""
     result=dict(valid=False,target_requested=target,target_resolved=target,violations=[],strikes=0,
                 duplicate_count=0,is_duplicate=False,verdict='REJECT',delivery='NOT_ATTEMPTED')
     errors=result['violations']
@@ -260,19 +329,53 @@ def say_validate(target: str, message: str, sender: Optional[str] = None, record
         has_path=bool(re.search(r'(?:^|\s)(?:/[^\s]+|https?://\S+|[\w./-]+\.(?:md|log|txt|json|tsv))(?=\s|$)',message))
         result.update(char_count=len(message),has_path=has_path)
         if len(message)>30 and not has_path:errors.append('length_exceeded: >30 chars without path')
-        with _cache_transaction(record_send) as cache:
-            history=cache.get(sender,[])
-            repeats=sum(e['msg']==message for e in history)
-            result.update(duplicate_count=repeats,is_duplicate=repeats>0)
-            if repeats>=2:errors.append('duplicate_repeat_suppressed')
-            if record_send:
-                history.append({'msg':message,'ts':time.time(),'rejected':bool(errors)})
-                cache[sender]=history
-            result['strikes']=sum(bool(e.get('rejected')) for e in history) or len(errors)
-        result.update(valid=not errors,verdict='REJECT' if errors else 'ALLOW')
     except (OSError,ValueError,subprocess.SubprocessError) as exc:
         errors.append(str(exc));result['strikes']=max(1,result['strikes'])
+        return result,sender,None
+    return result,sender,target
+
+def _say_dedupe(result, sender, target, message, cache, pending):
+    """Under the cache lock: repeats + strikes; returns the entry to record."""
+    errors=result['violations']
+    # H704: a duplicate is the same text to the SAME target that was ALLOWED before; a broadcast
+    # (same text, other targets) and a refused attempt are not sends.
+    history=cache.get(sender,[])+[e for s,e in pending if s==sender]
+    repeats=sum(e['msg']==message and e.get('target')==target and not e.get('rejected') for e in history)
+    result.update(duplicate_count=repeats,is_duplicate=repeats>0)
+    if repeats>=2:errors.append('duplicate_repeat_suppressed')
+    result['strikes']=sum(bool(e.get('rejected')) for e in history)+bool(errors) or len(errors)
+    return {'msg':message,'target':target,'ts':time.time(),'rejected':bool(errors)}
+
+def _verdict(result):
+    result.update(valid=not result['violations'],verdict='REJECT' if result['violations'] else 'ALLOW')
     return result
+
+def say_validate_batch(items, record_send=False):
+    """Validate (target, message, sender) sends under one cache transaction. With record_send, refused
+    lines are recorded as strikes; allowed lines are recorded only when no line refuses (H704: a
+    blocked Bash sends nothing, so its allowed lines must not count against the retry)."""
+    prepared=[_say_static(t,m,s)+(m,) for t,m,s in items]
+    results=[];pending=[]
+    try:
+        with _cache_transaction(record_send) as cache:
+            for result,sender,target,message in prepared:
+                if target is not None:pending.append((sender,_say_dedupe(result,sender,target,message,cache,pending)))
+                results.append(_verdict(result))
+            if record_send:
+                blocked=any(not r['valid'] for r in results)
+                for sender,entry in pending:
+                    if entry['rejected'] or not blocked:cache.setdefault(sender,[]).append(entry)
+    except (OSError,ValueError,subprocess.SubprocessError) as exc:
+        results=[]
+        for target,_message,_sender in items:
+            results.append(dict(valid=False,target_requested=target,target_resolved=target,violations=[str(exc)],strikes=1,
+                                duplicate_count=0,is_duplicate=False,verdict='REJECT',delivery='NOT_ATTEMPTED'))
+    return results
+
+@mcp.tool()
+def say_validate(target: str, message: str, sender: Optional[str] = None, record_send: bool = False) -> dict:
+    """Validate target and terse content; --record reserves attempts atomically, never proves delivery."""
+    return say_validate_batch([(target,message,sender)],record_send)[0]
 
 @mcp.tool()
 def role_state_set(role: str, seat: str, text: Optional[str] = None, state: Optional[str] = None) -> dict:
@@ -295,7 +398,160 @@ def role_state_get(role: str) -> dict:
         return dict(role=role,rc=p.returncode,state=p.stdout.strip(),error=p.stderr.strip())
     except (OSError,subprocess.SubprocessError) as exc:return dict(role=role,rc=2,error=str(exc))
 
+SERVER_CATEGORIES = {
+    'vmware-clones': 'infra',
+    'bd-bus': 'bus',
+    'bd-fleet': 'fleet',
+    'bd-fleet-mcp_bd-fleet': 'fleet',
+    'bd': 'harness',
+    'python-linter': 'linter',
+    'type-enforcer': 'typecheck',
+    'ratf': 'ast',
+    'pg-local': 'database',
+    'caveman': 'compression',
+    'context-mode': 'context',
+    'chrome_devtools': 'browser',
+}
+
+def _clean_summary(desc: str) -> str:
+    """Generate concise tool summary under ~15 tokens."""
+    if not desc:
+        return ''
+    line = desc.strip().splitlines()[0]
+    sentence = line.split('. ')[0].rstrip('.')
+    if len(sentence) > 80:
+        sentence = sentence[:77] + '...'
+    return sentence
+
+def mcp_discover(category: Optional[str] = None, filter_query: Optional[str] = None) -> list[dict]:
+    """Return compact list of available MCP tools and concise summaries (~15 tokens per tool)."""
+    cat_filter = str(category).lower().strip() if category is not None else None
+    q = str(filter_query).lower().strip() if filter_query is not None else None
+
+    schema_base = SCHEMA_DIR
+    if not schema_base.is_dir():
+        return []
+
+    tools_catalog = []
+    seen = set()
+
+    for server_dir in sorted(schema_base.iterdir()):
+        if not server_dir.is_dir():
+            continue
+        server_name = server_dir.name
+        # Skip duplicate internal plugin mirror if canonical directory exists
+        if server_name == 'bd-fleet-mcp_bd-fleet' and (schema_base / 'bd-fleet').is_dir():
+            continue
+
+        default_cat = SERVER_CATEGORIES.get(server_name, 'general')
+
+        for schema_file in sorted(server_dir.glob('*.json')):
+            try:
+                data = json.loads(schema_file.read_text(encoding='utf-8'))
+            except (OSError, json.JSONDecodeError):
+                continue
+
+            tool_name = data.get('name') or schema_file.stem
+            dedup_key = (server_name, tool_name)
+            if dedup_key in seen:
+                continue
+            seen.add(dedup_key)
+
+            tool_desc = data.get('description', '')
+            tool_cat = data.get('category') or default_cat
+            summary = _clean_summary(tool_desc)
+
+            if cat_filter:
+                cat_match = (
+                    cat_filter == tool_cat.lower()
+                    or cat_filter in tool_cat.lower()
+                    or cat_filter == server_name.lower()
+                    or cat_filter in server_name.lower()
+                )
+                if not cat_match:
+                    continue
+
+            if q:
+                q_match = (
+                    q in tool_name.lower()
+                    or q in tool_desc.lower()
+                    or q in tool_cat.lower()
+                    or q in server_name.lower()
+                    or q in summary.lower()
+                )
+                if not q_match:
+                    continue
+
+            tools_catalog.append({
+                'name': tool_name,
+                'server': server_name,
+                'category': tool_cat,
+                'summary': summary
+            })
+
+    return tools_catalog
+
+def mcp_hydrate(tools: list[str], server: Optional[str] = None) -> dict:
+    """Load and return full tool schema dictionary for requested tool(s) from schema catalog."""
+    if not tools:
+        return {}
+
+    if isinstance(tools, str):
+        tool_names = [tools]
+    elif isinstance(tools, (list, tuple, set)):
+        tool_names = [str(t) for t in tools]
+    else:
+        tool_names = [str(tools)]
+
+    schema_base = SCHEMA_DIR
+    if not schema_base.is_dir():
+        return {}
+
+    server_filter = str(server).strip() if server is not None else None
+    if server_filter and (Path(server_filter).name != server_filter or '..' in server_filter):
+        raise ValueError('invalid server name')
+
+    hydrated = {}
+
+    for t_name in tool_names:
+        t_clean = t_name.strip()
+        if not t_clean or Path(t_clean).name != t_clean or '..' in t_clean:
+            continue
+
+        matched_schema = None
+
+        if server_filter:
+            target_file = schema_base / server_filter / f"{t_clean}.json"
+            if target_file.is_file():
+                try:
+                    matched_schema = json.loads(target_file.read_text(encoding='utf-8'))
+                except (OSError, json.JSONDecodeError):
+                    pass
+        else:
+            for s_dir in sorted(schema_base.iterdir()):
+                if not s_dir.is_dir():
+                    continue
+                target_file = s_dir / f"{t_clean}.json"
+                if target_file.is_file():
+                    try:
+                        matched_schema = json.loads(target_file.read_text(encoding='utf-8'))
+                        break
+                    except (OSError, json.JSONDecodeError):
+                        continue
+
+        if matched_schema is not None:
+            hydrated[t_clean] = matched_schema
+
+    return hydrated
+
+if os.environ.get('BD_SEAT') != 'fixture':
+    mcp.tool()(mcp_discover)
+    mcp.tool()(mcp_hydrate)
+
 if __name__=='__main__':
+    if '--canonical-schemas' in sys.argv or '--tools' in sys.argv:
+        print(serialize_tools_canonical())
+        sys.exit(0)
     if sys.argv[1:]==['--selftest']:
         os.execv(sys.executable,[sys.executable,str(Path(__file__).parent/'tests/checks.py')])
     if len(sys.argv)>1:raise SystemExit('usage: server.py [--selftest]')

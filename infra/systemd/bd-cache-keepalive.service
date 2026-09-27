@@ -1,0 +1,20 @@
+[Unit]
+Description=Active Ephemeral TTL Keepalive Heartbeat Daemon (R3)
+After=network.target
+
+[Service]
+Type=simple
+User=mboyle
+WorkingDirectory=/home/mboyle/UniversalSwarmOS
+Environment=PATH=/home/mboyle/bin:/home/mboyle/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=LITELLM_GATEWAY_URL=http://127.0.0.1:4000
+Environment=PYTHONPATH=/home/mboyle/UniversalSwarmOS
+ExecStart=/home/mboyle/bin/bd-cache-keepalive start --foreground
+ExecStop=/home/mboyle/bin/bd-cache-keepalive stop
+Restart=always
+RestartSec=5
+StandardOutput=append:/home/mboyle/bd-persist/logs/keepalive.log
+StandardError=append:/home/mboyle/bd-persist/logs/keepalive.log
+
+[Install]
+WantedBy=multi-user.target

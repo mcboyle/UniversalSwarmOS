@@ -412,38 +412,18 @@ TEXT=$(tr '\n' ' ' < "$PROMPT" | tr -s ' ')
 # fresh ~3k-token user message on every relaunch.
 # The BD_SAY_KIND=bootstrap carve-out is now DEAD WEIGHT for this caller and is left in bd-say
 # only because other callers may still assert it. A carve-out nobody triggers is not a carve-out.
-SPFILE=/home/mboyle/bd-persist/role-systemprompts/$NAME.systemprompt
+SPFILE=/home/mboyle/bd-persist/role-systemprompts/$ROLE.frozen.systemprompt
 mkdir -p /home/mboyle/bd-persist/role-systemprompts
-# NOT flattened: a system-prompt file keeps its line breaks. The one-line squeeze existed only
-# because send-keys -l turns a newline into Enter and would submit the first line on its own.
-# ---- ROW 864: SUBAGENT-PROMPT-CACHE-PREFIX-LOCK-AND-VOLATILE-TAIL-ISOLATION ----
-# Freeze a static byte-exact prefix block (role prompt text, invariant rules, tools)
-# across all seats of the same role, and isolate all seat-specific volatile data strictly
-# to the tail. Prepending volatile timestamps or seat-name substitutions into the prefix
-# invalidates provider KV prompt caches across LLM worker pools (O870c).
+# ---- R1: 100% STATIC BYTE-EXACT SYSTEM PREAMBLE (FROZEN PREFIX ARCHITECTURE) ----
+# System preambles are 100% static and byte-identical across seats and turns.
+# Dynamic seat names, role state pointers, and volatile tokens are strictly eliminated from
+# --append-system-prompt-file to maximize KV prompt cache hits across fleet seats.
 {
-  # 1. STATIC BYTE-EXACT PREFIX BLOCK (FROZEN)
   cat "$PROMPT"
-  echo
-  # 2. VOLATILE TURN TAIL (ISOLATED SEAT IDENTITY & DYNAMIC POINTERS)
-  echo "# ---- VOLATILE TAIL: SEAT IDENTITY & DYNAMIC POINTERS (ROW 864) ----"
-  echo "YOU ARE $NAME. Your handoff is /home/mboyle/bd-persist/handoff-$NAME.md -- read it if it exists."
-  echo "Your compact file is /home/mboyle/bd-persist/compact-$NAME.md."
-  echo "Message tool: $SAY. Use this exact path; never guess a suffix."
-  # ---- THE ROLE'S STATE, WHICH IS NOT THE SEAT'S HANDOFF. Item 9, 2026-09-09, ruling R2.
-  # MEASURED: all 47 handoff files are keyed by SEAT NAME and none by role, and the three sed lines
-  # above point every seat at handoff-<ITS OWN NAME>.md. So under R2, when the twin on the other
-  # account TAKES OVER a stopped pool's SINGLE role, it is pointed at ITS OWN history and never at
-  # the predecessor's in-flight work. THE HANDOVER READ THE WRONG FILE BY CONSTRUCTION and would
-  # have looked like a clean start. This names the ROLE-keyed file as well.
-  # BOTH HALVES ASSERTED HERE: the tool writes it, and this is what makes a seat READ it.
-  echo "YOUR ROLE IS $ROLE. Its state is /home/mboyle/bd-persist/role-state/$ROLE.md -- READ IT FIRST."
-  echo "That file is keyed by ROLE, not by seat: if you are taking this role over from another seat"
-  echo "or another account, IT IS WHERE THE PREDECESSOR'S IN-FLIGHT WORK IS. Your own handoff above"
-  echo "is your memory across a compaction; the role state is the ROLE's memory across a SEAT."
-  echo "Keep it current: /home/mboyle/bd-role-state.sh set $ROLE $NAME \"<what is in flight>\""
 } > "$SPFILE" || die 4 "could not write system-prompt file $SPFILE"
 [ -s "$SPFILE" ] || die 4 "system-prompt file $SPFILE is empty"
+# Maintain seat-name alias for backwards compatibility
+ln -sf "$SPFILE" "/home/mboyle/bd-persist/role-systemprompts/$NAME.systemprompt" 2>/dev/null || true
 
 if [ "$POOL" = codex ]; then
   [ -x "$CODEX" ] || die 8 "codex backend $CODEX is absent or not executable -- build it (harness-work/codex-lens) before launching a codex role"
@@ -601,8 +581,28 @@ done
 # ** AND THE FAILURE IS NOW LOUD INSTEAD OF SILENT. ** If this send is refused, the seat is
 # ROLE-CORRECT and merely un-started; re-kicking it is safe and idempotent. Under the old scheme
 # a refused send left a seat that would never know its role no matter how long you waited.
-KICK="BEGIN. You have your role."
-[ -n "$RESUME" ] && KICK="RESUMED as $NAME after a crash. Re-read role state; you have your role."
+KICK_BASE="BEGIN. You have your role."
+[ -n "$RESUME" ] && KICK_BASE="RESUMED as $NAME after a crash. Re-read role state; you have your role."
+
+# R1: Quarantine all dynamic variables into trailing metadata comment block appended exclusively to the latest user message
+UTC_NOW=$(date -u +%FT%TZ)
+GIT_SHA=$(git -C "$WORKDIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+if [ -n "$(git -C "$WORKDIR" status --porcelain 2>/dev/null)" ]; then
+  GIT_STAT="dirty"
+else
+  GIT_STAT="clean"
+fi
+
+DYNAMIC_METADATA="<!-- DYNAMIC_METADATA_START -->
+UTC_TIMESTAMP: $UTC_NOW
+TURN_COUNT: 1
+SEAT_UUID: $NAME
+GIT_STATUS: ${GIT_SHA}/${GIT_STAT}
+<!-- DYNAMIC_METADATA_END -->"
+
+KICK="${KICK_BASE}
+
+${DYNAMIC_METADATA}"
 BD_SAY_KIND=bootstrap "$SAY" "$NAME" "$KICK" || die 7 "kick not consumed by $NAME (role IS loaded via --append-system-prompt-file; the seat is up and un-started, re-kick it)"
 
 # PROVE THE SEAT ACTUALLY TOOK A TURN. A send that returns 0 is not a seat that started work --

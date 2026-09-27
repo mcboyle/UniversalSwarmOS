@@ -36,8 +36,21 @@ model_list:
   - model_name: trivial
     litellm_params: {model: ollama/qwen2.5:7b, api_base: http://10.0.10.137:11434}
 router_settings:
-  routing_strategy: simple-shuffle
-  num_retries: 1
+  routing_strategy: usage-based-routing-v2 # consistent-hashing / session-affinity
+  enable_pre_call_checks: true
+  optional_pre_call_checks:
+    - session_affinity
+    - deployment_affinity
+    - prompt_caching
+  deployment_affinity_ttl_seconds: 86400
+  redis_host: 10.0.70.164
+  redis_port: 6379
+  num_retries: 2
+  retry_after: 0.5
+  fallbacks:
+    - qwen2.5-coder-14b: ["qwen2.5-coder-7b", "trivial"]
+    - qwen2.5-coder-7b: ["trivial"]
+    - trivial: ["qwen2.5-coder-7b"]
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
 litellm_settings:
@@ -45,3 +58,8 @@ litellm_settings:
   request_timeout: 120
   health_check_timeout: 300
   success_callbacks: ["langfuse"]
+  cache: true
+  cache_type: "redis"
+  cache_host: 10.0.70.164
+  cache_port: 6379
+

@@ -12,7 +12,7 @@
   - `axtree_distill`: Zero-token AXTree semantic browser distillation.
   - `smt_invariants`: SMT/Z3 symbolic invariant verification & multi-model consensus.
   - `pd_remote_adapter`: Disaggregated prefill-decode remote compute offloader (`wrk-test04`).
-- **Fleet Scope**: Immediately accessible to all Python environments, Codex, Claude A/B MCP servers, and Antigravity.
+- **Fleet Scope**: Immediately accessible to all Python environments, Codex, Claude A/B MCP servers, Antigravity, Grok Pool, and Kimi Pool.
 
 ---
 
@@ -27,3 +27,6 @@ Per operator directive, execution dynamically targets the optimal model pool:
 | **Advisory & High-Context Reasoning Oracles** | Gemini Ultra / Gemini Pro | Virtual Browser CDP Bridge (`bd-gemini-ultra-client.py` on `10.0.70.181`) | **\$0 (Free)** — Consumes flat consumer subscription |
 | **Multi-Agent Orchestration & Native Pairing** | Google Antigravity (AGY / Gemini 2.0 Pro) | Native AGY Daemon / MCP Fleet | Direct Cluster Telemetry & Tooling |
 | **Judgement & Red Review** | `gpt-6-astra` | Fleet Launch Role (`bd-launch-role.sh`) | Peak Empirical Verification |
+| **Rapid Exploration & Parallel Verification** | xAI Grok (Grok 2 / Grok-beta on `10.0.70.164`) | Grok CLI (`~/.grok/bin/grok`) / ACP | High Speed / Real-Time Reasoning |
+| **Long-Context Analysis & Deep Code Synthesis** | Moonshot Kimi (K2.8 / K3 on `10.0.70.164`) | Kimi Code CLI (`~/.kimi-code/bin/kimi`) / ACP | 1M Context Window / High Accuracy |
+

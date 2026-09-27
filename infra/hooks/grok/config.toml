@@ -1,0 +1,65 @@
+[cli]
+installer = "internal"
+
+[marketplace]
+default_skills_installs_purged = true
+official_marketplace_auto_installed = true
+
+[[marketplace.sources]]
+name = "xAI Official"
+git = "https://github.com/xai-org/plugin-marketplace.git"
+
+[mcp_servers.bd]
+url = "http://10.0.70.164:8100/mcp"
+enabled = true
+
+[mcp_servers.caveman]
+command = "/home/mboyle/.caveman/bin/caveman-mcp"
+args = []
+enabled = true
+
+[mcp_servers.context-mode]
+command = "npx"
+args = ["-y", "context-mode"]
+enabled = true
+
+[mcp_servers.pg-local]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-postgres", "postgresql://postgres:postgres@127.0.0.1:5432/ai_mesh"]
+enabled = true
+
+[mcp_servers.vmware-clones]
+command = "python3"
+args = ["-m", "mcp_server_vmware", "--host", "10.0.70.1"]
+enabled = true
+
+[mcp_servers.python-linter]
+command = "python3"
+args = ["-m", "mcp_server_ruff"]
+enabled = true
+
+[mcp_servers.type-enforcer]
+command = "python3"
+args = ["-m", "mcp_server_mypy"]
+enabled = true
+
+[mcp_servers.bd-fleet]
+command = "/home/mboyle/bd-persist/harness/bd-mcp/venv/bin/python"
+args = ["/home/mboyle/bd-persist/plugins/bd-fleet-mcp/server.py"]
+enabled = true
+
+[mcp_servers.ratf]
+command = "python3"
+args = ["-m", "mcp_server_ratf"]
+enabled = true
+
+[mcp_servers."bd-bus"]
+command = "python3"
+args = ["-m", "bd_bus_mcp"]
+enabled = true
+
+[mcp_servers.fleet-sync]
+command = "python3"
+args = ["/home/mboyle/teamwork_projects/fleet_sync_tool/fleet_sync_mcp.py"]
+enabled = true
+

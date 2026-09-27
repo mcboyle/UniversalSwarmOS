@@ -1,24 +1,24 @@
 {
   "mcpServers": {
     "bd-bus": {
-      "command": "python3",
       "args": [
         "-m",
         "bd_bus_mcp"
-      ]
+      ],
+      "command": "python3"
+    },
+    "fleet-sync": {
+      "args": [
+        "/home/mboyle/teamwork_projects/fleet_sync_tool/fleet_sync_mcp.py"
+      ],
+      "command": "python3"
     },
     "ratf": {
-      "command": "python3",
       "args": [
         "-m",
         "mcp_server_ratf"
-      ]
-    },
-    "fleet-sync": {
-      "command": "python3",
-      "args": [
-        "/home/mboyle/teamwork_projects/fleet_sync_tool/fleet_sync_mcp.py"
-      ]
+      ],
+      "command": "python3"
     }
   }
 }

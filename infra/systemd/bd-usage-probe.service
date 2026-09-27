@@ -1,0 +1,10 @@
+[Unit]
+Description=BD Fleet Usage & Quota Probe: poll /usage on Claude, AGY, Codex, and record true provider limits
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /home/mboyle/bd-usage-probe.sh
+TimeoutStartSec=60
+StandardOutput=append:/home/mboyle/bd-persist/logs/usage-probe.log
+StandardError=append:/home/mboyle/bd-persist/logs/usage-probe.log

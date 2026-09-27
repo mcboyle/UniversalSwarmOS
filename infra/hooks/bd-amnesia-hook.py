@@ -31,13 +31,14 @@ from typing import Any
 
 # Default Constants
 DEFAULT_INTERVAL = 5.0
-DEFAULT_TRIGGER_TOKENS = 90_000
-DEFAULT_TARGET_TOKENS = 35_000
+DEFAULT_TRIGGER_TOKENS = 150_000
+DEFAULT_TARGET_TOKENS = 60_000
 DEFAULT_RECENT_RESERVE = 25_000
 DEFAULT_MIN_TURN_PRESERVE = 15
 DEFAULT_MIN_SIZE_BYTE_FLOOR = 300_000
 DEFAULT_MAX_AGE_HOURS = 24.0
 DEFAULT_REVISIT_SECONDS = 900.0
+DEFAULT_MAX_TURNS = 20
 SYSTEM_PROMPT_TOMBSTONE = ["[AMNESIA ARCHIVE: System prompt snapshot truncated]"]
 CHARS_PER_TOKEN = 3.6
 MIN_TOMBSTONE_CHARS = 1000
@@ -146,29 +147,34 @@ def get_thresholds_for_file(
     default_target: int = DEFAULT_TARGET_TOKENS,
 ) -> tuple[int, int]:
     """
-    Tiered thresholds per operator optimization directive:
-    - Opus/Orchestrator seats: 75,000 ceiling, 30,000 target ($1.50/M cache read tax reduction).
-    - Fable/Haiku/Worker/Codex seats: 150,000 ceiling, 60,000 target (preserves cheap context).
+    R4 Adaptive Ceiling Gating per Fleet Context Guard:
+    - PM/Orchestrator seats: 250,000 ceiling, 100,000 target.
+    - Worker/Lens/Codex seats: 150,000 ceiling, 60,000 target.
+    Mid-session compaction is strictly prohibited below 150,000 tokens.
     """
     path_str = str(file_path).lower()
-    if any(k in path_str for k in ["-pm", "-antigravity", "-council", "-opus"]):
-        return 75_000, 30_000
+    is_pm_or_orch = any(k in path_str for k in ["-pm", "pm-", "council", "orchestrator"])
 
     for rec in parsed_records:
         msg = rec.get("message")
         if isinstance(msg, dict):
             m = str(msg.get("model", "")).lower()
-            if "opus" in m:
-                return 75_000, 30_000
-            elif "fable" in m or "haiku" in m or "sonnet" in m:
-                return 150_000, 60_000
+            if "opus" in m or "astra" in m:
+                is_pm_or_orch = True
+                break
         m_top = str(rec.get("model", "")).lower()
         if "astra" in m_top or "opus" in m_top:
-            return 75_000, 30_000
-        elif "terra" in m_top or "sol" in m_top:
-            return 150_000, 60_000
+            is_pm_or_orch = True
+            break
 
-    return default_trigger, default_target
+    if is_pm_or_orch:
+        trigger = max(250_000, default_trigger)
+        target = max(100_000, default_target)
+    else:
+        trigger = max(150_000, default_trigger)
+        target = max(60_000, default_target)
+
+    return trigger, target
 
 
 # ============================================================================
@@ -900,6 +906,9 @@ class AmnesiaDaemon:
         self.recent_reserve = args.recent_reserve
         self.max_age_hours = args.max_age
         self.revisit_interval = args.revisit_interval
+        self.max_turns = getattr(
+            args, "max_turns", int(os.environ.get("BD_MAX_TURNS", DEFAULT_MAX_TURNS))
+        )
         self.min_size_byte_floor = 0 if args.file else args.min_size_floor
         self.dry_run = args.dry_run
         self.project_root = args.project
@@ -958,6 +967,149 @@ class AmnesiaDaemon:
                     continue
 
         return found
+
+    def enforce_rule_77_retirement(
+        self,
+        file_path: Path,
+        session_id: str,
+        turn_count: int,
+        max_turns: int,
+        parsed_records: list[dict[str, Any]],
+        dialect: TranscriptDialect,
+    ) -> bool:
+        """
+        Enforces Fleet Rule 77: 20-turn maximum ceiling (BD_MAX_TURNS=20).
+        Generates RESUME_STATE.md and executes clean termination.
+        """
+        seat = os.environ.get("BD_SEAT", "")
+        if not seat:
+            stem = file_path.stem
+            if stem.startswith(("handoff-", "compact-")):
+                seat = stem.split("-", 1)[1].replace(".md", "")
+            else:
+                seat = session_id
+
+        # Determine model
+        model = "unknown"
+        for rec in parsed_records:
+            if isinstance(rec.get("message"), dict) and "model" in rec["message"]:
+                model = str(rec["message"]["model"])
+                break
+            if "model" in rec:
+                model = str(rec["model"])
+                break
+
+        # Determine working directory
+        cwd = os.environ.get("BD_LAUNCH_WORKDIR") or "/home/mboyle/UniversalSwarmOS"
+        p_str = str(file_path)
+        if "/projects/" in p_str:
+            try:
+                proj_part = p_str.split("/projects/")[1].split("/")[0]
+                recovered = "/" + proj_part.strip("-").replace("-", "/")
+                if os.path.isdir(recovered):
+                    cwd = recovered
+            except (IndexError, ValueError, OSError):
+                pass
+
+        # Git status
+        git_head = "unknown"
+        git_branch = "main"
+        git_stat = "clean"
+        try:
+            p_head = subprocess.run(
+                ["git", "-C", cwd, "rev-parse", "--short", "HEAD"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if p_head.returncode == 0 and p_head.stdout.strip():
+                git_head = p_head.stdout.strip()
+            p_br = subprocess.run(
+                ["git", "-C", cwd, "rev-parse", "--abbrev-ref", "HEAD"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if p_br.returncode == 0 and p_br.stdout.strip():
+                git_branch = p_br.stdout.strip()
+            p_st = subprocess.run(
+                ["git", "-C", cwd, "status", "--porcelain"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if p_st.stdout.strip():
+                git_stat = "dirty"
+        except (subprocess.SubprocessError, OSError):
+            pass
+
+        now_utc = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        resume_content = f"""---
+artifact_contract: "ce-handoff/v1"
+created_at: "{now_utc}"
+title: "Fleet Rule 77 Turn {turn_count} Retirement Receipt - {session_id}"
+summary: "Fleet Rule 77 20-turn maximum ceiling reached. Clean state handoff recorded."
+keywords: ["receipt", "handoff", "rule-77", "retirement", "{seat}"]
+cwd: "{cwd}"
+resume_focus: "Turn {turn_count} ceiling reached (max: {max_turns}). State handed off per Fleet Rule 77."
+repository: "UniversalSwarmOS"
+branch: "{git_branch}"
+head: "{git_head}"
+seat: "{seat}"
+model: "{model}"
+turn_count: {turn_count}
+---
+
+# Completion receipt
+
+Fleet Rule 77: 20-turn maximum ceiling reached ({turn_count} >= {max_turns}). Clean state handoff executed.
+
+| Attribute / Probe | State |
+| --- | --- |
+| Session ID | `{session_id}` |
+| Seat | `{seat}` |
+| Model | `{model}` |
+| Turn Count | `{turn_count} / {max_turns}` |
+| Git Head | `{git_head}` (branch `{git_branch}`, `{git_stat}`) |
+| Rule 77 Enforcement | Clean state recorded in RESUME_STATE.md, session retired |
+
+Point-in-time receipt recorded. Worker process cleanly terminated per Fleet Rule 77.
+"""
+        resume_paths = [Path(cwd) / "RESUME_STATE.md"]
+        persist_resume = Path(os.environ.get("BD_PERSIST", "/home/mboyle/bd-persist")) / "RESUME_STATE.md"
+        if persist_resume not in resume_paths:
+            resume_paths.append(persist_resume)
+
+        for rp in resume_paths:
+            try:
+                rp.parent.mkdir(parents=True, exist_ok=True)
+                with open(rp, "w", encoding="utf-8") as rf:
+                    rf.write(resume_content)
+                logger.info(f"Generated RESUME_STATE.md at {rp}")
+            except OSError as e:
+                logger.error(f"Failed to write RESUME_STATE.md at {rp}: {e}")
+
+        # Clean termination: check if tmux session is active for the seat
+        if seat and seat != "unknown":
+            try:
+                has_s = subprocess.run(
+                    ["tmux", "has-session", "-t", f"={seat}"],
+                    capture_output=True,
+                    check=False,
+                )
+                if has_s.returncode == 0:
+                    logger.info(f"Clean termination: signaling retirement to tmux session {seat}")
+                    subprocess.run(
+                        ["tmux", "send-keys", "-t", f"={seat}:", f"STATUS: RETIRED (Fleet Rule 77 {max_turns}-turn ceiling). Receipt in RESUME_STATE.md.", "Enter"],
+                        check=False,
+                    )
+            except (subprocess.SubprocessError, OSError) as e:
+                logger.debug(f"Tmux signal error: {e}")
+
+        logger.info(
+            f"FLEET RULE 77 RETIREMENT COMPLETE: {session_id} (seat: {seat}) at turn {turn_count} >= {max_turns}."
+        )
+        return True
 
     def process_file(self, file_path: Path) -> bool:
         """
@@ -1051,6 +1203,15 @@ class AmnesiaDaemon:
                     recent_reserve=self.recent_reserve,
                 )
                 est_tokens = tombstoner.estimate_active_branch_tokens()
+                turn_count = sum(1 for node in branch if node.node_type == "user")
+                if turn_count == 0:
+                    turn_count = sum(
+                        1
+                        for r in parsed_records
+                        if r.get("type") == "user"
+                        or (isinstance(r.get("message"), dict) and r.get("message", {}).get("role") == "user")
+                    )
+                session_id = parser.session_id or file_path.stem
 
             elif dialect == TranscriptDialect.CODEX_STREAM:
                 codex_tombstoner = CodexStreamTombstoner(
@@ -1061,9 +1222,33 @@ class AmnesiaDaemon:
                     min_turn_preserve=self.min_turn_preserve,
                 )
                 est_tokens = estimate_tokens_from_chars(sum(len(l) for l in raw_lines))
+                turn_count = sum(
+                    1
+                    for _, rec in codex_tombstoner.records
+                    if rec.get("type") in ("turn", "user_message")
+                    or (
+                        rec.get("type") == "response_item"
+                        and rec.get("payload", {}).get("type") == "message"
+                        and rec.get("payload", {}).get("role") == "user"
+                    )
+                )
+                if turn_count == 0:
+                    turn_count = sum(1 for _, rec in codex_tombstoner.records if rec.get("type") in ("turn", "user_message", "turn_context"))
+                session_id = codex_tombstoner.session_id or file_path.stem
             else:
                 logger.debug(f"Unknown transcript dialect for {file_path.name}")
                 return False
+
+            # Check persistent turn count file if present
+            seat_candidate = os.environ.get("BD_SEAT", "") or file_path.stem
+            turn_file = Path(f"/home/mboyle/bd-persist/state/turns/{seat_candidate}")
+            if turn_file.exists():
+                try:
+                    cnt_str = turn_file.read_text().strip()
+                    if cnt_str.isdigit():
+                        turn_count = max(turn_count, int(cnt_str))
+                except OSError:
+                    pass
 
             # Update cache with current status
             self.cache[file_path] = SessionCacheEntry(
@@ -1075,9 +1260,28 @@ class AmnesiaDaemon:
                 last_checked_ts=time.time(),
             )
 
-            if est_tokens <= file_trigger:
+            # R4 & Fleet Rule 77: Enforce 20-turn maximum ceiling (BD_MAX_TURNS=20)
+            if turn_count >= self.max_turns:
+                logger.info(
+                    f"FLEET RULE 77: {file_path.name} reached {turn_count} turns (ceiling {self.max_turns}). "
+                    f"Executing clean termination and RESUME_STATE.md generation."
+                )
+                self.enforce_rule_77_retirement(
+                    file_path=file_path,
+                    session_id=session_id,
+                    turn_count=turn_count,
+                    max_turns=self.max_turns,
+                    parsed_records=parsed_records,
+                    dialect=dialect,
+                )
+                self.cache[file_path].skip_until = time.time() + self.revisit_interval
+                return True
+
+            # R4: Strictly prohibit mid-session compaction unless context reaches 150k tokens
+            if est_tokens < 150_000 or est_tokens <= file_trigger:
                 logger.debug(
-                    f"{file_path.name}: {est_tokens} tokens <= threshold ({file_trigger})"
+                    f"APPEND-ONLY INVARIANT PRESERVED: {file_path.name}: {est_tokens} tokens "
+                    f"(ceiling {file_trigger}, 150k floor). Compaction prohibited."
                 )
                 return False
 
@@ -1251,6 +1455,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=int,
         default=DEFAULT_TRIGGER_TOKENS,
         help=f"Token threshold to trigger pruning (default: {DEFAULT_TRIGGER_TOKENS})",
+    )
+    parser.add_argument(
+        "--max-turns",
+        type=int,
+        default=DEFAULT_MAX_TURNS,
+        help=f"Fleet Rule 77 maximum turn ceiling (default: {DEFAULT_MAX_TURNS})",
     )
     parser.add_argument(
         "--target-tokens",

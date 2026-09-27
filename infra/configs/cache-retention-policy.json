@@ -1,0 +1,175 @@
+{
+  "version": "1.0",
+  "updated_at": "2026-09-27T10:45:00Z",
+  "description": "UniversalSwarmOS Extended 1-Hour Cache Pinning & Persistent KV Retention Policies (R3)",
+  "default_ttl_seconds": 3600,
+  "platforms": {
+    "claude": {
+      "platform": "claude",
+      "display_name": "Claude Native (claude CLI / Anthropic)",
+      "model": "claude-sonnet-4-6",
+      "ttl_seconds": 3600,
+      "cache_type": "ephemeral",
+      "cache_control": {
+        "type": "ephemeral",
+        "ttl": 3600
+      },
+      "headers": {
+        "anthropic-beta": "prompt-caching-2024-07-31"
+      },
+      "env_vars": {
+        "CLAUDE_CACHE_TTL": "3600",
+        "ANTHROPIC_CACHE_RETENTION_SECONDS": "3600"
+      },
+      "pinning_policy": "Explicit 1-hour cache blocks applied to system preamble and turn prefix history.",
+      "keepalive_enabled": true,
+      "keepalive_probe_interval_s": 180,
+      "keepalive_threshold_s": 120
+    },
+    "agy-claude": {
+      "platform": "agy-claude",
+      "display_name": "AGY Claude (Antigravity Claude Sonnet 4.6)",
+      "model": "claude-sonnet-4-6",
+      "ttl_seconds": 3600,
+      "cache_type": "ephemeral",
+      "cache_control": {
+        "type": "ephemeral",
+        "ttl": 3600
+      },
+      "headers": {
+        "anthropic-beta": "prompt-caching-2024-07-31"
+      },
+      "env_vars": {
+        "CLAUDE_CACHE_TTL": "3600"
+      },
+      "pinning_policy": "Explicit 1-hour cache blocks with prompt-caching beta headers.",
+      "keepalive_enabled": true,
+      "keepalive_probe_interval_s": 180,
+      "keepalive_threshold_s": 120
+    },
+    "codex": {
+      "platform": "codex",
+      "display_name": "OpenAI Codex (gpt-6-sol)",
+      "model": "gpt-6-sol",
+      "ttl_seconds": 3600,
+      "cache_type": "automatic_prefix",
+      "headers": {
+        "x-session-id": "{session_id}",
+        "x-conversation-id": "{session_id}"
+      },
+      "env_vars": {
+        "OPENAI_CACHE_TTL": "3600"
+      },
+      "pinning_policy": "Persistent KV cache retention with sticky session affinity across turns.",
+      "keepalive_enabled": true,
+      "keepalive_probe_interval_s": 180,
+      "keepalive_threshold_s": 120
+    },
+    "agy-gemini": {
+      "platform": "agy-gemini",
+      "display_name": "AGY Gemini (Gemini 3.8 Flash High)",
+      "model": "gemini-3.8-flash-high",
+      "ttl_seconds": 3600,
+      "cache_type": "explicit_context",
+      "cached_contents_create": {
+        "ttl": "3600s"
+      },
+      "headers": {
+        "x-goog-user-project": "{project_id}"
+      },
+      "pinning_policy": "1-hour TTL context caching via cachedContents.create API.",
+      "keepalive_enabled": true,
+      "keepalive_probe_interval_s": 180,
+      "keepalive_threshold_s": 120
+    },
+    "grok": {
+      "platform": "grok",
+      "display_name": "Grok Build (grok-4.7-build-fast)",
+      "model": "grok-4.7-build-fast",
+      "ttl_seconds": 3600,
+      "cache_type": "ephemeral",
+      "cache_control": {
+        "type": "ephemeral",
+        "ttl": 3600
+      },
+      "headers": {
+        "x-session-id": "{session_id}"
+      },
+      "pinning_policy": "1-hour session-pinned KV cache block with persistent resume flag.",
+      "keepalive_enabled": true,
+      "keepalive_probe_interval_s": 180,
+      "keepalive_threshold_s": 120
+    },
+    "kimi": {
+      "platform": "kimi",
+      "display_name": "Kimi Code (kimi-for-coding)",
+      "model": "kimi-code/kimi-for-coding",
+      "ttl_seconds": 3600,
+      "cache_type": "continuous_session",
+      "headers": {
+        "x-session-id": "{session_id}"
+      },
+      "pinning_policy": "1-hour persistent KV retention across continuous session turns.",
+      "keepalive_enabled": true,
+      "keepalive_probe_interval_s": 180,
+      "keepalive_threshold_s": 120
+    },
+    "gemini": {
+      "platform": "gemini",
+      "display_name": "Gemini Native (gemini-3.8-flash-high)",
+      "model": "gemini-3.8-flash-high",
+      "ttl_seconds": 3600,
+      "cache_type": "explicit_context",
+      "cached_contents_create": {
+        "ttl": "3600s"
+      },
+      "headers": {
+        "x-goog-user-project": "{project_id}"
+      },
+      "pinning_policy": "1-hour TTL context caching via cachedContents.create API.",
+      "keepalive_enabled": true,
+      "keepalive_probe_interval_s": 180,
+      "keepalive_threshold_s": 120
+    },
+    "agy-gpt": {
+      "platform": "agy-gpt",
+      "display_name": "AGY GPT (gpt-6-sol)",
+      "model": "gpt-6-sol",
+      "ttl_seconds": 3600,
+      "cache_type": "automatic_prefix",
+      "headers": {
+        "x-session-id": "{session_id}",
+        "x-conversation-id": "{session_id}"
+      },
+      "env_vars": {
+        "OPENAI_CACHE_TTL": "3600"
+      },
+      "pinning_policy": "Persistent KV cache retention with sticky session affinity across turns.",
+      "keepalive_enabled": true,
+      "keepalive_probe_interval_s": 180,
+      "keepalive_threshold_s": 120
+    },
+    "satellite": {
+      "platform": "satellite",
+      "display_name": "Satellite AI Nodes (ai-ollama01, ai-infer01)",
+      "model": "qwen2.5-coder-7b",
+      "ttl_seconds": 3600,
+      "cache_type": "radix_attention",
+      "body_params": {
+        "keep_alive": "1h"
+      },
+      "headers": {
+        "x-conversation-id": "{session_id}"
+      },
+      "env_vars": {
+        "OLLAMA_KEEP_ALIVE": "1h",
+        "OLLAMA_FLASH_ATTENTION": "1",
+        "OLLAMA_NUM_PARALLEL": "1"
+      },
+      "pinning_policy": "RadixAttention prefix KV caching with 1-hour HBM retention.",
+      "keepalive_enabled": true,
+      "keepalive_probe_interval_s": 180,
+      "keepalive_threshold_s": 120
+    }
+  }
+}

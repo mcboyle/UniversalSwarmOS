@@ -4,9 +4,64 @@
       "type": "http",
       "url": "http://10.0.70.164:8100/mcp"
     },
+    "bd-bus": {
+      "args": [
+        "-m",
+        "bd_bus_mcp"
+      ],
+      "command": "python3"
+    },
+    "bd-fleet": {
+      "args": [
+        "/home/mboyle/bd-persist/plugins/bd-fleet-mcp/server.py"
+      ],
+      "command": "/home/mboyle/bd-persist/harness/bd-mcp/venv/bin/python"
+    },
+    "caveman": {
+      "args": [],
+      "command": "/home/mboyle/.caveman/bin/caveman-mcp",
+      "env": {},
+      "type": "stdio"
+    },
+    "context-mode": {
+      "args": [
+        "-y",
+        "context-mode"
+      ],
+      "command": "npx",
+      "type": "stdio"
+    },
+    "fleet-sync": {
+      "args": [
+        "/home/mboyle/teamwork_projects/fleet_sync_tool/fleet_sync_mcp.py"
+      ],
+      "command": "python3"
+    },
+    "pg-local": {
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-postgres",
+        "postgresql://postgres:postgres@127.0.0.1:5432/ai_mesh"
+      ],
+      "command": "npx",
+      "type": "stdio"
+    },
+    "python-linter": {
+      "args": [
+        "-m",
+        "mcp_server_ruff"
+      ],
+      "command": "python3",
+      "type": "stdio"
+    },
+    "ratf": {
+      "args": [
+        "-m",
+        "mcp_server_ratf"
+      ],
+      "command": "python3"
+    },
     "serena": {
-      "type": "stdio",
-      "command": "/home/mboyle/.local/bin/uvx",
       "args": [
         "--from",
         "git+https://github.com/oraios/serena",
@@ -16,82 +71,27 @@
         "ide-assistant",
         "--transport",
         "stdio"
-      ]
+      ],
+      "command": "/home/mboyle/.local/bin/uvx",
+      "type": "stdio"
     },
-    "caveman": {
-      "type": "stdio",
-      "command": "/home/mboyle/.caveman/bin/caveman-mcp",
-      "args": [],
-      "env": {}
-    },
-    "context-mode": {
-      "type": "stdio",
-      "command": "npx",
+    "type-enforcer": {
       "args": [
-        "-y",
-        "context-mode"
-      ]
-    },
-    "pg-local": {
-      "type": "stdio",
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-postgres",
-        "postgresql://postgres:postgres@127.0.0.1:5432/ai_mesh"
-      ]
+        "-m",
+        "mcp_server_mypy"
+      ],
+      "command": "python3",
+      "type": "stdio"
     },
     "vmware-clones": {
-      "type": "stdio",
-      "command": "python3",
       "args": [
         "-m",
         "mcp_server_vmware",
         "--host",
         "10.0.70.1"
-      ]
-    },
-    "python-linter": {
-      "type": "stdio",
+      ],
       "command": "python3",
-      "args": [
-        "-m",
-        "mcp_server_ruff"
-      ]
-    },
-    "type-enforcer": {
-      "type": "stdio",
-      "command": "python3",
-      "args": [
-        "-m",
-        "mcp_server_mypy"
-      ]
-    },
-    "bd-fleet": {
-      "command": "/home/mboyle/bd-persist/harness/bd-mcp/venv/bin/python",
-      "args": [
-        "/home/mboyle/bd-persist/plugins/bd-fleet-mcp/server.py"
-      ]
-    },
-    "ratf": {
-      "command": "python3",
-      "args": [
-        "-m",
-        "mcp_server_ratf"
-      ]
-    },
-    "bd-bus": {
-      "command": "python3",
-      "args": [
-        "-m",
-        "bd_bus_mcp"
-      ]
-    },
-    "fleet-sync": {
-      "command": "python3",
-      "args": [
-        "/home/mboyle/teamwork_projects/fleet_sync_tool/fleet_sync_mcp.py"
-      ]
+      "type": "stdio"
     }
   }
 }
