@@ -3,3 +3,11 @@ __pycache__/
 *$py.class
 *.log
 .DS_Store
+node_modules
+node_modules/
+.next
+.next/
+*.tsbuildinfo
+.agents
+.agents/
+

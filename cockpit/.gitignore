@@ -1,0 +1,19 @@
+# Next.js & Node dependencies
+node_modules/
+.next/
+out/
+build/
+dist/
+
+# TypeScript & build caches
+*.tsbuildinfo
+next-env.d.ts
+
+# Subagent & IDE scratch
+.agents/
+.swp
+.DS_Store
+*.log
+
+# Environment variables
+.env*.local
