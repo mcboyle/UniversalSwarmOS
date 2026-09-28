@@ -103,7 +103,13 @@ export interface ModelUsageSummary {
   total_ctx: number;
   out_tokens: number;
   cache_read: number;
-  cache_efficiency_pct: number;
+  cache_efficiency_pct: number | null;
+  fresh_tokens?: number | null;
+  cache_creation_tokens?: number | null;
+  fresh_per_turn?: number | null;
+  cache_creation_per_turn?: number | null;
+  cold_starts_per_hour?: number | null;
+  pricing_source?: string | null;
   mean_ctx: number;
   max_ctx: number;
   cost_usd: number;
@@ -113,13 +119,19 @@ export interface CostAggregate {
   total_context_tokens: number;
   total_output_tokens: number;
   total_cache_read_tokens: number;
-  overall_cache_hit_pct: number;
-  total_cost_usd: number;
-  projected_24h_cost_usd: number;
+  overall_cache_hit_pct: number | null;
+  fleet_fresh_tokens_window?: number | null;
+  fleet_fresh_per_turn?: number | null;
+  measured_responses?: number;
+  unmeasured_responses?: number;
+  total_cost_usd: number | null;
+  projected_24h_cost_usd: number | null;
 }
 
 export interface CostResponse {
   since: string;
+  until?: string;
+  window_hours?: number;
   group_by: string;
   total_responses: number;
   aggregate: CostAggregate;

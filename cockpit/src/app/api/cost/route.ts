@@ -11,14 +11,14 @@ import type { CostResponse, ModelUsageSummary } from '@/lib/types';
 export const dynamic = 'force-dynamic';
 
 // Pricing per million tokens (approximate blended rates)
-const MODEL_RATES: Record<string, { input: number; output: number; cacheRead: number }> = {
-  'claude-opus-5': { input: 15.0, output: 75.0, cacheRead: 1.5 },
-  'claude-opus-5-5': { input: 15.0, output: 75.0, cacheRead: 1.5 },
+const MODEL_RATES: Record<string, { input: number; output: number; cacheRead: number; cacheWrite?: number; pricingSource?: string }> = {
+  'claude-opus-5': { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 10, pricingSource: 'https://platform.claude.com/docs/en/about-claude/pricing; 1h cache-write estimate; TTL unavailable in normalized DB' },
+  'claude-opus-5-5': { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 8, pricingSource: 'https://platform.claude.com/docs/en/about-claude/pricing; 1h cache-write estimate; TTL unavailable in normalized DB' },
   'claude-opus-4-6': { input: 15.0, output: 75.0, cacheRead: 1.5 },
-  'claude-opus-4-8': { input: 15.0, output: 75.0, cacheRead: 1.5 },
+  'claude-opus-4-8': { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 10, pricingSource: 'https://platform.claude.com/docs/en/about-claude/pricing; 1h cache-write estimate; TTL unavailable in normalized DB' },
   'claude-sonnet-5': { input: 3.0, output: 15.0, cacheRead: 0.3 },
   'claude-sonnet-4-6': { input: 3.0, output: 15.0, cacheRead: 0.3 },
-  'claude-fable-5-1': { input: 3.0, output: 15.0, cacheRead: 0.3 },
+  'claude-fable-5-1': { input: 10, output: 50, cacheRead: 0.25, cacheWrite: 20, pricingSource: 'https://platform.claude.com/docs/en/about-claude/pricing; 1h cache-write estimate; TTL unavailable in normalized DB' },
   'claude-haiku-4-5': { input: 0.8, output: 4.0, cacheRead: 0.08 },
   'claude-haiku-4-5-20251001': { input: 0.8, output: 4.0, cacheRead: 0.08 },
   'gpt-5.6-terra': { input: 2.5, output: 10.0, cacheRead: 0.25 },
@@ -49,9 +49,64 @@ const MODEL_RATES: Record<string, { input: number; output: number; cacheRead: nu
 
 const CODEX_STATE_DB = '/home/mboyle/.codex/state_5.sqlite';
 const AGY_CONVERSATIONS_DB = '/home/mboyle/.gemini/antigravity-cli/conversation_summaries.db';
-const AGY_SUMMARY_JSON = '/home/mboyle/bd-persist/AGY-20-TURNS-SUMMARY.json';
-const USAGE_TSV = '/home/mboyle/bd-persist/usage.tsv';
-const CACHE_VERIFY_TSV = '/home/mboyle/bd-persist/accounting/cache_pipeline_verify.tsv';
+const AGY_SUMMARY_JSON = process.env.COST_AGY_SUMMARY_JSON || '/home/mboyle/bd-persist/AGY-20-TURNS-SUMMARY.json';
+const USAGE_TSV = process.env.COST_USAGE_TSV || '/home/mboyle/bd-persist/usage.tsv';
+const CACHE_VERIFY_TSV = process.env.COST_CACHE_VERIFY_TSV || '/home/mboyle/bd-persist/accounting/cache_pipeline_verify.tsv';
+
+
+// Database input_tokens is normalized to include fresh, cache creation and reads.
+// TSV has no creation field, so its absolute measurement coverage is unknown.
+const UNMEASURED_METRICS = {
+  fresh_tokens: null, cache_creation_tokens: null, fresh_per_turn: null,
+  cache_creation_per_turn: null, cold_starts_per_hour: null
+};
+function pricingSource(model: string): string {
+  return MODEL_RATES[model]?.pricingSource || 'legacy unverified estimate (cache-write price unavailable)';
+}
+function tokenCost(model: string, fresh: number, creation: number, read: number, output: number): number {
+  const rate = MODEL_RATES[model] || MODEL_RATES.default;
+  return ((fresh - creation) * rate.input + creation * (rate.cacheWrite ?? rate.input) +
+    read * rate.cacheRead + output * rate.output) / 1_000_000;
+}
+function measurementColumns(alias = ''): string {
+  const u = `${alias}usage`;
+  const input = `COALESCE(json_extract(${u}, '$.input_tokens'), 0)`;
+  const read = `MAX(COALESCE(json_extract(${u}, '$.cache_read_input_tokens'), 0), COALESCE(json_extract(${u}, '$.cached_input_tokens'), 0))`;
+  const fresh = `MAX(0, ${input} - ${read})`;
+  const creation = `MIN(${fresh}, MAX(COALESCE(json_extract(${u}, '$.cache_creation_input_tokens'), 0), COALESCE(json_extract(${u}, '$.cache_write_input_tokens'), 0)))`;
+  return `COALESCE(SUM(${fresh}), 0) AS fresh_tokens,
+    COALESCE(SUM(${creation}), 0) AS cache_creation_tokens,
+    COALESCE(SUM(CASE WHEN ${read} = 0 AND ${input} > 1024 THEN 1 ELSE 0 END), 0) AS cold_starts`;
+}
+interface MeasurementTotals {
+  fresh_tokens: number;
+  cache_creation_tokens: number;
+  cold_starts: number;
+}
+function measurementMetrics(row: MeasurementTotals, turns: number, windowHours: number) {
+  return {
+    fresh_tokens: row.fresh_tokens,
+    cache_creation_tokens: row.cache_creation_tokens,
+    fresh_per_turn: turns > 0 ? row.fresh_tokens / turns : null,
+    cache_creation_per_turn: turns > 0 ? row.cache_creation_tokens / turns : null,
+    cold_starts_per_hour: row.cold_starts / windowHours
+  };
+}
+function mergeMeasurements(target: ModelUsageSummary, incoming: ModelUsageSummary) {
+  if (target.fresh_tokens == null || incoming.fresh_tokens == null ||
+      target.cache_creation_tokens == null || incoming.cache_creation_tokens == null) {
+    Object.assign(target, UNMEASURED_METRICS);
+  } else {
+    target.fresh_tokens += incoming.fresh_tokens;
+    target.cache_creation_tokens += incoming.cache_creation_tokens;
+    target.fresh_per_turn = target.fresh_tokens / target.turns;
+    target.cache_creation_per_turn = target.cache_creation_tokens / target.turns;
+    target.cold_starts_per_hour = (target.cold_starts_per_hour ?? 0) + (incoming.cold_starts_per_hour ?? 0);
+  }
+  if (target.pricing_source !== incoming.pricing_source) {
+    target.pricing_source = 'mixed pricing: ' + [...new Set([target.pricing_source, incoming.pricing_source])].join('; ');
+  }
+}
 
 function getCodexNameMap(): Map<string, string> {
   const map = new Map<string, string>();
@@ -117,6 +172,7 @@ function parseTsvFile(filePath: string, seenSignatures: Set<string>, rows: TsvUs
       const model = parts[3]?.trim() || 'unknown';
       const conv_id = parts[4]?.trim() || '';
       const status = parts[5]?.trim() || '';
+      if (status.toUpperCase() === 'SYNTHETIC') continue;
       const input_tokens = parseInt(parts[6], 10) || 0;
       const output_tokens = parseInt(parts[7], 10) || 0;
       const thinking_tokens = parseInt(parts[8], 10) || 0;
@@ -151,7 +207,7 @@ function parseTsvFile(filePath: string, seenSignatures: Set<string>, rows: TsvUs
   } catch {}
 }
 
-function getLiveTsvData(since: string, sinceParam: string | null): {
+function getLiveTsvData(since: string, until: string): {
   threads: ModelUsageSummary[];
   models: ModelUsageSummary[];
   totalTurns: number;
@@ -165,37 +221,10 @@ function getLiveTsvData(since: string, sinceParam: string | null): {
   parseTsvFile(CACHE_VERIFY_TSV, seenSignatures, allRows);
   parseTsvFile(USAGE_TSV, seenSignatures, allRows);
 
-  let maxTsMs = 0;
-  for (const r of allRows) {
-    if (r.timestampMs > maxTsMs) maxTsMs = r.timestampMs;
-  }
-
-  // Determine window duration if sinceParam was relative
-  let windowMs: number | null = null;
-  const isRelative = !sinceParam || sinceParam === 'null' || sinceParam === 'undefined' ||
-    sinceParam.endsWith('m') || sinceParam.endsWith('h') || sinceParam.endsWith('d');
-
-  if (!sinceParam || sinceParam === 'null' || sinceParam === 'undefined') {
-    windowMs = 6 * 3600 * 1000;
-  } else if (sinceParam.endsWith('m')) {
-    const val = parseFloat(sinceParam.slice(0, -1));
-    windowMs = (isNaN(val) || val <= 0 ? 5 : val) * 60 * 1000;
-  } else if (sinceParam.endsWith('h')) {
-    const val = parseFloat(sinceParam.slice(0, -1));
-    windowMs = (isNaN(val) || val <= 0 ? 6 : val) * 3600 * 1000;
-  } else if (sinceParam.endsWith('d')) {
-    const val = parseFloat(sinceParam.slice(0, -1));
-    windowMs = (isNaN(val) || val <= 0 ? 1 : val) * 86400 * 1000;
-  }
-
-  // 1. Try real-time cutoff
-  let matchingRows = allRows.filter(r => r.timestamp >= since);
-
-  // 2. If 0 rows found and this was a relative query, anchor to maxTsMs
-  if (matchingRows.length === 0 && isRelative && windowMs !== null && maxTsMs > 0) {
-    const anchoredSince = new Date(maxTsMs - windowMs).toISOString();
-    matchingRows = allRows.filter(r => r.timestamp >= anchoredSince);
-  }
+  // Never relabel stale TSV data as belonging to the requested window.
+  const sinceMs = Date.parse(since);
+  const untilMs = Date.parse(until);
+  const matchingRows = allRows.filter(r => r.timestampMs >= sinceMs && r.timestampMs < untilMs);
 
   const threadMap = new Map<string, {
     key: string;
@@ -255,7 +284,7 @@ function getLiveTsvData(since: string, sinceParam: string | null): {
 
   // Load historical benchmark from AGY-20-TURNS-SUMMARY.json only if query range covers 2026-09-20
   const summaryDateCutoff = '2026-09-20T23:59:59Z';
-  if (fs.existsSync(AGY_SUMMARY_JSON) && since <= summaryDateCutoff) {
+  if (fs.existsSync(AGY_SUMMARY_JSON) && since <= summaryDateCutoff && until > summaryDateCutoff) {
     try {
       const summaryData = JSON.parse(fs.readFileSync(AGY_SUMMARY_JSON, 'utf8'));
       const turns = summaryData.turns || [];
@@ -327,15 +356,17 @@ function getLiveTsvData(since: string, sinceParam: string | null): {
     const cost_usd = (freshInput / 1_000_000) * rate.input +
                      (safeCache / 1_000_000) * rate.cacheRead +
                      (t.out_tokens / 1_000_000) * rate.output;
-    const efficiency = t.total_ctx > 0 ? Math.min(100, (safeCache / t.total_ctx) * 100) : 0;
+    const efficiency = t.total_ctx > 0 ? Math.min(100, (safeCache / t.total_ctx) * 100) : null;
 
     threads.push({
+      ...UNMEASURED_METRICS,
+      pricing_source: pricingSource(t.model) + '; TSV creation unmeasured',
       key: t.key,
       turns: t.turns,
       total_ctx: t.total_ctx,
       out_tokens: t.out_tokens,
       cache_read: safeCache,
-      cache_efficiency_pct: Math.round(efficiency * 100) / 100,
+      cache_efficiency_pct: efficiency === null ? null : Math.round(efficiency * 100) / 100,
       mean_ctx: t.turns > 0 ? Math.round(t.total_ctx / t.turns) : 0,
       max_ctx: t.max_ctx,
       cost_usd: Math.round(cost_usd * 100) / 100
@@ -356,15 +387,17 @@ function getLiveTsvData(since: string, sinceParam: string | null): {
     const cost_usd = (freshInput / 1_000_000) * rate.input +
                      (safeCache / 1_000_000) * rate.cacheRead +
                      (m.out_tokens / 1_000_000) * rate.output;
-    const efficiency = m.total_ctx > 0 ? Math.min(100, (safeCache / m.total_ctx) * 100) : 0;
+    const efficiency = m.total_ctx > 0 ? Math.min(100, (safeCache / m.total_ctx) * 100) : null;
 
     models.push({
+      ...UNMEASURED_METRICS,
+      pricing_source: pricingSource(modelKey) + '; TSV creation unmeasured',
       key: modelKey,
       turns: m.turns,
       total_ctx: m.total_ctx,
       out_tokens: m.out_tokens,
       cache_read: safeCache,
-      cache_efficiency_pct: Math.round(efficiency * 100) / 100,
+      cache_efficiency_pct: efficiency === null ? null : Math.round(efficiency * 100) / 100,
       mean_ctx: m.turns > 0 ? Math.round(m.total_ctx / m.turns) : 0,
       max_ctx: m.max_ctx,
       cost_usd: Math.round(cost_usd * 100) / 100
@@ -442,13 +475,20 @@ export async function GET(req: NextRequest): Promise<NextResponse<CostResponse>>
   const groupBy: 'model' | 'thread' = groupByParam === 'thread' ? 'thread' : 'model';
   const limit = parseLimitParam(rawLimit);
   const since = parseSinceParam(sinceParam);
+  const untilParam = searchParams.get('until');
+  const untilMs = untilParam === null ? Date.now() : Date.parse(untilParam);
+  if (!Number.isFinite(untilMs) || untilMs <= Date.parse(since)) {
+    return NextResponse.json({ error: 'invalid time window' } as unknown as CostResponse, { status: 400 });
+  }
+  const until = new Date(untilMs).toISOString();
+  const windowHours = (untilMs - Date.parse(since)) / 3_600_000;
 
   const testDbHeader = req.headers.get('x-test-db-path');
   const isCustomDb = !!(testDbHeader && fs.existsSync(testDbHeader));
   const isProductionDb = !isCustomDb && !process.env.USAGE_DB_PATH;
   let customDbInstance: Database.Database | null = null;
 
-  const cacheKey = `${isCustomDb ? testDbHeader : 'live'}_${since}_${groupBy}_${limit}`;
+  const cacheKey = `${isCustomDb ? testDbHeader : 'live'}_${since}_${untilParam ?? 'now'}_${groupBy}_${limit}`;
   if (isProductionDb) {
     const cached = liveResponseCache.get(cacheKey);
     if (cached && Date.now() < cached.expiresAt) {
@@ -464,6 +504,16 @@ export async function GET(req: NextRequest): Promise<NextResponse<CostResponse>>
       return NextResponse.json({ ...mockCostData, since, group_by: groupBy, source: 'mock' });
     }
 
+    // Bounds are canonical milliseconds. Date.parse truncates row submilliseconds,
+    // preserving inclusion of .999999 before a boundary without SQLite date rounding.
+    // The function also compares Z and numeric timezone offsets as the same instant.
+    db.function('cost_epoch_ms', { deterministic: true }, (value: unknown) => {
+      if (typeof value !== 'string') return null;
+      const ms = Date.parse(value);
+      return Number.isFinite(ms) ? ms : null;
+    });
+    const sinceMs = Date.parse(since);
+
     // Execute queries wrapped in withDbRetry for 100% deadlock immunity
     const result = await withDbRetry(() => {
       let breakdownRows: ModelUsageSummary[] = [];
@@ -478,14 +528,16 @@ export async function GET(req: NextRequest): Promise<NextResponse<CostResponse>>
           // Global aggregates for the thread window
           const aggStmt = db.prepare(`
             SELECT
+              ${measurementColumns()},
               COUNT(*) as total_responses,
               COALESCE(SUM(COALESCE(json_extract(usage, '$.input_tokens'), 0)), 0) as total_context_tokens,
               COALESCE(SUM(COALESCE(json_extract(usage, '$.output_tokens'), 0)), 0) as total_output_tokens,
               COALESCE(SUM(MAX(COALESCE(json_extract(usage, '$.cache_read_input_tokens'), 0), COALESCE(json_extract(usage, '$.cached_input_tokens'), 0))), 0) as total_cache_read_tokens
             FROM usage_responses
-            WHERE timestamp >= ? AND quarantined = 0
+            WHERE cost_epoch_ms(timestamp) >= ? AND cost_epoch_ms(timestamp) < ? AND quarantined = 0 AND response_id NOT LIKE 'synth%'
           `);
-          const aggRow = aggStmt.get(since) as {
+          const aggRow = aggStmt.get(sinceMs, untilMs) as {
+            fresh_tokens: number;
             total_responses: number;
             total_context_tokens: number;
             total_output_tokens: number;
@@ -499,6 +551,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<CostResponse>>
 
           if (totalResponses === 0) {
             return {
+              totalFresh: 0,
               totalResponses: 0,
               totalContext: 0,
               totalOutput: 0,
@@ -512,15 +565,18 @@ export async function GET(req: NextRequest): Promise<NextResponse<CostResponse>>
           // Compute totalCost from model rates
           const costStmt = db.prepare(`
             SELECT
+              ${measurementColumns()},
               COALESCE(model, 'unknown') as model,
               COALESCE(SUM(COALESCE(json_extract(usage, '$.input_tokens'), 0)), 0) as total_ctx,
               COALESCE(SUM(COALESCE(json_extract(usage, '$.output_tokens'), 0)), 0) as out_tokens,
               COALESCE(SUM(MAX(COALESCE(json_extract(usage, '$.cache_read_input_tokens'), 0), COALESCE(json_extract(usage, '$.cached_input_tokens'), 0))), 0) as cache_read
             FROM usage_responses
-            WHERE timestamp >= ? AND quarantined = 0
+            WHERE cost_epoch_ms(timestamp) >= ? AND cost_epoch_ms(timestamp) < ? AND quarantined = 0 AND response_id NOT LIKE 'synth%'
             GROUP BY model
           `);
-          const costRows = costStmt.all(since) as Array<{
+          const costRows = costStmt.all(sinceMs, untilMs) as Array<{
+            fresh_tokens: number;
+            cache_creation_tokens: number;
             model: string;
             total_ctx: number;
             out_tokens: number;
@@ -529,19 +585,16 @@ export async function GET(req: NextRequest): Promise<NextResponse<CostResponse>>
 
           let totalCost = 0;
           for (const row of costRows) {
-            const rate = MODEL_RATES[row.model] || MODEL_RATES.default;
-            const freshInput = Math.max(0, row.total_ctx - row.cache_read);
-            const cost = (freshInput / 1_000_000) * rate.input +
-                         (row.cache_read / 1_000_000) * rate.cacheRead +
-                         (row.out_tokens / 1_000_000) * rate.output;
+            const cost = tokenCost(row.model, row.fresh_tokens, row.cache_creation_tokens, row.cache_read, row.out_tokens);
             totalCost += cost;
           }
 
           // Deduplicate (provider, response_id, thread) to prevent double-counting across log sources
           const threadStmt = db.prepare(`
             SELECT
+              ${measurementColumns('r.')},
               COALESCE(o.thread, 'unknown') as key,
-              COUNT(DISTINCT r.response_id) as turns,
+              COUNT(*) as turns,
               COALESCE(SUM(COALESCE(json_extract(r.usage, '$.input_tokens'), 0)), 0) as total_ctx,
               COALESCE(SUM(COALESCE(json_extract(r.usage, '$.output_tokens'), 0)), 0) as out_tokens,
               COALESCE(SUM(MAX(COALESCE(json_extract(r.usage, '$.cache_read_input_tokens'), 0), COALESCE(json_extract(r.usage, '$.cached_input_tokens'), 0))), 0) as cache_read,
@@ -552,13 +605,12 @@ export async function GET(req: NextRequest): Promise<NextResponse<CostResponse>>
               SELECT DISTINCT provider, response_id, thread
               FROM usage_occurrences
             ) o ON r.provider = o.provider AND r.response_id = o.response_id
-            WHERE r.timestamp >= ? AND r.quarantined = 0
-            GROUP BY o.thread
+            WHERE cost_epoch_ms(r.timestamp) >= ? AND cost_epoch_ms(r.timestamp) < ? AND r.quarantined = 0 AND r.response_id NOT LIKE 'synth%'
+            GROUP BY o.thread, r.model
             ORDER BY total_ctx DESC
-            LIMIT ?
           `);
 
-          const rawThreads = threadStmt.all(since, limit) as Array<{
+          const rawThreads = threadStmt.all(sinceMs, untilMs) as Array<MeasurementTotals & {
             key: string;
             turns: number;
             total_ctx: number;
@@ -568,28 +620,38 @@ export async function GET(req: NextRequest): Promise<NextResponse<CostResponse>>
             sample_model: string;
           }>;
 
-          breakdownRows = rawThreads.map((t) => {
-            const rate = MODEL_RATES[t.sample_model] || MODEL_RATES.default;
-            const freshInput = Math.max(0, t.total_ctx - t.cache_read);
-            const cost_usd = (freshInput / 1_000_000) * rate.input +
-                             (t.cache_read / 1_000_000) * rate.cacheRead +
-                             (t.out_tokens / 1_000_000) * rate.output;
-            const efficiency = t.total_ctx > 0 ? (t.cache_read / t.total_ctx) * 100 : 0;
-
-            return {
-              key: t.key,
-              turns: Number(t.turns),
-              total_ctx: Number(t.total_ctx),
-              out_tokens: Number(t.out_tokens),
-              cache_read: Number(t.cache_read),
-              cache_efficiency_pct: Math.round(efficiency * 100) / 100,
-              mean_ctx: t.turns > 0 ? Math.round(t.total_ctx / t.turns) : 0,
-              max_ctx: Number(t.max_ctx),
-              cost_usd: Math.round(cost_usd * 100) / 100
+          const threadGroups = new Map<string, ModelUsageSummary>();
+          for (const t of rawThreads) {
+            const cost = tokenCost(t.sample_model, t.fresh_tokens, t.cache_creation_tokens, t.cache_read, t.out_tokens);
+            const part: ModelUsageSummary = {
+              ...measurementMetrics(t, t.turns, windowHours),
+              pricing_source: pricingSource(t.sample_model),
+              key: t.key, turns: t.turns, total_ctx: t.total_ctx, out_tokens: t.out_tokens,
+              cache_read: t.cache_read, cache_efficiency_pct: null, mean_ctx: 0,
+              max_ctx: t.max_ctx, cost_usd: cost
             };
-          });
+            const previous = threadGroups.get(t.key);
+            if (previous) {
+              previous.turns += part.turns;
+              previous.total_ctx += part.total_ctx;
+              previous.out_tokens += part.out_tokens;
+              previous.cache_read += part.cache_read;
+              previous.max_ctx = Math.max(previous.max_ctx, part.max_ctx);
+              previous.cost_usd += part.cost_usd;
+              mergeMeasurements(previous, part);
+            } else {
+              threadGroups.set(t.key, part);
+            }
+          }
+          breakdownRows = Array.from(threadGroups.values()).map(t => ({
+            ...t,
+            cost_usd: Math.round(t.cost_usd * 100) / 100,
+            cache_efficiency_pct: t.total_ctx > 0 ? Math.round(Math.min(100, t.cache_read / t.total_ctx * 100) * 100) / 100 : null,
+            mean_ctx: t.turns > 0 ? Math.round(t.total_ctx / t.turns) : 0
+          })).sort((a, b) => b.total_ctx - a.total_ctx).slice(0, limit);
 
           return {
+            totalFresh: Number(aggRow?.fresh_tokens || 0),
             totalResponses,
             totalContext,
             totalOutput,
@@ -607,6 +669,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<CostResponse>>
       // Single-query authoritative aggregation when grouping by model
       const modelStmt = db.prepare(`
         SELECT
+          ${measurementColumns()},
           COALESCE(model, 'unknown') as key,
           COUNT(*) as turns,
           COALESCE(SUM(COALESCE(json_extract(usage, '$.input_tokens'), 0)), 0) as total_ctx,
@@ -614,12 +677,12 @@ export async function GET(req: NextRequest): Promise<NextResponse<CostResponse>>
           COALESCE(SUM(MAX(COALESCE(json_extract(usage, '$.cache_read_input_tokens'), 0), COALESCE(json_extract(usage, '$.cached_input_tokens'), 0))), 0) as cache_read,
           COALESCE(MAX(COALESCE(json_extract(usage, '$.input_tokens'), 0)), 0) as max_ctx
         FROM usage_responses
-        WHERE timestamp >= ? AND quarantined = 0
+        WHERE cost_epoch_ms(timestamp) >= ? AND cost_epoch_ms(timestamp) < ? AND quarantined = 0 AND response_id NOT LIKE 'synth%'
         GROUP BY model
         ORDER BY total_ctx DESC
       `);
 
-      const rawModels = modelStmt.all(since) as Array<{
+      const rawModels = modelStmt.all(sinceMs, untilMs) as Array<MeasurementTotals & {
         key: string;
         turns: number;
         total_ctx: number;
@@ -628,6 +691,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<CostResponse>>
         max_ctx: number;
       }>;
 
+      let totalFresh = 0;
       let totalResponses = 0;
       let totalContext = 0;
       let totalOutput = 0;
@@ -635,26 +699,25 @@ export async function GET(req: NextRequest): Promise<NextResponse<CostResponse>>
       let totalCost = 0;
 
       breakdownRows = rawModels.map((m) => {
+        totalFresh += Number(m.fresh_tokens);
         totalResponses += Number(m.turns);
         totalContext += Number(m.total_ctx);
         totalOutput += Number(m.out_tokens);
         totalCacheRead += Number(m.cache_read);
 
-        const rate = MODEL_RATES[m.key] || MODEL_RATES.default;
-        const freshInput = Math.max(0, m.total_ctx - m.cache_read);
-        const cost_usd = (freshInput / 1_000_000) * rate.input +
-                         (m.cache_read / 1_000_000) * rate.cacheRead +
-                         (m.out_tokens / 1_000_000) * rate.output;
+        const cost_usd = tokenCost(m.key, m.fresh_tokens, m.cache_creation_tokens, m.cache_read, m.out_tokens);
         totalCost += cost_usd;
-        const efficiency = m.total_ctx > 0 ? Math.min(100, (m.cache_read / m.total_ctx) * 100) : 0;
+        const efficiency = m.total_ctx > 0 ? Math.min(100, (m.cache_read / m.total_ctx) * 100) : null;
 
         return {
+          ...measurementMetrics(m, m.turns, windowHours),
+          pricing_source: pricingSource(m.key),
           key: m.key,
           turns: Number(m.turns),
           total_ctx: Number(m.total_ctx),
           out_tokens: Number(m.out_tokens),
           cache_read: Number(m.cache_read),
-          cache_efficiency_pct: Math.round(efficiency * 100) / 100,
+          cache_efficiency_pct: efficiency === null ? null : Math.round(efficiency * 100) / 100,
           mean_ctx: m.turns > 0 ? Math.round(m.total_ctx / m.turns) : 0,
           max_ctx: Number(m.max_ctx),
           cost_usd: Math.round(cost_usd * 100) / 100
@@ -662,6 +725,7 @@ export async function GET(req: NextRequest): Promise<NextResponse<CostResponse>>
       });
 
       return {
+        totalFresh,
         totalResponses,
         totalContext,
         totalOutput,
@@ -672,8 +736,11 @@ export async function GET(req: NextRequest): Promise<NextResponse<CostResponse>>
       };
     });
 
+    const measuredResponses = result.totalResponses;
+    let unmeasuredResponses = 0;
     if (isProductionDb) {
-      const liveData = getLiveTsvData(since, sinceParam);
+      const liveData = getLiveTsvData(since, until);
+      unmeasuredResponses = liveData.totalTurns;
       if (result.effectiveGroupBy === 'model') {
         const mergedModelMap = new Map<string, ModelUsageSummary>();
         for (const m of result.breakdown) {
@@ -683,13 +750,14 @@ export async function GET(req: NextRequest): Promise<NextResponse<CostResponse>>
           const prev = mergedModelMap.get(m.key);
           if (prev) {
             prev.turns += m.turns;
+            mergeMeasurements(prev, m);
             prev.total_ctx += m.total_ctx;
             prev.out_tokens += m.out_tokens;
             prev.cache_read += m.cache_read;
             prev.max_ctx = Math.max(prev.max_ctx, m.max_ctx);
             prev.cost_usd = Math.round((prev.cost_usd + m.cost_usd) * 100) / 100;
-            const eff = prev.total_ctx > 0 ? (prev.cache_read / prev.total_ctx) * 100 : 0;
-            prev.cache_efficiency_pct = Math.round(eff * 100) / 100;
+            const eff = prev.total_ctx > 0 ? (prev.cache_read / prev.total_ctx) * 100 : null;
+            prev.cache_efficiency_pct = eff === null ? null : Math.round(eff * 100) / 100;
             prev.mean_ctx = prev.turns > 0 ? Math.round(prev.total_ctx / prev.turns) : 0;
           } else {
             mergedModelMap.set(m.key, { ...m });
@@ -713,13 +781,14 @@ export async function GET(req: NextRequest): Promise<NextResponse<CostResponse>>
           const prev = mergedThreadMap.get(name);
           if (prev) {
             prev.turns += t.turns;
+            mergeMeasurements(prev, t);
             prev.total_ctx += t.total_ctx;
             prev.out_tokens += t.out_tokens;
             prev.cache_read += t.cache_read;
             prev.max_ctx = Math.max(prev.max_ctx, t.max_ctx);
             prev.cost_usd = Math.round((prev.cost_usd + t.cost_usd) * 100) / 100;
-            const eff = prev.total_ctx > 0 ? (prev.cache_read / prev.total_ctx) * 100 : 0;
-            prev.cache_efficiency_pct = Math.round(eff * 100) / 100;
+            const eff = prev.total_ctx > 0 ? (prev.cache_read / prev.total_ctx) * 100 : null;
+            prev.cache_efficiency_pct = eff === null ? null : Math.round(eff * 100) / 100;
             prev.mean_ctx = prev.turns > 0 ? Math.round(prev.total_ctx / prev.turns) : 0;
           } else {
             mergedThreadMap.set(name, { ...t, key: name });
@@ -730,13 +799,14 @@ export async function GET(req: NextRequest): Promise<NextResponse<CostResponse>>
           const prev = mergedThreadMap.get(t.key);
           if (prev) {
             prev.turns += t.turns;
+            mergeMeasurements(prev, t);
             prev.total_ctx += t.total_ctx;
             prev.out_tokens += t.out_tokens;
             prev.cache_read += t.cache_read;
             prev.max_ctx = Math.max(prev.max_ctx, t.max_ctx);
             prev.cost_usd = Math.round((prev.cost_usd + t.cost_usd) * 100) / 100;
-            const eff = prev.total_ctx > 0 ? (prev.cache_read / prev.total_ctx) * 100 : 0;
-            prev.cache_efficiency_pct = Math.round(eff * 100) / 100;
+            const eff = prev.total_ctx > 0 ? (prev.cache_read / prev.total_ctx) * 100 : null;
+            prev.cache_efficiency_pct = eff === null ? null : Math.round(eff * 100) / 100;
             prev.mean_ctx = prev.turns > 0 ? Math.round(prev.total_ctx / prev.turns) : 0;
           } else {
             mergedThreadMap.set(t.key, { ...t });
@@ -754,22 +824,28 @@ export async function GET(req: NextRequest): Promise<NextResponse<CostResponse>>
 
     const overallCacheHit = result.totalContext > 0
       ? Math.min(100, (result.totalCacheRead / result.totalContext) * 100)
-      : 0;
+      : null;
 
     // Projected 24h cost extrapolated from the queried window
-    const projected24hCost = result.totalCost * 4;
+    const projected24hCost = result.totalCost * (24 / windowHours);
 
     const responsePayload: CostResponse = {
+      until,
+      window_hours: windowHours,
       since,
       group_by: result.effectiveGroupBy,
       total_responses: result.totalResponses,
       aggregate: {
+        fleet_fresh_tokens_window: measuredResponses > 0 ? result.totalFresh : null,
+        fleet_fresh_per_turn: measuredResponses > 0 ? result.totalFresh / measuredResponses : null,
+        measured_responses: measuredResponses,
+        unmeasured_responses: unmeasuredResponses,
         total_context_tokens: result.totalContext,
         total_output_tokens: result.totalOutput,
         total_cache_read_tokens: result.totalCacheRead,
-        overall_cache_hit_pct: Math.round(overallCacheHit * 100) / 100,
-        total_cost_usd: Math.round(result.totalCost * 100) / 100,
-        projected_24h_cost_usd: Math.round(projected24hCost * 100) / 100
+        overall_cache_hit_pct: overallCacheHit === null ? null : Math.round(overallCacheHit * 100) / 100,
+        total_cost_usd: result.totalResponses > 0 ? Math.round(result.totalCost * 100) / 100 : null,
+        projected_24h_cost_usd: result.totalResponses > 0 ? Math.round(projected24hCost * 100) / 100 : null
       },
       breakdown: result.breakdown,
       source: 'live'

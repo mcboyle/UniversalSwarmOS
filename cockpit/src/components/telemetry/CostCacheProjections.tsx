@@ -37,16 +37,25 @@ export function CostCacheProjections({
     total_context_tokens: 0,
     total_output_tokens: 0,
     total_cache_read_tokens: 0,
-    overall_cache_hit_pct: 0,
-    total_cost_usd: 0,
-    projected_24h_cost_usd: 0
+    overall_cache_hit_pct: null,
+    fleet_fresh_tokens_window: null,
+    fleet_fresh_per_turn: null,
+    measured_responses: 0,
+    unmeasured_responses: 0,
+    total_cost_usd: null,
+    projected_24h_cost_usd: null
   };
 
-  const isCacheTargetMet = aggregate.overall_cache_hit_pct >= 90.0;
-  const projected7DayUsd = aggregate.projected_24h_cost_usd * 7;
+  const hasUsage = Boolean(costData.aggregate) && costData.total_responses > 0;
+  const cacheHitPct = hasUsage ? aggregate.overall_cache_hit_pct : null;
+  const isCacheTargetMet = cacheHitPct != null && cacheHitPct >= 90.0;
+  const projected7DayUsd = hasUsage && aggregate.projected_24h_cost_usd != null
+    ? aggregate.projected_24h_cost_usd * 7 : null;
+  const hasChartData = hasUsage && aggregate.total_cost_usd != null;
 
   // Generate timeline series for Recharts
   const chartSeries = useMemo(() => {
+    if (!hasUsage || aggregate.total_cost_usd == null) return [];
     const points = [];
     const steps = 12;
     const baseCached = aggregate.total_cache_read_tokens / steps;
@@ -73,7 +82,7 @@ export function CostCacheProjections({
       });
     }
     return points;
-  }, [aggregate, timeRange]);
+  }, [aggregate, timeRange, hasUsage]);
 
   return (
     <div className="p-4 rounded-lg bg-zinc-900 border border-zinc-800 space-y-4">
@@ -127,22 +136,47 @@ export function CostCacheProjections({
         </div>
       </div>
 
+      {!hasUsage && (
+        <div className="text-xs font-mono text-zinc-400">
+          COULD NOT LOOK: no usage rows in window
+        </div>
+      )}
+
       {/* KPI Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
         {/* Cache Efficiency Card */}
         <div className="p-3 rounded bg-zinc-950/70 border border-zinc-800 space-y-1">
           <div className="flex items-center justify-between text-[11px] font-mono text-zinc-400">
             <span>Cache Efficiency</span>
-            {isCacheTargetMet ? (
+            {cacheHitPct == null ? null : isCacheTargetMet ? (
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
             ) : (
               <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
             )}
           </div>
-          <div className={`text-xl font-mono font-bold ${isCacheTargetMet ? 'text-emerald-400' : 'text-amber-400'}`}>
-            {formatPercent(aggregate.overall_cache_hit_pct)}
+          <div className={`text-xl font-mono font-bold ${cacheHitPct == null ? 'text-zinc-400' : isCacheTargetMet ? 'text-emerald-400' : 'text-amber-400'}`}>
+            {cacheHitPct == null ? 'COULD NOT LOOK' : formatPercent(cacheHitPct)}
           </div>
-          <div className="text-[10px] text-zinc-500 font-mono">Target: &gt; 90.0%</div>
+          {cacheHitPct != null && <div className="text-[10px] text-zinc-500 font-mono">Target: &gt; 90.0%</div>}
+        </div>
+
+        {/* Fresh input measured over the selected window */}
+        <div className="p-3 rounded bg-zinc-950/70 border border-zinc-800 space-y-1">
+          <div className="flex items-center justify-between text-[11px] font-mono text-zinc-400">
+            <span>Fleet Fresh Tokens</span>
+            <Zap className="w-3.5 h-3.5 text-amber-400" />
+          </div>
+          <div className="text-xl font-mono font-bold text-zinc-100">
+            {!hasUsage ? 'COULD NOT LOOK' : aggregate.fleet_fresh_tokens_window == null ? 'Unavailable' : formatNumber(aggregate.fleet_fresh_tokens_window)}
+          </div>
+          <div className="text-[10px] text-zinc-500 font-mono">
+            Window: {timeRange} · Fresh/turn: {!hasUsage ? 'COULD NOT LOOK' : aggregate.fleet_fresh_per_turn == null ? 'Unavailable' : formatNumber(aggregate.fleet_fresh_per_turn)}
+          </div>
+          {(aggregate.unmeasured_responses ?? 0) > 0 && (
+            <div className="text-[10px] text-amber-400 font-mono">
+              {aggregate.measured_responses ?? 0} measured / {aggregate.unmeasured_responses} unavailable turns
+            </div>
+          )}
         </div>
 
         {/* Total Context Tokens */}
@@ -152,23 +186,23 @@ export function CostCacheProjections({
             <Layers className="w-3.5 h-3.5 text-cyan-400" />
           </div>
           <div className="text-xl font-mono font-bold text-zinc-100">
-            {formatNumber(aggregate.total_context_tokens)}
+            {hasUsage ? formatNumber(aggregate.total_context_tokens) : 'COULD NOT LOOK'}
           </div>
           <div className="text-[10px] text-zinc-500 font-mono">
-            Cached: {formatNumber(aggregate.total_cache_read_tokens)}
+            Cached: {hasUsage ? formatNumber(aggregate.total_cache_read_tokens) : 'COULD NOT LOOK'}
           </div>
         </div>
 
         {/* Cumulative Period Spend */}
         <div className="p-3 rounded bg-zinc-950/70 border border-zinc-800 space-y-1">
           <div className="flex items-center justify-between text-[11px] font-mono text-zinc-400">
-            <span>Period Spend</span>
+            <span>Estimated Period Spend</span>
             <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
           </div>
           <div className="text-xl font-mono font-bold text-emerald-400">
-            {formatCurrency(aggregate.total_cost_usd)}
+            {!hasUsage || aggregate.total_cost_usd == null ? 'COULD NOT LOOK' : formatCurrency(aggregate.total_cost_usd)}
           </div>
-          <div className="text-[10px] text-zinc-500 font-mono">24h Proj: {formatCurrency(aggregate.projected_24h_cost_usd)}</div>
+          <div className="text-[10px] text-zinc-500 font-mono">24h Proj: {!hasUsage || aggregate.projected_24h_cost_usd == null ? 'COULD NOT LOOK' : formatCurrency(aggregate.projected_24h_cost_usd)}</div>
         </div>
 
         {/* 7-Day Spend Projection */}
@@ -178,7 +212,7 @@ export function CostCacheProjections({
             <TrendingUp className="w-3.5 h-3.5 text-purple-400" />
           </div>
           <div className="text-xl font-mono font-bold text-purple-300">
-            {formatCurrency(projected7DayUsd)}
+            {projected7DayUsd == null ? 'COULD NOT LOOK' : formatCurrency(projected7DayUsd)}
           </div>
           <div className="text-[10px] text-zinc-500 font-mono">Based on current velocity</div>
         </div>
@@ -186,6 +220,9 @@ export function CostCacheProjections({
 
       {/* Chart Canvas Wrapped in ClientOnly to Guarantee Zero Hydration Mismatches */}
       <div className="h-72 w-full pt-2">
+        {!hasChartData ? (
+          <div className="h-full flex items-center justify-center text-xs font-mono text-zinc-400">COULD NOT LOOK</div>
+        ) : (
         <ClientOnly fallback={<div className="h-full flex items-center justify-center text-xs font-mono text-zinc-500">Loading Recharts Telemetry Canvas...</div>}>
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={chartSeries} margin={{ top: 10, right: 20, left: 10, bottom: 0 }}>
@@ -243,10 +280,15 @@ export function CostCacheProjections({
             </ComposedChart>
           </ResponsiveContainer>
         </ClientOnly>
+        )}
+      </div>
+
+      <div className="text-[11px] text-amber-400 font-mono">
+        Costs are API-rate estimates. Claude cache writes use 1h rates when duration is unavailable.
       </div>
 
       {/* Model Breakdown Table */}
-      {costData.breakdown && costData.breakdown.length > 0 && (
+      {hasUsage && costData.breakdown && costData.breakdown.length > 0 && (
         <div className="pt-2 border-t border-zinc-800">
           <div className="text-xs font-mono text-zinc-400 mb-2 font-semibold">
             Token & Cost Breakdown by {costData.group_by === 'thread' ? 'Thread' : 'Model'}
@@ -259,8 +301,10 @@ export function CostCacheProjections({
                   <th className="py-1.5 px-2">Turns</th>
                   <th className="py-1.5 px-2">Total Context</th>
                   <th className="py-1.5 px-2">Cache Read</th>
+                  <th className="py-1.5 px-2">Fresh/turn</th>
+                  <th className="py-1.5 px-2">Cold/h</th>
                   <th className="py-1.5 px-2">Efficiency %</th>
-                  <th className="py-1.5 px-2 text-right">Cost (USD)</th>
+                  <th className="py-1.5 px-2 text-right">Estimated Cost (USD)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/40">
@@ -295,12 +339,14 @@ export function CostCacheProjections({
                       <td className="py-1.5 px-2">{row.turns}</td>
                       <td className="py-1.5 px-2">{formatNumber(row.total_ctx)}</td>
                       <td className="py-1.5 px-2 text-cyan-400">{formatNumber(row.cache_read)}</td>
+                      <td className="py-1.5 px-2">{row.fresh_per_turn == null ? 'Unavailable' : formatNumber(row.fresh_per_turn)}</td>
+                      <td className="py-1.5 px-2">{row.cold_starts_per_hour == null ? 'Unavailable' : row.cold_starts_per_hour.toFixed(2)}</td>
                       <td className="py-1.5 px-2">
-                        <span className={row.cache_efficiency_pct >= 90 ? 'text-emerald-400 font-bold' : 'text-amber-400'}>
-                          {formatPercent(row.cache_efficiency_pct)}
+                        <span className={row.cache_efficiency_pct == null ? 'text-zinc-400' : row.cache_efficiency_pct >= 90 ? 'text-emerald-400 font-bold' : 'text-amber-400'}>
+                          {row.cache_efficiency_pct == null ? 'COULD NOT LOOK' : formatPercent(row.cache_efficiency_pct)}
                         </span>
                       </td>
-                      <td className="py-1.5 px-2 text-right text-emerald-400">{formatCurrency(row.cost_usd)}</td>
+                      <td className="py-1.5 px-2 text-right text-emerald-400" title={row.pricing_source ?? undefined}>{formatCurrency(row.cost_usd)}</td>
                     </tr>
                   );
                 })}
