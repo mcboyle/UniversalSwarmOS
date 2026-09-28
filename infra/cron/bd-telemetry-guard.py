@@ -14,15 +14,17 @@ SAY_SH = '/home/mboyle/bd-say.sh'
 WORKER_LIMIT = 150000
 ORCHESTRATOR_LIMIT = 250000
 CHECKPOINT_WINDOW_TOKENS = 25000
-MIN_CACHE_HIT_RATIO = 0.90
 
 
-def calculate_cache_hit_rate(tokens: int, window_size: int = CHECKPOINT_WINDOW_TOKENS) -> float:
-    """Calculates expected prompt cache hit rate (>= 90%) for zero-reset checkpoint pruning."""
+def expected_cache_hit_rate(tokens: int, window_size: int = CHECKPOINT_WINDOW_TOKENS) -> float | None:
+    """Expected checkpoint ratio; not measured telemetry or cockpit data.
+
+    None when tokens <= 0: no observation is COULD NOT LOOK, never a ratio.
+    """
     if tokens <= 0:
-        return 1.0
+        return None
     if tokens <= window_size:
-        return 1.0 if tokens < 1000 else MIN_CACHE_HIT_RATIO
+        return 0.0
     count = tokens // window_size
     if tokens % window_size == 0 and count > 1:
         locked_boundary = (count - 1) * window_size
@@ -31,9 +33,9 @@ def calculate_cache_hit_rate(tokens: int, window_size: int = CHECKPOINT_WINDOW_T
     else:
         locked_boundary = count * window_size
     if locked_boundary <= 0:
-        return MIN_CACHE_HIT_RATIO
+        return 0.0
     ratio = locked_boundary / float(tokens)
-    return min(1.0, max(MIN_CACHE_HIT_RATIO, ratio))
+    return min(1.0, max(0.0, ratio))
 
 
 def get_busy_seats():
@@ -73,7 +75,8 @@ def trigger_zero_reset_pruning(seat: str, max_context: int, limit: int, thread: 
     clear_order(compact_order)
 
     prune_order = os.path.join(ORDERS_DIR, f'PRUNE-{seat}.md')
-    cache_hit_rate = calculate_cache_hit_rate(max_context)
+    cache_hit_rate = expected_cache_hit_rate(max_context)
+    ratio_text = "COULD-NOT-LOOK (no token observation)" if cache_hit_rate is None else f"{cache_hit_rate:.2f}"
     stamp = datetime.datetime.now(datetime.UTC).isoformat().replace('+00:00', 'Z')
     thread_line = f"THREAD: {thread}\n" if thread else ""
 
@@ -85,13 +88,13 @@ def trigger_zero_reset_pruning(seat: str, max_context: int, limit: int, thread: 
         f"INPUT-TOKENS: {max_context}\n"
         f"LIMIT: {limit}\n"
         f"CHECKPOINT-WINDOW: {CHECKPOINT_WINDOW_TOKENS}\n"
-        f"EXPECTED-CACHE-HIT-RATIO: {cache_hit_rate:.2f}\n"
+        f"EXPECTED-CACHE-HIT-RATIO: {ratio_text}\n"
         f"PRUNE-TARGET: ephemeral_tool_observations_only\n"
         f"POLICY: zero_reset_checkpoint_pruning\n\n"
         f"Your lane has reached {max_context} tokens (limit {limit}).\n"
         f"Prune Turn 2+ ephemeral tool observations in locked historical windows (<= last locked 25k boundary).\n"
         f"Active 25k window remains 100% append-only and strictly immutable.\n"
-        f"DO NOT execute /compact. Prompt cache hit rate guaranteed >= 90%.\n"
+        f"DO NOT execute /compact. EXPECTED-CACHE-HIT-RATIO is the locked-window fraction, not measured cache telemetry.\n"
     )
 
     if os.path.isfile(prune_order):

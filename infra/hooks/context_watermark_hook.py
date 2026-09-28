@@ -25,7 +25,6 @@ ORCHESTRATOR_COMPACTION_CEILING = 250000
 CHECKPOINT_WINDOW_TOKENS = 25000
 ANTHROPIC_BLOCK_ALIGNMENT = 2048
 OPENAI_BLOCK_ALIGNMENT = 1024
-DEFAULT_MIN_CACHE_HIT_RATIO = 0.90
 
 ERROR_PATTERNS = [
     re.compile(r"\b(AssertionError|Traceback|SyntaxError|TypeError|ValueError|KeyError|IndexError)\b"),
@@ -203,7 +202,6 @@ class CheckpointWindowPruner:
     def __init__(
         self,
         window_size: int = CHECKPOINT_WINDOW_TOKENS,
-        min_cache_hit_ratio: float = DEFAULT_MIN_CACHE_HIT_RATIO,
         alignment_chunk: int = OPENAI_BLOCK_ALIGNMENT,
     ):
         if window_size < 1000 or window_size > 100000:
@@ -214,13 +212,8 @@ class CheckpointWindowPruner:
             raise ValueError(
                 f"Invalid alignment_chunk {alignment_chunk}: must be positive"
             )
-        if not (0.0 <= min_cache_hit_ratio <= 1.0):
-            raise ValueError(
-                f"Invalid min_cache_hit_ratio {min_cache_hit_ratio}: must be between 0.0 and 1.0"
-            )
 
         self.window_size = window_size
-        self.min_cache_hit_ratio = min_cache_hit_ratio
         self.alignment_chunk = alignment_chunk
         self.watermark_filter = ContextWatermarkFilter()
 
@@ -243,14 +236,10 @@ class CheckpointWindowPruner:
         window_size = policy.get(
             "checkpoint_window_tokens", CHECKPOINT_WINDOW_TOKENS
         )
-        min_cache_hit_ratio = policy.get(
-            "min_cache_hit_ratio", DEFAULT_MIN_CACHE_HIT_RATIO
-        )
         chunks = policy.get("alignment_chunk_tokens", {})
         chunk = chunks.get("openai", OPENAI_BLOCK_ALIGNMENT)
         return cls(
             window_size=window_size,
-            min_cache_hit_ratio=min_cache_hit_ratio,
             alignment_chunk=chunk,
         )
 
@@ -484,31 +473,52 @@ class CheckpointWindowPruner:
         )
         return result_records, initial_tokens, final_tokens
 
-    def calculate_cache_hit_ratio(
+    def expected_cache_hit_ratio(
         self,
         total_tokens: int,
         locked_boundary: int | None = None,
-    ) -> float:
-        """Calculates expected prompt cache hit ratio for the context.
+    ) -> float | None:
+        """Expected checkpoint ratio (locked tokens / total); not measured telemetry or cockpit data.
 
-        Guarantees >= 90% for sessions with locked historical checkpoints.
+        No floor: with no locked checkpoint the expected ratio is 0.0.
+        None when total_tokens <= 0: no observation is COULD NOT LOOK, never a ratio.
         """
         if total_tokens <= 0:
-            return 1.0
+            return None
         if locked_boundary is None:
             locked_boundary = self.get_last_locked_boundary(total_tokens)
         if locked_boundary <= 0:
-            return 1.0 if total_tokens < 1000 else self.min_cache_hit_ratio
+            return 0.0
         ratio = locked_boundary / float(total_tokens)
-        return min(1.0, max(self.min_cache_hit_ratio, ratio))
+        return min(1.0, max(0.0, ratio))
 
 
-def calculate_cache_hit_rate(
+def expected_cache_hit_rate(
     total_tokens: int, window_size: int = CHECKPOINT_WINDOW_TOKENS
-) -> float:
-    """Helper function to calculate prompt cache hit rate (>= 90%)."""
+) -> float | None:
+    """Expected checkpoint ratio for total_tokens; not measured telemetry or cockpit data."""
     pruner = CheckpointWindowPruner(window_size=window_size)
-    return pruner.calculate_cache_hit_ratio(total_tokens)
+    return pruner.expected_cache_hit_ratio(total_tokens)
+
+
+def _could_not_look(reason: str, window: int, initial_tokens: int | None, records: int) -> int:
+    """--checkpoint-prune with nothing to measure: typed COULD NOT LOOK record, exit 2 (never a fabricated ratio)."""
+    sys.stdout.write(
+        json.dumps(
+            {
+                "status": "could-not-look",
+                "reason": reason,
+                "checkpoint_window": window,
+                "initial_tokens": initial_tokens,
+                "expected_cache_hit_ratio": None,
+                "reduction_percent": None,
+                "records_count": records,
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+    return 2
 
 
 def main() -> int:
@@ -537,13 +547,24 @@ def main() -> int:
 
     if args.checkpoint_prune:
         pruner = CheckpointWindowPruner(window_size=args.window_size)
+        if not input_text.strip():
+            # Absent/blank input: COULD NOT LOOK, never a silent exit 0 through the line filter.
+            return _could_not_look("no input (empty or blank transcript)", args.window_size, None, 0)
         try:
             data = json.loads(input_text)
+            if not isinstance(data, list):
+                # Valid JSON carrying no record list (null, {}, a scalar): nothing to measure.
+                return _could_not_look(f"JSON input is {type(data).__name__}, not a record list",
+                                       args.window_size, None, 0)
             if isinstance(data, list):
                 res, init_t, final_t = pruner.prune_ephemeral_observations(
                     data, current_tokens=args.tokens
                 )
-                hit_rate = pruner.calculate_cache_hit_ratio(init_t)
+                hit_rate = pruner.expected_cache_hit_ratio(init_t)
+                if hit_rate is None:
+                    # No tokens observed: COULD NOT LOOK, never a 0% ratio / 100% reduction.
+                    return _could_not_look("no token observation (initial_tokens <= 0)", args.window_size,
+                                           init_t, len(res))
                 if args.json:
                     sys.stdout.write(
                         json.dumps(
@@ -552,7 +573,7 @@ def main() -> int:
                                 "checkpoint_window": args.window_size,
                                 "initial_tokens": init_t,
                                 "final_tokens": final_t,
-                                "cache_hit_ratio": hit_rate,
+                                "expected_cache_hit_ratio": hit_rate,
                                 "reduction_percent": round(
                                     (1 - (final_t / max(1, init_t))) * 100, 2
                                 ),
