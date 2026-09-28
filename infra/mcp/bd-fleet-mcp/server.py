@@ -169,15 +169,33 @@ def premise_verify(brief_or_row: str, check_symbols: Optional[list[str]] = None,
             if not base or _git('rev-parse', '--verify', base.group()+'^{commit}') != main:
                 raise ValueError('stale_or_unknown_BASE')
         if is_harness:
+            def exists(path):
+                p = Path(path)
+                if p.is_absolute() and p.exists(): return True
+                if (PERSIST / path).exists() or (HOME / path).exists() or (REPO / path).exists(): return True
+                try:
+                    return _run_cmd(['git','-C',str(REPO),'cat-file','-e',f'origin/main:{_repo_path(path)}']).returncode == 0
+                except Exception:
+                    return False
+
             for owned in fields['OWNS'].split(';'):
+                if not owned.strip(): continue
+                new = '(new)' in owned
                 path = re.sub(r'\s*\([^)]*\).*$', '', owned).strip()
                 if not path:
-                    path = owned.split()[0].strip()
+                    splits = owned.split()
+                    if splits: path = splits[0].strip()
+                if not path: continue
                 path = path.rstrip('/')
                 p = Path(path)
                 target = p if p.is_absolute() else (PERSIST / path)
-                if not target.exists() and not (HOME / path).exists() and not (REPO / path).exists():
-                    if not target.parent.exists() and not (HOME / path).parent.exists() and not (REPO / path).parent.exists():
+                target_exists = target.exists() or (HOME / path).exists() or (REPO / path).exists()
+                parent_exists = target.parent.exists() or (HOME / path).parent.exists() or (REPO / path).parent.exists()
+                if new:
+                    if not parent_exists: errors.append(f'OWNS parent absent: {path}')
+                    if target_exists: errors.append(f'OWNS new path already exists: {path}')
+                else:
+                    if not target_exists:
                         errors.append(f'OWNS absent: {path}')
             if fields.get('WIRING'):
                 for path in fields['WIRING'].split(';'):
@@ -615,25 +633,7 @@ def invoke_subagent(
         log_path = PERSIST / 'logs' / 'subagents' / f'{slug}.log'
         log_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # 6. Append dispatched row to /home/mboyle/bd-persist/DISPATCH-LEDGER.tsv under flock
-        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        seat = f"bd-agy-{slug}"
-        ledger_line = f"{now_iso}\t{seat}\t{slug}\tdispatched\t{task_arg}\n"
-        ledger_path = PERSIST / 'DISPATCH-LEDGER.tsv'
-        ledger_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(ledger_path, 'a', encoding='utf-8') as f:
-            fcntl.flock(f, fcntl.LOCK_EX)
-            try:
-                f.write(ledger_line)
-                f.flush()
-                os.fsync(f.fileno())
-            finally:
-                try:
-                    fcntl.flock(f, fcntl.LOCK_UN)
-                except OSError:
-                    pass
-
-        # 7. Launch /home/mboyle/bin/bd-agy-lean-spawn in background
+        # 6. Launch /home/mboyle/bin/bd-agy-lean-spawn in background
         spawn_bin = HOME / 'bin' / 'bd-agy-lean-spawn'
         cmd = [
             str(spawn_bin),
@@ -652,6 +652,24 @@ def invoke_subagent(
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
             )
+
+        # 7. Append dispatched row to /home/mboyle/bd-persist/DISPATCH-LEDGER.tsv under flock
+        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        seat = f"bd-agy-{slug}"
+        ledger_line = f"{now_iso}\t{seat}\t{slug}\tdispatched\t{task_arg}\n"
+        ledger_path = PERSIST / 'DISPATCH-LEDGER.tsv'
+        ledger_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(ledger_path, 'a', encoding='utf-8') as f:
+            fcntl.flock(f, fcntl.LOCK_EX)
+            try:
+                f.write(ledger_line)
+                f.flush()
+                os.fsync(f.fileno())
+            finally:
+                try:
+                    fcntl.flock(f, fcntl.LOCK_UN)
+                except OSError:
+                    pass
 
         return {
             "status": "dispatched",
