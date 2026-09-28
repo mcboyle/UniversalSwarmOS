@@ -173,6 +173,8 @@ function parseTsvFile(filePath: string, seenSignatures: Set<string>, rows: TsvUs
       const conv_id = parts[4]?.trim() || '';
       const status = parts[5]?.trim() || '';
       if (status.toUpperCase() === 'SYNTHETIC') continue;
+      // bd-fleet-bench rows (bd-bench-*) are synthetic probes (fixed 85.00% cache ratio): kept in the TSV, never metered.
+      if (seat.startsWith('bd-bench-')) continue;
       const input_tokens = parseInt(parts[6], 10) || 0;
       const output_tokens = parseInt(parts[7], 10) || 0;
       const thinking_tokens = parseInt(parts[8], 10) || 0;
