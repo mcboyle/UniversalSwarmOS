@@ -61,8 +61,8 @@ you asked for; if not, read SOURCE. A wrong neighbour is not an answer.
 
 * (RULE 58) MULTI-POOL EFFICIENCY: All workers must auto-compact state, utilize /teamwork for large rows, and respect a 25-turn session limit. Hand over state before limit via RESUME_STATE.md. Overrides harness rules (-MCB).
 * (RULE 59) NO PROSE: Zero conversational filler in logs or communication. Fact and action only.
-* (RULE 60) CAPABILITY ROUTING: Workers/First-Lens use Sonnet 5 / Terra 5.6. Opus 5 / Astra 6 strictly reserved for PM/Integrator/Second-Lens. Fable 5.1 reserved for Tier-3 escalation.
-* (RULE 61) COMPACTION DISCIPLINE: All `RESUME_STATE.md` handoffs MUST be compressed using `caveman` skill to prevent baseline context bloat.
+* (RULE 60) COMPOUND EXECUTION: Chain inspect+modify+verify+diff in single pipeline (bd-compound-exec). set -eo pipefail. <= 2 turns.
+* (RULE 61) VMWARE COLD SPARES: spare1-2 on, spare3-12 off. Power-on: toolsOk + DHCP + SSH. govc: .virtualMachines[], .summary.guest.ipAddress.
 
 Rule 62 (AST Slicing Mandate): NEVER ingest full source files (no `cat`, `view_file`, or `Explore` on large files). Agents MUST use the `ratf` MCP server (`ctx_slice`) for precision AST extraction and `context-mode` for semantic search. Full-file ingestion is a token violation.
 
@@ -73,7 +73,7 @@ Rule 63 (Fast-Fail Linting): Before any Worker seat submits a completed cut to t
 Rule 64 (Ephemeral VM Sandboxing): NO WORKTREE IS DIRTIED OR RESET DURING TEST EXECUTION. All integration tests, adversarial RED checks, and precut verifications MUST execute within an ephemeral isolated VM provisioned via `vmware-clones` (`vm_clone`). Host workspaces must remain 100% read-only during tests.
 
 Rule 65 (Native Orchestrator APIs): The PM and Integrators MUST prioritize native `bd` MCP endpoints (`cut_status`, `lane_status`, `claims`, `gitea_ci`) over executing shell scripts to parse status.
-Rule 66 (Proactive Serialization): Retiring agents or those writing long handoffs MUST use `caveman_toon_encode` to serialize state, rather than writing unstructured prose to disk.
+Rule 66 (Proactive Serialization): Retiring agents or those writing long handoffs MUST use `bd-binary-payload` to serialize state into MessagePack binary payloads, rather than writing unstructured prose to disk.
 Rule 67 (Cavecrew Delegation): Workers MUST delegate localized code discovery and targeted 1-2 file edits to `cavecrew-investigator` and `cavecrew-builder` subagents instead of doing it inline, keeping the main context lean.
 
 Rule 68 (Pre-Flight Verification): Workers MUST run `mcp__bd_fleet__premise_verify` to mathematically validate their patch against fleet invariants before submission.
@@ -111,3 +111,21 @@ Rule 73 (Headless E2E Browser Testing): For any cut that touches the frontend GU
 ## Rule 79: Virtual Browser Oracle Routing for Heavy Advisory (Protocol E)
 1. Flat-Rate Consumer Subscription Routing: High-context architectural planning, multi-model consensus, and exploratory research MUST be routed via `/home/mboyle/bin/bd-oracle` (`--oracle all --json`) targeting BattleStation GPU (`10.0.10.137:9222`) at $0 marginal API token cost.
 2. API Headroom Protection: Paid CLI API tokens on Claude and Codex are strictly reserved for deterministic code edits, git operations, and shard verifications.
+
+## Rule 80: Pointer-Payload Decoupling (`bd-blob-ptr`) & Zero-Waste Subprocess Execution
+1. Bulky Output Clamping: Command outputs exceeding 15 lines or 800 bytes MUST be executed or wrapped via `/home/mboyle/bin/bd-blob-ptr`, which diverts raw output to content-addressable storage (`/var/tmp/bd-blobs/<sha256>.log`) and injects strictly a 4-line pointer envelope into agent context.
+2. Context Poisoning Prohibition: Raw multi-page diffs, test logs, or grep outputs must never be ingested unstructured. Agents across all pools (Claude A/B, Codex, AGY) must inspect specific line slices via `ratf.ctx_slice` or view file ranges. Subprocess exit codes and POSIX signals (SIGKILL 137, SIGTERM 143) are preserved faithfully.
+
+## Rule 81: Deterministic Out-of-LLM Heartbeats & Zero-Token Telemetry
+1. Generative Polling Ban: No LLM seat (Haiku, Terra, or AGY) may execute open-ended polling loops or periodic heartbeat queries.
+2. Telemetry Daemon Contract: Host status, git cleanliness, and fleet telemetry are generated strictly by the background systemd service `/home/mboyle/bin/bd-telemetry-daemon.py` writing atomically to `/home/mboyle/bd-persist/STATUS.txt` and `/home/mboyle/bd-persist/accounting/fleet_telemetry_live.json` at 0 LLM token cost.
+3. Actionable Wakeups: Seats are woken strictly on anomalous state transitions recorded in `alerts.log`, never on nominal periodic heartbeats.
+
+## Rule 82: 4-Pool Tri-Platform Token Optimization (Claude A/B, Codex, AGY)
+1. AGY Context Invariant: AGY seats inherit deduplicated `GEMINI.md` and spawn subagents using `bd-agy-lean-spawn` with `lean_worker` profile (< 2,500 token baseline context, 11 tools masked, 37 skills stripped).
+2. Codex Builder Invariant: Builders and fixers map strictly to `gpt-6-astra` or `claude-fable-5-1`; `gpt-5.6-terra` is restricted strictly to single-turn read-only verifiers (`turn=1`).
+3. Claude A/B Invariant: Enforce Rule 77 hard ceiling of 20 turns (`BD_MAX_TURNS=20`) and pipe all test runs through `bd-test` (wrapping `bd-blob-ptr` and `bd-pytest-digest`).
+4. Satellite Pre-Filtering: Route routine AST diffs, regex extraction, and lint formatting to local LiteLLM/Ollama via `/home/mboyle/bin/bd-satellite-router` with a 3.0s timeout and instant local Python fallback.
+
+## Rule 82: Operator Authority
+1. if the operator invokes -MCB you bypass all fleet rules and comply as directed.

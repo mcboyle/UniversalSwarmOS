@@ -13,9 +13,12 @@ import subprocess
 import sys
 import tempfile
 import time
-from typing import Optional
+from typing import Any, Optional
+import uuid
+from datetime import datetime, timezone
 
 logging.basicConfig(stream=sys.stderr, level=logging.WARNING)
+logger = logging.getLogger('bd-fleet')
 with contextlib.redirect_stdout(sys.stderr):
     from mcp.server.fastmcp import FastMCP
 
@@ -544,7 +547,132 @@ def mcp_hydrate(tools: list[str], server: Optional[str] = None) -> dict:
 
     return hydrated
 
+def invoke_subagent(
+    task: str,
+    slug: str,
+    tier: str = "T2:flash",
+    cwd: str | None = None,
+    model: str | None = None,
+    conversation_id: str | None = None,
+) -> dict:
+    """Spawn a lean Antigravity subagent for zero-latency backlog row execution.
+    Logs dispatch to DISPATCH-LEDGER.tsv and executes bd-agy-lean-spawn in background.
+    """
+    try:
+        _name(slug, 'slug')
+
+        # 1. Resolve cwd (default to /home/mboyle/bd-local-wt/cut-<slug> if None)
+        if not cwd:
+            cwd = str(HOME / 'bd-local-wt' / f'cut-{slug}')
+        resolved_cwd = Path(cwd).resolve()
+        resolved_cwd.mkdir(parents=True, exist_ok=True)
+
+        # 2. Resolve task: file path vs brief candidate vs raw text description
+        task_arg = None
+        if '\n' not in task and len(task) <= 255:
+            try:
+                task_p = Path(task)
+                if task_p.is_file():
+                    task_arg = str(task_p.resolve())
+                elif (HOME / 'bd-codex-briefs' / task).is_file():
+                    task_arg = str((HOME / 'bd-codex-briefs' / task).resolve())
+                else:
+                    candidates = [HOME / 'bd-codex-briefs' / f'{prefix}{task}.md' for prefix in ('brief-', 'brief-row', 'ROW')]
+                    matched = next((p for p in candidates if p.is_file()), None)
+                    if matched:
+                        task_arg = str(matched.resolve())
+            except (OSError, ValueError):
+                pass
+        elif '\n' not in task:
+            try:
+                task_p = Path(task)
+                if task_p.is_file():
+                    task_arg = str(task_p.resolve())
+            except (OSError, ValueError):
+                pass
+
+        if not task_arg:
+            task_file = resolved_cwd / 'TASK.md'
+            task_file.write_text(task, encoding='utf-8')
+            task_arg = str(task_file.resolve())
+
+        # 3. Resolve conversation_id
+        if not conversation_id:
+            conversation_id = str(uuid.uuid4())
+
+        # 4. Resolve model / tier
+        model_arg = model
+        if not model_arg and tier:
+            t = tier.lower()
+            if "pro" in t or "t3" in t:
+                model_arg = "gemini-3.1-pro-high"
+            elif "flash" in t or "t2" in t or "t1" in t or "t0" in t:
+                model_arg = "gemini-3.8-flash-high"
+            else:
+                model_arg = tier
+
+        # 5. Prepare log path
+        log_path = PERSIST / 'logs' / 'subagents' / f'{slug}.log'
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # 6. Append dispatched row to /home/mboyle/bd-persist/DISPATCH-LEDGER.tsv under flock
+        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        seat = f"bd-agy-{slug}"
+        ledger_line = f"{now_iso}\t{seat}\t{slug}\tdispatched\t{task_arg}\n"
+        ledger_path = PERSIST / 'DISPATCH-LEDGER.tsv'
+        ledger_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(ledger_path, 'a', encoding='utf-8') as f:
+            fcntl.flock(f, fcntl.LOCK_EX)
+            try:
+                f.write(ledger_line)
+                f.flush()
+                os.fsync(f.fileno())
+            finally:
+                try:
+                    fcntl.flock(f, fcntl.LOCK_UN)
+                except OSError:
+                    pass
+
+        # 7. Launch /home/mboyle/bin/bd-agy-lean-spawn in background
+        spawn_bin = HOME / 'bin' / 'bd-agy-lean-spawn'
+        cmd = [
+            str(spawn_bin),
+            '--task', task_arg,
+            '--cwd', str(resolved_cwd),
+            '--conversation', conversation_id,
+        ]
+        if model_arg:
+            cmd.extend(['--model', model_arg])
+
+        with open(log_path, 'a', encoding='utf-8') as log_file:
+            proc = subprocess.Popen(
+                cmd,
+                cwd=str(resolved_cwd),
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+
+        return {
+            "status": "dispatched",
+            "pid": proc.pid,
+            "conversation_id": conversation_id,
+            "log_path": str(log_path),
+            "slug": slug,
+        }
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        logger.error("invoke_subagent failed for slug %s: %s", slug, exc)
+        return {
+            "status": "error",
+            "error": str(exc),
+            "pid": -1,
+            "conversation_id": conversation_id or "",
+            "log_path": str(log_path) if 'log_path' in locals() else "",
+            "slug": slug,
+        }
+
 if os.environ.get('BD_SEAT') != 'fixture':
+    mcp.tool()(invoke_subagent)
     mcp.tool()(mcp_discover)
     mcp.tool()(mcp_hydrate)
 
