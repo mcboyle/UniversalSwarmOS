@@ -12,7 +12,12 @@ PORT = 9998
 def get_data():
     conn = sqlite3.connect('/home/mboyle/bd-persist/accounting/usage.sqlite', timeout=10.0)
     c = conn.cursor()
-    rates = {'claude-fable-5-1': {'in': 3.0, 'out': 15.0, 'cache': 0.3}, 'claude-opus-5-5': {'in': 15.0, 'out': 75.0, 'cache': 1.5}}
+    # USD/MTok input/output/cache read; verified 2026-09-28:
+    # https://platform.claude.com/docs/en/about-claude/pricing
+    rates = {
+        'claude-fable-5-1': {'in': 10.0, 'out': 50.0, 'cache': 0.25},
+        'claude-opus-5-5': {'in': 4.0, 'out': 20.0, 'cache': 0.20},
+    }
     
     q = """
     SELECT r.model, o.thread,
@@ -24,22 +29,36 @@ def get_data():
     """
     total_cost = 0; total_in = 0; total_cache = 0; total_turns = 0
     agents = []
+    priced_turns = 0
+    unpriced_turns = 0
+    unpriced_models = set()
     
     for row in c.execute(q).fetchall():
         model, thread, base_in, cache_in, out, turns = row
         base_in = base_in or 0; cache_in = cache_in or 0; out = out or 0
         total_in += base_in + cache_in; total_cache += cache_in; total_turns += turns
-        r = rates.get(model, {'in': 3.0, 'out': 15.0, 'cache': 0.3})
-        cost = (base_in / 1e6 * r['in']) + (cache_in / 1e6 * r['cache']) + (out / 1e6 * r['out'])
-        total_cost += cost
+        r = rates.get(model)
+        if r is None:
+            cost_display = "COULD NOT LOOK"
+            unpriced_turns += turns
+            unpriced_models.add(model)
+        else:
+            cost = (base_in / 1e6 * r['in']) + (cache_in / 1e6 * r['cache']) + (out / 1e6 * r['out'])
+            total_cost += cost
+            priced_turns += turns
+            cost_display = f"${cost:.2f}"
         agents.append({
             "name": thread[:16],
             "model": model,
             "turns": turns,
             "tokens": f"{(base_in + cache_in)/1e6:.1f}M",
-            "cost": f"${cost:.2f}"
+            "cost": cost_display
         })
     
+    total_cost_display = "COULD NOT LOOK"
+    if priced_turns:
+        total_cost_display = f"${total_cost:.2f}" + (" (partial)" if unpriced_turns else "")
+
     # Ledger
     ledger = []
     active_workers = set()
@@ -85,7 +104,9 @@ def get_data():
             "active_agents": len(active_workers),
             "total_turns": total_turns,
             "hit_rate": f"{hit_rate:.1f}%",
-            "total_cost": f"${total_cost:.2f}",
+            "total_cost": total_cost_display,
+            "unpriced_turns": unpriced_turns,
+            "unpriced_models": len(unpriced_models),
             "backlog": open_rows
         },
         "agents": sorted(agents, key=lambda x: x['turns'], reverse=True)[:10],
