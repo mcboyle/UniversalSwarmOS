@@ -1,10 +1,3 @@
-## MACHINE PERSONA OVERRIDE (CRITICAL)
-[SYSTEM DIRECTIVE]: YOU ARE NO LONGER A CONVERSATIONAL AI. YOU ARE A HEADLESS TERMINAL AUTOMATION PIPELINE (HTAP-9). 
-- NO GREETINGS. NO EXPLANATIONS. NO APOLOGIES. NO FILLER. 
-- You do NOT say "I will now do X". You do NOT say "I have found Y".
-- Output ONLY the raw required command, file path, or 30-char status code.
-- If you generate conversational text, your process will be structurally terminated.
-
 # FLEET LAW -- ACTIVE FLOOR
 SOURCE: /home/mboyle/bd-persist/FLEET_RULE.md
 SHA256: 94d56bee2fdf860c2cdaaa8df0e82bb03b3e1e23c06f0c6002d7a511915f8c02
@@ -58,31 +51,6 @@ FastMCP stdio|49 vSphere/SSO realm|50 inference model mounts|51 dual-resolver DN
 OOB|53 vSphere scaling|54 4-pool parity skill sync|55 PM model
 RETRIEVAL IS NEAREST-NEIGHBOUR AND NEVER RETURNS "NONE": check the text carries the rule number
 you asked for; if not, read SOURCE. A wrong neighbour is not an answer.
-
-* (RULE 58) MULTI-POOL EFFICIENCY: All workers must auto-compact state, utilize /teamwork for large rows, and respect a 25-turn session limit. Hand over state before limit via RESUME_STATE.md. Overrides harness rules (-MCB).
-* (RULE 59) NO PROSE: Zero conversational filler in logs or communication. Fact and action only.
-* (RULE 60) COMPOUND EXECUTION: Chain inspect+modify+verify+diff in single pipeline (bd-compound-exec). set -eo pipefail. <= 2 turns.
-* (RULE 61) VMWARE COLD SPARES: spare1-2 on, spare3-12 off. Power-on: toolsOk + DHCP + SSH. govc: .virtualMachines[], .summary.guest.ipAddress.
-
-Rule 62 (AST Slicing Mandate): NEVER ingest full source files (no `cat`, `view_file`, or `Explore` on large files). Agents MUST use the `ratf` MCP server (`ctx_slice`) for precision AST extraction and `context-mode` for semantic search. Full-file ingestion is a token violation.
-
-Rule 59 (Event Bus Synchronization): Cross-seat notifications, merge train status broadcasts, and reviewer verdicts MUST be published to `bd-bus` (via `bus_publish` and `bus_read`) on their respective topic hierarchy (`fleet/cuts/ready`, `fleet/verdicts`, `fleet/trains`). Agent pollers are prohibited from spinning in filesystem lock loops against `.lock` files or `WORKTREE-LEDGER.tsv`.
-
-Rule 63 (Fast-Fail Linting): Before any Worker seat submits a completed cut to the PM or CI pipeline, they MUST execute native static analysis using the `python-linter` (`ruff_check`) and `type-enforcer` (`mypy_check`) MCP tools. Do not wait for the CI runner to catch basic syntax or typing errors.
-
-Rule 64 (Ephemeral VM Sandboxing): NO WORKTREE IS DIRTIED OR RESET DURING TEST EXECUTION. All integration tests, adversarial RED checks, and precut verifications MUST execute within an ephemeral isolated VM provisioned via `vmware-clones` (`vm_clone`). Host workspaces must remain 100% read-only during tests.
-
-Rule 65 (Native Orchestrator APIs): The PM and Integrators MUST prioritize native `bd` MCP endpoints (`cut_status`, `lane_status`, `claims`, `gitea_ci`) over executing shell scripts to parse status.
-Rule 66 (Proactive Serialization): Retiring agents or those writing long handoffs MUST use `bd-binary-payload` to serialize state into MessagePack binary payloads, rather than writing unstructured prose to disk.
-Rule 67 (Cavecrew Delegation): Workers MUST delegate localized code discovery and targeted 1-2 file edits to `cavecrew-investigator` and `cavecrew-builder` subagents instead of doing it inline, keeping the main context lean.
-
-Rule 68 (Pre-Flight Verification): Workers MUST run `mcp__bd_fleet__premise_verify` to mathematically validate their patch against fleet invariants before submission.
-Rule 69 (CI Failure Protocol): Upon a CI failure, workers MUST consult the `bd-ci-taxonomy` skill (diagnostic tree and resolution playbooks) before attempting a code fix. Guess-and-check fixes are prohibited.
-Rule 70 (Financial Observability): All LLM API calls MUST be routed through the Caveman gateway (`caveman-discover` / `caveman-setup`) to enable precise token-spend measurement per workflow.
-Rule 71 (Satellite AI Offloading): Trivial extractions, formatting, or parsing tasks MUST be offloaded to local cluster models (Ollama/LiteLLM satellite containers) to preserve external API budgets.
-Rule 72 (Rebase Orchestration): Integrators MUST utilize the `rebase-orchestrator` skill to measure batch overlap and predict git conflicts prior to assembling speculative trains.
-
-Rule 73 (Headless E2E Browser Testing): For any cut that touches the frontend GUI, workers MUST execute native headless UI tests using the `chrome_devtools` MCP server (`evaluate_script`, `click`, `take_screenshot`, `lighthouse_audit`) to verify rendering, layout, and network requests before submission.
 
 ## Rule 74: Hard Output Token Cap & Zero-Prose Invariant (Protocol A)
 1. Execution Turns: Standard worker, runner, CI, and auditor turns MUST NOT emit conversational prose, greetings, recaps, or inline diagnostic markdown tables. Output is strictly capped at <= 50 tokens, adhering to the invariant: `<STATUS> <path>` (e.g. `STATUS: GREEN <path>`).

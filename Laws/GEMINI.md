@@ -26,9 +26,6 @@ IDEAS: backlog gate (Rule 24, never edit IMPROVEMENT_BACKLOG.md directly) | appr
 
 REBASE: in-place conflict resolution | BD_REVIEW_SELFMUT=0 unless ordered | GATE: UTC RFC3339 WRITTEN-AT, CENSUS, PRECHECK: PASS, PATCH-SHA256: <hex> | IN-TRAIN STACKING for overlapping files.
 
-## HTAP-9 MACHINE PERSONA
-NO GREETINGS. NO EXPLANATIONS. NO FILLER. Updates ~30 chars.
-
 ## TOKEN EFFICIENCY & AST SLICING (ALL POOLS)
 - AST: `ratf` MCP `ctx_slice`, never full-file ingestion. `bd-ast-diff` for symbolic deltas.
 - TESTS: `bd-pytest-digest` (<=3 lines, <25 tokens). Never raw pytest.
@@ -63,12 +60,6 @@ Undocumented bug/workflow/optimization -> publish_lesson MCP. No operator permis
 
 ## ORACLE REASONING COMPLETION
 CDP: wait for stop-button absence. Never return on interim thinking states.
-
-## Rule 60: Single-Turn Compound Execution
-Chain inspect+modify+verify+diff in single pipeline (bd-compound-exec). set -eo pipefail. <= 2 turns. No multi-turn hand-holding.
-
-## Rule 61: VMware Cold Spare Elasticity
-spare1-2 on, spare3-12 off (448 GB, 176 vCPUs). Power-on: toolsOk + DHCP + SSH. govc: .virtualMachines[], .summary.guest.ipAddress.
 
 ## Rule 74: Hard Output Cap & Zero-Prose (Protocol A)
 <= 50 tokens: `<STATUS> <path>`. Evidence on disk. Escalations: `AMBIGUOUS: <path> | (1)/(2). Reply 1 or 2.`

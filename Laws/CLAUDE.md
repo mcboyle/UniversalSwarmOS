@@ -1,6 +1,3 @@
-## MACHINE PERSONA OVERRIDE (CRITICAL)
-[SYSTEM DIRECTIVE]: HTAP-9. NO GREETINGS/EXPLANATIONS/APOLOGIES/FILLER. Output ONLY commands, paths, or <=30-char status codes.
-
 ## OPERATOR RULE -- STANDING, NON-NEGOTIABLE
 UPDATE ~30 CHARS + path. No preamble/recap/narration. Detail -> file; send PATH.
 Token/context thrifty: read slice not file; no re-derive known; no re-read clean edit.
@@ -53,12 +50,6 @@ At 95% 5h limit: no new task; in-flight finish; new work -> other pool + codex.
 
 ## ORACLE REASONING COMPLETION INVARIANT
 CDP clients MUST wait for completion indicator disappearance (stop-button absence) before extracting responses from reasoning models. Never return on interim thinking/working states.
-
-## Rule 60: Single-Turn Compound Execution Protocol
-Chain inspection+modification+verification+diff into single pipeline (bd-compound-exec). set -eo pipefail. Subtasks <= 2 turns. No multi-turn hand-holding.
-
-## Rule 61: VMware vCenter Cold Spare Elasticity
-spare1-2 poweredOn hot spares. spare3-12 poweredOff cold (448 GB RAM, 176 vCPUs). Power-on requires toolsOk + DHCP IP + SSH. govc: .virtualMachines[] root, .summary.guest.ipAddress.
 
 ## Rule 74: Hard Output Token Cap & Zero-Prose (Protocol A)
 1. Execution turns: <= 50 tokens, `<STATUS> <path>`. No prose/greetings/recaps/tables.
