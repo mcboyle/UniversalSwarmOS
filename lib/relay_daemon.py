@@ -32,6 +32,17 @@ ESCALATION_REGEX = re.compile(
     re.IGNORECASE,
 )
 
+# bh2-24: a terse notification goes to bd-say as one argument; cap it like every bd-say payload (O1470: <=200 B).
+TERSE_MAX_BYTES = 200
+
+
+def clip_terse(text: str, limit: int = TERSE_MAX_BYTES) -> str:
+    """Clip ``text`` to ``limit`` UTF-8 bytes, marking the cut with '...'."""
+    raw = text.encode("utf-8")
+    if len(raw) <= limit:
+        return text
+    return raw[: limit - 3].decode("utf-8", errors="ignore") + "..."
+
 
 @dataclass
 class QueuedMessage:
@@ -196,7 +207,8 @@ class RelayDaemon:
         # Check escalation bypass
         urgent, reason = is_escalation(message, priority)
         if urgent:
-            terse_notification = f"[ESCALATION] {message}"
+            # The full message stays in delivery_meta (deliveries.log); only the terse line is clipped.
+            terse_notification = clip_terse(f"[ESCALATION] {message}")
             delivery_meta = {
                 "type": "escalation",
                 "target": target,
@@ -204,11 +216,11 @@ class RelayDaemon:
                 "reason": reason,
                 "message": message,
             }
-            self._deliver(target, terse_notification, delivery_meta)
+            delivered = self._deliver(target, terse_notification, delivery_meta)
             return {
                 "status": "escalation_bypass",
                 "target": target,
-                "delivered": True,
+                "delivered": delivered,
                 "reason": reason,
                 "message": message,
                 "terse": terse_notification,
@@ -258,13 +270,15 @@ class RelayDaemon:
                     continue
                 raise
 
+        if flushed_batch and not self._deliver_batch(flushed_batch):
+            return {
+                "status": "queued",
+                "target": target,
+                "message_id": message_id,
+                "pending_count": flushed_batch.message_count,
+                "delivery_failed": True,
+            }
         if flushed_batch:
-            # Deliver outside DB lock
-            self._deliver(
-                target,
-                flushed_batch.terse_notification,
-                {"type": "batch", "batch": flushed_batch.to_dict()},
-            )
             return {
                 "status": "flushed",
                 "target": target,
@@ -322,177 +336,12 @@ class RelayDaemon:
         tmp_file.write_text(payload_content, encoding="utf-8")
         tmp_file.replace(batch_file)
 
-        # Mark messages as flushed
+        # bh2-24: 'delivering' keeps the rows out of other flushes; _deliver_batch marks them 'flushed' only
+        # after delivery succeeds, else returns them to 'pending' (they were marked flushed before delivery and lost).
         msg_ids = [m.id for m in messages]
         placeholders = ",".join("?" for _ in msg_ids)
         conn.execute(
-            f"UPDATE messages SET status = 'flushed' WHERE id IN ({placeholders})",
-            msg_ids,
-        )
-
-        terse_notification = f"BATCH {batch_file} ({len(messages)} messages)"
-
-        return BatchDelivery(
-            batch_id=batch_id,
-            target=target,
-            message_count=len(messages),
-            batch_file_path=str(batch_file),
-            terse_notification=terse_notification,
-            delivered_at=now_utc.isoformat(),
-            message_ids=msg_ids,
-        )
-
-    def enqueue(
-        self,
-        target: str,
-        message: str,
-        sender: str = "unknown",
-        priority: str = "normal",
-        auto_flush: bool = True,
-    ) -> dict[str, Any]:
-        """Enqueue a message. If urgent, bypass queue. If batch size reached, flush."""
-        target = self._sanitize_target(target)
-        message = message.strip()
-        sender = (sender or "unknown").strip()
-        priority = (priority or "normal").strip()
-
-        if not message:
-            raise ValueError("Message body cannot be empty")
-
-        # Check escalation bypass
-        urgent, reason = is_escalation(message, priority)
-        if urgent:
-            terse_notification = f"[ESCALATION] {message}"
-            delivery_meta = {
-                "type": "escalation",
-                "target": target,
-                "sender": sender,
-                "reason": reason,
-                "message": message,
-            }
-            self._deliver(target, terse_notification, delivery_meta)
-            return {
-                "status": "escalation_bypass",
-                "target": target,
-                "delivered": True,
-                "reason": reason,
-                "message": message,
-                "terse": terse_notification,
-            }
-
-        now_utc = datetime.now(timezone.utc).isoformat()
-        flushed_batch: BatchDelivery | None = None
-        message_id: int | None = None
-        pending_count: int = 0
-
-        max_retries = 10
-        for attempt in range(max_retries):
-            try:
-                with self._lock, self._get_connection() as conn:
-                    conn.execute("BEGIN IMMEDIATE;")
-                    try:
-                        cur = conn.execute(
-                            """
-                            INSERT INTO messages (target, sender, payload, priority, queued_at, status)
-                            VALUES (?, ?, ?, ?, ?, 'pending')
-                            """,
-                            (target, sender, message, priority, now_utc),
-                        )
-                        message_id = cur.lastrowid
-
-                        cur = conn.execute(
-                            """
-                            SELECT COUNT(*) AS count FROM messages
-                            WHERE target = ? AND status = 'pending'
-                            """,
-                            (target,),
-                        )
-                        pending_count = cur.fetchone()["count"]
-
-                        if auto_flush and pending_count >= self.batch_size:
-                            flushed_batch = self._flush_target_in_tx(conn, target)
-                            pending_count = 0
-
-                        conn.execute("COMMIT;")
-                        break
-                    except Exception:
-                        conn.execute("ROLLBACK;")
-                        raise
-            except sqlite3.OperationalError as err:
-                if "locked" in str(err).lower() and attempt < max_retries - 1:
-                    time.sleep(0.05 * (2 ** (attempt % 4)))
-                    continue
-                raise
-
-        if flushed_batch:
-            # Deliver outside DB lock
-            self._deliver(
-                target,
-                flushed_batch.terse_notification,
-                {"type": "batch", "batch": flushed_batch.to_dict()},
-            )
-            return {
-                "status": "flushed",
-                "target": target,
-                "message_id": message_id,
-                "pending_count": 0,
-                "batch": flushed_batch.to_dict(),
-            }
-
-        return {
-            "status": "queued",
-            "target": target,
-            "message_id": message_id,
-            "pending_count": pending_count,
-        }
-
-    def _flush_target_in_tx(self, conn: sqlite3.Connection, target: str) -> BatchDelivery | None:
-        """Consolidate pending messages for target within an active immediate transaction."""
-        cur = conn.execute(
-            """
-            SELECT id, target, sender, payload, priority, queued_at, status
-            FROM messages
-            WHERE target = ? AND status = 'pending'
-            ORDER BY id ASC
-            """,
-            (target,),
-        )
-        rows = cur.fetchall()
-        if not rows:
-            return None
-
-        messages = [
-            QueuedMessage(
-                id=r["id"],
-                target=r["target"],
-                sender=r["sender"],
-                payload=r["payload"],
-                priority=r["priority"],
-                queued_at=r["queued_at"],
-                status=r["status"],
-            )
-            for r in rows
-        ]
-
-        now_utc = datetime.now(timezone.utc)
-        ts_compact = now_utc.strftime("%Y%m%dT%H%M%SZ")
-        batch_id = f"batch-{ts_compact}-{uuid.uuid4().hex[:8]}"
-
-        # Write consolidated batch payload markdown
-        target_inbox = self._get_target_inbox(target)
-        target_inbox.mkdir(parents=True, exist_ok=True)
-        batch_file = target_inbox / f"BATCH-{ts_compact}-{batch_id.split('-')[-1]}.md"
-
-        payload_content = self._format_batch_payload(target, batch_id, now_utc.isoformat(), messages)
-        tmp_file = target_inbox / f".tmp_{batch_file.name}"
-        tmp_file.write_text(payload_content, encoding="utf-8")
-        tmp_file.replace(batch_file)
-
-        # Mark messages as flushed
-        msg_ids = [m.id for m in messages]
-        placeholders = ",".join("?" for _ in msg_ids)
-        conn.execute(
-            f"UPDATE messages SET status = 'flushed' WHERE id IN ({placeholders})",
+            f"UPDATE messages SET status = 'delivering' WHERE id IN ({placeholders})",
             msg_ids,
         )
 
@@ -543,12 +392,7 @@ class RelayDaemon:
                         continue
                     raise
 
-            if batch:
-                self._deliver(
-                    tgt,
-                    batch.terse_notification,
-                    {"type": "batch", "batch": batch.to_dict()},
-                )
+            if batch and self._deliver_batch(batch):
                 delivered_batches.append(batch)
 
         return [b.to_dict() for b in delivered_batches]
@@ -601,19 +445,41 @@ class RelayDaemon:
 
         return results
 
+    def _deliver_batch(self, batch: BatchDelivery) -> bool:
+        """Deliver a batch, then settle its rows: 'flushed' on success, back to 'pending' (and the
+        batch file removed, so the retry does not leave a duplicate) on failure."""
+        delivered = self._deliver(
+            batch.target,
+            batch.terse_notification,
+            {"type": "batch", "batch": batch.to_dict()},
+        )
+        placeholders = ",".join("?" for _ in batch.message_ids)
+        with self._lock, self._get_connection() as conn:
+            conn.execute(
+                f"UPDATE messages SET status = ? WHERE id IN ({placeholders}) AND status = 'delivering'",
+                ["flushed" if delivered else "pending", *batch.message_ids],
+            )
+        if not delivered:
+            Path(batch.batch_file_path).unlink(missing_ok=True)
+        return delivered
+
     def _deliver(
         self,
         target: str,
         terse_message: str,
         meta: dict[str, Any],
-    ) -> None:
-        """Deliver terse notification via callback, delivery_cmd, or delivery log."""
+    ) -> bool:
+        """Deliver terse notification via callback, delivery_cmd, or delivery log.
+
+        Returns False when the callback or the delivery command failed (the caller retries)."""
+        delivered = True
         # 1. In-process callback (e.g. for unit tests)
         if self.delivery_callback:
             try:
                 self.delivery_callback(target, terse_message, meta)
             except (RuntimeError, ValueError, OSError) as err:
                 logger.error("Delivery callback failed for target %s: %s", target, err)
+                delivered = False
 
         # 2. Configured delivery shell command
         if self.delivery_cmd:
@@ -636,6 +502,7 @@ class RelayDaemon:
                 )
             except (subprocess.SubprocessError, OSError) as err:
                 logger.error("Delivery command '%s' failed: %s", formatted_cmd, err)
+                delivered = False
 
         # 3. Always append delivery receipt to deliveries.log
         delivery_log = self.inbox_dir / "deliveries.log"
@@ -644,9 +511,11 @@ class RelayDaemon:
             "target": target,
             "terse_notification": terse_message,
             "meta": meta,
+            "delivered": delivered,
         }
         with open(delivery_log, "a", encoding="utf-8") as f:
             f.write(json.dumps(log_entry) + "\n")
+        return delivered
 
     def get_status(self, target: str | None = None) -> dict[str, Any]:
         """Query queue status, pending counts, and statistics."""
