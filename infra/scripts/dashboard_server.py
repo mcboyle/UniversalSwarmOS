@@ -6,112 +6,113 @@ import time
 import os
 import urllib.parse
 import threading
+from contextlib import closing
 
 PORT = 9998
 
 def get_data():
-    conn = sqlite3.connect('/home/mboyle/bd-persist/accounting/usage.sqlite', timeout=10.0)
-    c = conn.cursor()
-    # USD/MTok input/output/cache read; verified 2026-09-28:
-    # https://platform.claude.com/docs/en/about-claude/pricing
-    rates = {
-        'claude-fable-5-1': {'in': 10.0, 'out': 50.0, 'cache': 0.25},
-        'claude-opus-5-5': {'in': 4.0, 'out': 20.0, 'cache': 0.20},
-    }
-    
-    q = """
-    SELECT r.model, o.thread,
-           SUM(json_extract(r.usage, '$.input_tokens')) - SUM(COALESCE(json_extract(r.usage, '$.cache_read_input_tokens'),0)) as base_input,
-           SUM(COALESCE(json_extract(r.usage, '$.cache_read_input_tokens'),0)) as cache_read,
-           SUM(json_extract(r.usage, '$.output_tokens')) as total_output, COUNT(*) as turns
-    FROM usage_occurrences o JOIN usage_responses r ON o.provider = r.provider AND o.response_id = r.response_id
-    WHERE r.timestamp >= '2026-09-22T21:00:00Z' GROUP BY o.thread, r.model;
-    """
-    total_cost = 0; total_in = 0; total_cache = 0; total_turns = 0
-    agents = []
-    priced_turns = 0
-    unpriced_turns = 0
-    unpriced_models = set()
-    
-    for row in c.execute(q).fetchall():
-        model, thread, base_in, cache_in, out, turns = row
-        base_in = base_in or 0; cache_in = cache_in or 0; out = out or 0
-        total_in += base_in + cache_in; total_cache += cache_in; total_turns += turns
-        r = rates.get(model)
-        if r is None:
-            cost_display = "COULD NOT LOOK"
-            unpriced_turns += turns
-            unpriced_models.add(model)
-        else:
-            cost = (base_in / 1e6 * r['in']) + (cache_in / 1e6 * r['cache']) + (out / 1e6 * r['out'])
-            total_cost += cost
-            priced_turns += turns
-            cost_display = f"${cost:.2f}"
-        agents.append({
-            "name": thread[:16],
-            "model": model,
-            "turns": turns,
-            "tokens": f"{(base_in + cache_in)/1e6:.1f}M",
-            "cost": cost_display
-        })
-    
-    total_cost_display = "COULD NOT LOOK"
-    if priced_turns:
-        total_cost_display = f"${total_cost:.2f}" + (" (partial)" if unpriced_turns else "")
+    with closing(sqlite3.connect('file:/home/mboyle/bd-persist/accounting/usage.sqlite?mode=ro', uri=True, timeout=1.0)) as conn:
+        c = conn.cursor()
+        # USD/MTok input/output/cache read; verified 2026-09-28:
+        # https://platform.claude.com/docs/en/about-claude/pricing
+        rates = {
+            'claude-fable-5-1': {'in': 10.0, 'out': 50.0, 'cache': 0.25},
+            'claude-opus-5-5': {'in': 4.0, 'out': 20.0, 'cache': 0.20},
+        }
 
-    # Ledger
-    ledger = []
-    active_workers = set()
-    try:
-        with open('/home/mboyle/bd-persist/DISPATCH-LEDGER.tsv') as f:
-            lines = [l for l in f.readlines() if l.strip()]
-            for line in reversed(lines[-15:]):
-                parts = line.strip().split('\t')
-                if len(parts) >= 4:
-                    status = parts[3]
-                    worker = parts[1]
-                    if status in ['dispatched', 'started']:
-                        active_workers.add(worker)
-                    ledger.append({"time": parts[0][-9:-1], "agent": worker, "row": parts[2], "status": status.upper()})
-    except:
-        pass
-        
-    try:
-        with open('/home/mboyle/project-knowledge/IMPROVEMENT_BACKLOG.md') as f:
-            lines = f.readlines()
-        open_rows = sum(1 for line in lines if '| OPEN |' in line)
-    except:
-        open_rows = 0
+        q = """
+        SELECT r.model, o.thread,
+               SUM(json_extract(r.usage, '$.input_tokens')) - SUM(COALESCE(json_extract(r.usage, '$.cache_read_input_tokens'),0)) as base_input,
+               SUM(COALESCE(json_extract(r.usage, '$.cache_read_input_tokens'),0)) as cache_read,
+               SUM(json_extract(r.usage, '$.output_tokens')) as total_output, COUNT(*) as turns
+        FROM usage_occurrences o JOIN usage_responses r ON o.provider = r.provider AND o.response_id = r.response_id
+        WHERE r.timestamp >= '2026-09-22T21:00:00Z' GROUP BY o.thread, r.model;
+        """
+        total_cost = 0; total_in = 0; total_cache = 0; total_turns = 0
+        agents = []
+        priced_turns = 0
+        unpriced_turns = 0
+        unpriced_models = set()
 
-    hit_rate = (total_cache / total_in * 100) if total_in > 0 else 0
-    
-    
-    # Historical Savings (Last 10 Hours)
-    historical = []
-    q_hist = '''
-    SELECT strftime('%Y-%m-%dT%H:00:00Z', r.timestamp) as hour,
-           SUM(COALESCE(json_extract(r.usage, '$.cache_read_input_tokens'),0)) as cache_read
-    FROM usage_occurrences o JOIN usage_responses r ON o.provider = r.provider AND o.response_id = r.response_id
-    WHERE r.timestamp >= datetime('now', '-10 hours')
-    GROUP BY hour ORDER BY hour;
-    '''
-    for row in c.execute(q_hist).fetchall():
-        historical.append({"hour": row[0][-14:-1], "savings": (row[1] / 1e6) * 15.0}) # Assuming $15/1M Opus tokens saved
+        for row in c.execute(q).fetchall():
+            model, thread, base_in, cache_in, out, turns = row
+            base_in = base_in or 0; cache_in = cache_in or 0; out = out or 0
+            total_in += base_in + cache_in; total_cache += cache_in; total_turns += turns
+            r = rates.get(model)
+            if r is None:
+                cost_display = "COULD NOT LOOK"
+                unpriced_turns += turns
+                unpriced_models.add(model)
+            else:
+                cost = (base_in / 1e6 * r['in']) + (cache_in / 1e6 * r['cache']) + (out / 1e6 * r['out'])
+                total_cost += cost
+                priced_turns += turns
+                cost_display = f"${cost:.2f}"
+            agents.append({
+                "name": thread[:16],
+                "model": model,
+                "turns": turns,
+                "tokens": f"{(base_in + cache_in)/1e6:.1f}M",
+                "cost": cost_display
+            })
 
-    return {
-        "historical": historical,
-        "metrics": {
-            "active_agents": len(active_workers),
-            "total_turns": total_turns,
-            "hit_rate": f"{hit_rate:.1f}%",
-            "total_cost": total_cost_display,
-            "unpriced_turns": unpriced_turns,
-            "unpriced_models": len(unpriced_models),
-            "backlog": open_rows
-        },
-        "agents": sorted(agents, key=lambda x: x['turns'], reverse=True)[:10],
-        "ledger": ledger
-    }
+        total_cost_display = "COULD NOT LOOK"
+        if priced_turns:
+            total_cost_display = f"${total_cost:.2f}" + (" (partial)" if unpriced_turns else "")
+
+        # Ledger
+        ledger = []
+        active_workers = set()
+        try:
+            with open('/home/mboyle/bd-persist/DISPATCH-LEDGER.tsv') as f:
+                lines = [l for l in f.readlines() if l.strip()]
+                for line in reversed(lines[-15:]):
+                    parts = line.strip().split('\t')
+                    if len(parts) >= 4:
+                        status = parts[3]
+                        worker = parts[1]
+                        if status in ['dispatched', 'started']:
+                            active_workers.add(worker)
+                        ledger.append({"time": parts[0][-9:-1], "agent": worker, "row": parts[2], "status": status.upper()})
+        except:
+            pass
+
+        try:
+            with open('/home/mboyle/project-knowledge/IMPROVEMENT_BACKLOG.md') as f:
+                lines = f.readlines()
+            open_rows = sum(1 for line in lines if '| OPEN |' in line)
+        except:
+            open_rows = 0
+
+        hit_rate = (total_cache / total_in * 100) if total_in > 0 else 0
+
+
+        # Historical Savings (Last 10 Hours)
+        historical = []
+        q_hist = '''
+        SELECT strftime('%Y-%m-%dT%H:00:00Z', r.timestamp) as hour,
+               SUM(COALESCE(json_extract(r.usage, '$.cache_read_input_tokens'),0)) as cache_read
+        FROM usage_occurrences o JOIN usage_responses r ON o.provider = r.provider AND o.response_id = r.response_id
+        WHERE r.timestamp >= datetime('now', '-10 hours')
+        GROUP BY hour ORDER BY hour;
+        '''
+        for row in c.execute(q_hist).fetchall():
+            historical.append({"hour": row[0][-14:-1], "savings": (row[1] / 1e6) * 15.0}) # Assuming $15/1M Opus tokens saved
+
+        return {
+            "historical": historical,
+            "metrics": {
+                "active_agents": len(active_workers),
+                "total_turns": total_turns,
+                "hit_rate": f"{hit_rate:.1f}%",
+                "total_cost": total_cost_display,
+                "unpriced_turns": unpriced_turns,
+                "unpriced_models": len(unpriced_models),
+                "backlog": open_rows
+            },
+            "agents": sorted(agents, key=lambda x: x['turns'], reverse=True)[:10],
+            "ledger": ledger
+        }
 
 html_template = """
 <!DOCTYPE html>
@@ -338,10 +339,16 @@ class DashboardHandler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(html_template.encode('utf-8'))
         elif self.path == '/api/data':
-            self.send_response(200)
+            try:
+                payload = get_data()
+                status = 200
+            except (OSError, sqlite3.Error, ValueError):
+                payload = {"source": "unknown", "reason": "Accounting ledger unavailable"}
+                status = 503
+            self.send_response(status)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
-            self.wfile.write(json.dumps(get_data()).encode('utf-8'))
+            self.wfile.write(json.dumps(payload).encode('utf-8'))
         else:
             self.send_error(404)
 
