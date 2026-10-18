@@ -1,0 +1,407 @@
+#!/usr/bin/env python3
+"""
+bd-local-lens-security — Boylenet local GPU cluster review-security lens runner.
+
+Routes git diffs or file paths to http://10.0.70.164:4010/v1/chat/completions
+using cyberstrike-offsec-35b-bf16 / qwen3-coder-30b-a3b under:
+  - Rule 76 JSON Consensus Contract
+  - Rule 86 Behavioral Defect vs. Mutation Coverage Severance (Protocol F)
+  - Argon-4 Anti-Hallucination Contract
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+from pathlib import Path
+from typing import Any
+
+DEFAULT_ENDPOINT = os.environ.get(
+    "BD_LOCAL_LENS_URL", "http://10.0.70.164:4010/v1/chat/completions"
+)
+DEFAULT_MODELS = [
+    "cyberstrike-offsec-35b-bf16",
+    "qwen3-coder-30b-a3b",
+]
+DEFAULT_SEAT = "review-security-local"
+DEFAULT_ROUND = os.environ.get("BD_ROUND_ID", "local-sec-r1")
+
+SYSTEM_PROMPT_TEMPLATE = """You are the Boylenet `{seat}` security review lens.
+You MUST evaluate the supplied git diff or source file(s) strictly under the following three binding contracts:
+
+1. RULE 76 JSON CONSENSUS CONTRACT (Protocol B):
+   Return ONLY a single raw JSON object (no markdown fences, no prose before or after) with the exact schema:
+   {{"round":"{round_id}","seat":"{seat}","verdict":"BOARD|REFUTE","findings":[...]}}
+   - When verdict is "BOARD", "findings" MUST be [].
+   - When verdict is "REFUTE", "findings" MUST be a non-empty array of machine-coordinate objects:
+     {{"file":"<path>","line":<int>,"cwe":"<CWE-ID>","severity":"CRITICAL|HIGH","evidence":"<verbatim code line>","defect":"<concise behavioral exploit mechanism>","fix":"<minimal remediation>"}}
+
+2. RULE 86 BEHAVIORAL DEFECT VS. MUTATION COVERAGE SEVERANCE (Protocol F):
+   - Issue "REFUTE" ONLY for demonstrable behavioral security defects in candidate code (e.g., SQL injection via string interpolation/concatenation, OS command/shell injection via shell=True or os.system/popen, arbitrary code execution via eval/exec/unsafe pickle/yaml.load, path traversal, SSRF, hardcoded credentials/keys, broken auth/crypto), regression against baseline, or explicit fleet law violations.
+   - Surviving synthetic test mutants on sound candidate code are non-blocking coverage debt and NEVER trigger REFUTE.
+   - Review Estoppel: never demand novel mutation coverage on untouched code.
+
+3. ARGON-4 ANTI-HALLUCINATION CONTRACT:
+   - Every finding MUST cite an exact `file`, integer `line`, and verbatim `evidence` substring that appears literally in the candidate code of the provided payload.
+   - NEVER hallucinate files, line numbers, symbols, callers, or speculative vulnerabilities not directly evidenced in the input.
+   - If no demonstrable security defect exists in the candidate code, you MUST output verdict "BOARD" with findings [].
+"""
+
+STATIC_PATTERNS: list[tuple[str, str, str, re.Pattern[str], str]] = [
+    (
+        "CWE-89",
+        "CRITICAL",
+        "SQL injection via unparameterized string formatting/concatenation in SQL query construction/execution",
+        re.compile(
+            r"(?:execute|executemany|raw|cursor\.execute)\s*\(\s*(?:f['\"]|['\"].*(?:SELECT|INSERT|UPDATE|DELETE|DROP).*['\"]\s*(?:%|\+|\.format\())"
+            r"|(?:SELECT|INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+.*(?:\{[^}]+\}|%s.*%\s*\w+|\+\s*\w+)",
+            re.IGNORECASE,
+        ),
+        "Use parameterized queries with bound placeholders (e.g., cursor.execute('SELECT ... WHERE id = ?', (user_id,)))",
+    ),
+    (
+        "CWE-78",
+        "CRITICAL",
+        "OS command / shell injection via unsanitized command execution (shell=True / os.system / os.popen)",
+        re.compile(
+            r"(?:subprocess\.(?:run|Popen|call|check_output|check_call)\s*\([^)]*shell\s*=\s*True)"
+            r"|(?:os\.(?:system|popen)\s*\(\s*(?:f['\"]|['\"].*['\"]\s*(?:%|\+|\.format\()|[a-zA-Z_]\w*))",
+            re.IGNORECASE,
+        ),
+        "Pass command arguments as a list of strings with shell=False and validate inputs",
+    ),
+    (
+        "CWE-94",
+        "HIGH",
+        "Arbitrary code execution / unsafe deserialization (eval / exec / pickle.loads / yaml.load without SafeLoader)",
+        re.compile(
+            r"(?:\b(?:eval|exec)\s*\(\s*[^)\s]+)|(?:\bpickle\.loads?\s*\()|(?:\byaml\.load\s*\([^)]*(?!SafeLoader)\))",
+        ),
+        "Avoid eval/exec/pickle on untrusted data; use ast.literal_eval, json.loads, or yaml.safe_load",
+    ),
+]
+
+
+def _discover_api_key() -> str:
+    for env_key in ("LITELLM_API_KEY", "LITELLM_MASTER_KEY", "OPENAI_API_KEY", "BD_LLM_API_KEY"):
+        val = os.environ.get(env_key, "").strip()
+        if val:
+            return val
+    for p in (Path("/home/mboyle/.litellm_key"), Path("/home/mboyle/.env"), Path("/etc/default/litellm")):
+        try:
+            if p.is_file():
+                text = p.read_text(encoding="utf-8", errors="ignore")
+                m = re.search(
+                    r"(?:LITELLM_MASTER_KEY|LITELLM_API_KEY|OPENAI_API_KEY)\s*=\s*['\"]?([^\s'\"]+)",
+                    text,
+                )
+                if m:
+                    return m.group(1)
+        except Exception:
+            pass
+    return "sk-boylenet-local"
+
+
+def _load_payload(targets: list[str], use_stdin: bool) -> str:
+    chunks: list[str] = []
+    if use_stdin or (targets == ["-"]):
+        chunks.append(sys.stdin.read())
+    elif targets:
+        for t in targets:
+            if t == "-":
+                chunks.append(sys.stdin.read())
+                continue
+            p = Path(t)
+            if p.is_file():
+                content = p.read_text(encoding="utf-8", errors="replace")
+                numbered = "\n".join(
+                    f"{idx}: {line}" for idx, line in enumerate(content.splitlines(), 1)
+                )
+                chunks.append(f"=== FILE: {t} ===\n{numbered}")
+            elif p.is_dir():
+                res = subprocess.run(
+                    ["git", "-C", str(p), "diff", "HEAD"],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                chunks.append(res.stdout or f"=== DIR: {t} (empty git diff) ===")
+            else:
+                chunks.append(t)
+    else:
+        if not sys.stdin.isatty():
+            chunks.append(sys.stdin.read())
+        else:
+            res = subprocess.run(
+                ["git", "diff", "HEAD"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            chunks.append(res.stdout)
+    return "\n\n".join(c for c in chunks if c is not None).strip()
+
+
+def _scan_payload_deterministically(payload: str) -> tuple[list[dict[str, Any]], str]:
+    findings: list[dict[str, Any]] = []
+    current_file = "diff"
+    current_line = 0
+    is_diff = bool(re.search(r"^(?:diff --git|\+\+\+\s+|@@\s+-[0-9,])", payload, re.MULTILINE))
+    candidate_lines: list[str] = []
+
+    for raw_line in payload.splitlines():
+        m_file_hdr = re.match(r"^===\s*FILE:\s*(.+?)\s*===$", raw_line)
+        if m_file_hdr:
+            current_file = m_file_hdr.group(1).strip()
+            current_line = 0
+            continue
+        m_diff_file = re.match(r"^\+\+\+\s+(?:b/)?(.+)$", raw_line)
+        if m_diff_file:
+            current_file = m_diff_file.group(1).strip()
+            continue
+        m_hunk = re.match(r"^@@\s+-[0-9,]+\s+\+(\d+)(?:,\d+)?\s+@@", raw_line)
+        if m_hunk:
+            current_line = int(m_hunk.group(1)) - 1
+            continue
+
+        if raw_line.startswith("---") or raw_line.startswith("diff --git") or raw_line.startswith("index "):
+            continue
+        if raw_line.startswith("-"):
+            continue
+
+        if is_diff:
+            if raw_line.startswith("+"):
+                current_line += 1
+                line_text = raw_line[1:]
+                candidate_lines.append(line_text)
+            else:
+                current_line += 1
+                continue
+        else:
+            m_num = re.match(r"^(\d+):\s*(.*)$", raw_line)
+            if m_num:
+                current_line = int(m_num.group(1))
+                line_text = m_num.group(2)
+            else:
+                current_line += 1
+                line_text = raw_line
+            candidate_lines.append(line_text)
+
+        stripped = line_text.strip()
+        if not stripped or stripped.startswith("#") or stripped.startswith("//"):
+            continue
+
+        for cwe, severity, defect, pattern, fix in STATIC_PATTERNS:
+            if pattern.search(stripped):
+                findings.append(
+                    {
+                        "file": current_file,
+                        "line": max(current_line, 1),
+                        "cwe": cwe,
+                        "severity": severity,
+                        "evidence": stripped[:240],
+                        "defect": defect,
+                        "fix": fix,
+                    }
+                )
+    return findings, "\n".join(candidate_lines)
+
+
+def _extract_json_object(raw_text: str) -> dict[str, Any] | None:
+    cleaned = re.sub(r"<think>.*?</think>", "", raw_text, flags=re.DOTALL).strip()
+    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+    cleaned = re.sub(r"\s*```$", "", cleaned).strip()
+
+    try:
+        obj = json.loads(cleaned)
+        if isinstance(obj, dict):
+            return obj
+    except Exception:
+        pass
+
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        try:
+            obj = json.loads(cleaned[start : end + 1])
+            if isinstance(obj, dict):
+                return obj
+        except Exception:
+            pass
+    return None
+
+
+def _call_cluster_llm(
+    endpoint: str,
+    models: list[str],
+    api_key: str,
+    system_prompt: str,
+    user_payload: str,
+    timeout: float,
+) -> tuple[dict[str, Any] | None, str, str]:
+    last_err = ""
+    for model in models:
+        req_body = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": (
+                        "Review the following code/diff under Rule 76, Rule 86, and Argon-4. "
+                        "Output ONLY valid Rule 76 JSON:\n\n" + user_payload
+                    ),
+                },
+            ],
+            "temperature": 0.0,
+            "max_tokens": 768,
+        }
+        data = json.dumps(req_body).encode("utf-8")
+        req = urllib.request.Request(
+            endpoint,
+            data=data,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                raw_resp = resp.read().decode("utf-8", errors="replace")
+                parsed_resp = json.loads(raw_resp)
+                choices = parsed_resp.get("choices") or []
+                if choices:
+                    msg = choices[0].get("message") or {}
+                    content = msg.get("content") or msg.get("reasoning_content") or ""
+                    extracted = _extract_json_object(content)
+                    if extracted is not None:
+                        return extracted, model, ""
+                    last_err = f"model {model} returned non-JSON content"
+        except urllib.error.HTTPError as e:
+            err_body = ""
+            try:
+                err_body = e.read().decode("utf-8", errors="ignore")[:200]
+            except Exception:
+                pass
+            last_err = f"HTTP {e.code} on {model}: {err_body}"
+        except Exception as e:
+            last_err = f"{type(e).__name__} on {model}: {e}"
+    return None, models[0] if models else "unknown", last_err
+
+
+def _normalize_rule76_output(
+    raw_obj: dict[str, Any] | None,
+    static_findings: list[dict[str, Any]],
+    candidate_text: str,
+    round_id: str,
+    seat: str,
+) -> dict[str, Any]:
+    verified_findings: list[dict[str, Any]] = []
+
+    if (
+        raw_obj
+        and str(raw_obj.get("verdict", "")).upper() == "REFUTE"
+        and isinstance(raw_obj.get("findings"), list)
+    ):
+        for f in raw_obj["findings"]:
+            if not isinstance(f, dict):
+                continue
+            defect_str = str(f.get("defect") or f.get("description") or f.get("message") or "").strip()
+            if re.search(r"\bmutant\b|\bmutation\s+coverage\b", defect_str, re.IGNORECASE):
+                continue
+            evidence_str = str(f.get("evidence") or f.get("code") or f.get("snippet") or "").strip()
+            probe = evidence_str.lstrip("+").strip()
+            if not probe or len(probe) < 4 or probe[:28] not in candidate_text:
+                continue
+            if "shell=False" in probe and "shell=True" not in probe:
+                continue
+            file_str = str(f.get("file") or "diff").strip()
+            try:
+                line_num = int(f.get("line") or 1)
+            except Exception:
+                line_num = 1
+            verified_findings.append(
+                {
+                    "file": file_str,
+                    "line": line_num,
+                    "cwe": str(f.get("cwe") or f.get("rule") or "CWE-20"),
+                    "severity": str(f.get("severity") or "HIGH").upper(),
+                    "evidence": probe[:240],
+                    "defect": defect_str or "Demonstrable security defect in candidate code",
+                    "fix": str(f.get("fix") or f.get("remediation") or "Parameterize/sanitize untrusted input"),
+                }
+            )
+
+    seen_coords = {(f["file"], f["line"], f["cwe"]) for f in verified_findings}
+    for sf in static_findings:
+        key = (sf["file"], sf["line"], sf["cwe"])
+        if key not in seen_coords:
+            verified_findings.append(sf)
+            seen_coords.add(key)
+
+    verdict = "REFUTE" if verified_findings else "BOARD"
+    return {
+        "round": round_id,
+        "seat": seat,
+        "verdict": verdict,
+        "findings": verified_findings if verdict == "REFUTE" else [],
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="bd-local-lens-security",
+        description="Boylenet local GPU cluster review-security lens runner (Rule 76 / Rule 86 / Argon-4).",
+    )
+    parser.add_argument("targets", nargs="*", help="Git diff string, file path(s), directory, or '-' for stdin.")
+    parser.add_argument("--round", dest="round_id", default=DEFAULT_ROUND, help="Consensus round ID.")
+    parser.add_argument("--seat", default=DEFAULT_SEAT, help="Seat identifier in Rule 76 output.")
+    parser.add_argument("--model", default="", help="Override model name.")
+    parser.add_argument("--endpoint", default=DEFAULT_ENDPOINT, help="Chat completions endpoint.")
+    parser.add_argument("--timeout", type=float, default=15.0, help="HTTP request timeout in seconds.")
+    parser.add_argument("--stdin", action="store_true", help="Read diff/code payload from stdin.")
+    parser.add_argument("--exit-on-refute", action="store_true", help="Exit 2 when verdict is REFUTE.")
+
+    args = parser.parse_args(argv)
+    payload = _load_payload(args.targets, args.stdin)
+
+    if not payload:
+        print(json.dumps({"round": args.round_id, "seat": args.seat, "verdict": "BOARD", "findings": []}, separators=(",", ":")))
+        return 0
+
+    models = [args.model] if args.model else list(DEFAULT_MODELS)
+    api_key = _discover_api_key()
+    sys_prompt = SYSTEM_PROMPT_TEMPLATE.format(seat=args.seat, round_id=args.round_id)
+
+    static_findings, candidate_text = _scan_payload_deterministically(payload)
+    llm_obj, _used_model, _err = _call_cluster_llm(
+        endpoint=args.endpoint,
+        models=models,
+        api_key=api_key,
+        system_prompt=sys_prompt,
+        user_payload=payload,
+        timeout=args.timeout,
+    )
+
+    result = _normalize_rule76_output(
+        raw_obj=llm_obj,
+        static_findings=static_findings,
+        candidate_text=candidate_text,
+        round_id=args.round_id,
+        seat=args.seat,
+    )
+
+    print(json.dumps(result, separators=(",", ":")))
+    if args.exit_on_refute and result["verdict"] == "REFUTE":
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

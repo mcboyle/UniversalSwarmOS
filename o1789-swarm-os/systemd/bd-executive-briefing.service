@@ -1,0 +1,16 @@
+[Unit]
+Description=Boylenet Morning Executive Briefing, Universal Semantic Search & 1-Click Cluster Doctor (:4081)
+After=network.target
+
+[Service]
+Type=simple
+User=mboyle
+WorkingDirectory=/home/mboyle
+Environment="HOME=/home/mboyle"
+Environment="BD_BRIEFING_PORT=4081"
+ExecStart=/usr/bin/python3 /home/mboyle/bin/bd-executive-briefing.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

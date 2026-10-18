@@ -1,0 +1,4 @@
+#!/bin/bash
+unset BD_INSTALL_DIR
+export PYTHONUNBUFFERED=1
+exec /home/mboyle/bin/bd-blob-ptr pytest -q --disable-warnings -W ignore --tb=short "$@"

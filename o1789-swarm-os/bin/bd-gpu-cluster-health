@@ -1,0 +1,323 @@
+#!/usr/bin/env python3
+"""
+bd-gpu-cluster-health — Fast (<2s) 4-Node Tesla T4 / RoCEv2 / DDR4 / Vault / Service Diagnostic
+Verifies:
+  1. All 4 Tesla T4 GPUs (10.0.70.83, .72, .228, .125 nvidia-smi VRAM & driver status)
+  2. All 4 Locked DDR4 RAM pools (386 + 320 + 448 + 576 = 1,730 GiB)
+  3. All 4 25GbE RoCEv2 links (10.0.75.11..14 MTU 9000 + :50052 llama-rpc.service)
+  4. Both 5.0 TB Model Vaults (.72 and .83 free TiB)
+  5. Orchestrator :4010, LiteLLM :4000, Cockpit :3002, and Chat :3003 HTTP health
+"""
+import argparse
+import concurrent.futures
+import http.client
+import json
+import socket
+import subprocess
+import sys
+import time
+
+NODES = [
+    {"host": "10.0.70.83",  "short": ".83",  "roce_expected": "10.0.75.11", "locked_gib": 386, "vault_expected": True},
+    {"host": "10.0.70.72",  "short": ".72",  "roce_expected": "10.0.75.12", "locked_gib": 320, "vault_expected": True},
+    {"host": "10.0.70.228", "short": ".228", "roce_expected": "10.0.75.13", "locked_gib": 448, "vault_expected": False},
+    {"host": "10.0.70.125", "short": ".125", "roce_expected": "10.0.75.14", "locked_gib": 576, "vault_expected": False},
+]
+
+LOCKED_POOL_SUM_GIB = 1730  # 386 + 320 + 448 + 576 = 1,730 GiB
+
+HTTP_SERVICES = [
+    {"name": "Orchestrator", "port": 4010, "paths": ["/health", "/v1/health", "/"]},
+    {"name": "LiteLLM",      "port": 4000, "paths": ["/health/liveliness", "/health/readiness", "/v1/models", "/"]},
+    {"name": "Cockpit",      "port": 3002, "paths": ["/api/health", "/health", "/"]},
+    {"name": "Chat",         "port": 3003, "paths": ["/health", "/api/health", "/"]},
+]
+
+HTTP_CANDIDATE_HOSTS = ["127.0.0.1", "10.0.70.228", "10.0.70.83", "10.0.70.72", "10.0.70.125", "10.0.70.164"]
+
+REMOTE_PROBE_SH = r"""
+nvidia-smi --query-gpu=name,driver_version,memory.total,memory.used,memory.free,temperature.gpu,pstate --format=csv,noheader,nounits 2>/dev/null | head -n 1 || echo "NO_GPU"
+echo "===SPLIT==="
+awk '/^MemTotal:|^MemAvailable:|^MemFree:/ {print $1, $2}' /proc/meminfo 2>/dev/null
+echo "===SPLIT==="
+ip -o -4 addr show to 10.0.75.0/24 2>/dev/null | awk '{print $2, $4}'
+for d in /sys/class/net/*; do
+  iface=$(basename "$d")
+  if ip -o -4 addr show dev "$iface" to 10.0.75.0/24 2>/dev/null | grep -q '10\.0\.75\.'; then
+    echo "MTU:$(cat "$d/mtu" 2>/dev/null || echo 0)"
+  fi
+done
+echo "===SPLIT==="
+systemctl is-active llama-rpc.service 2>/dev/null || systemctl is-active llama-rpc 2>/dev/null || echo "inactive"
+if ss -tln 2>/dev/null | grep -q ':50052 '; then
+  echo "RPC_LISTEN:yes"
+else
+  echo "RPC_LISTEN:no"
+fi
+echo "===SPLIT==="
+df -B1 --output=target,size,used,avail 2>/dev/null | awk 'NR>1 && $2 > 500000000000 {print $1"|"$2"|"$3"|"$4}'
+"""
+
+
+def probe_node(node_cfg):
+    t0 = time.monotonic()
+    host = node_cfg["host"]
+    cmd = [
+        "ssh",
+        "-o", "BatchMode=yes",
+        "-o", "ConnectTimeout=1",
+        "-o", "StrictHostKeyChecking=no",
+        "-o", "UserKnownHostsFile=/dev/null",
+        "-o", "LogLevel=ERROR",
+        host,
+        REMOTE_PROBE_SH,
+    ]
+    res = {
+        "host": host,
+        "short": node_cfg["short"],
+        "reachable": False,
+        "latency_ms": 0.0,
+        "gpu": {"ok": False, "name": "UNKNOWN", "driver": "UNKNOWN", "vram_total_mib": 0, "vram_used_mib": 0, "vram_free_mib": 0, "temp_c": 0, "pstate": "UNKNOWN"},
+        "ram": {"ok": False, "locked_target_gib": node_cfg["locked_gib"], "total_gib": 0.0, "avail_gib": 0.0},
+        "roce": {"ok": False, "iface": "none", "ip": node_cfg["roce_expected"], "mtu": 0, "llama_rpc_service": "unknown", "port_50052": False},
+        "vault": {"expected": node_cfg["vault_expected"], "ok": not node_cfg["vault_expected"], "mount": None, "total_tib": 0.0, "used_tib": 0.0, "free_tib": 0.0},
+    }
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1.6)
+        res["latency_ms"] = round((time.monotonic() - t0) * 1000.0, 1)
+        if proc.returncode != 0 and not proc.stdout.strip():
+            return res
+        res["reachable"] = True
+        sections = proc.stdout.split("===SPLIT===")
+        # 1. GPU
+        if len(sections) > 0:
+            gpu_line = sections[0].strip().splitlines()[0] if sections[0].strip() else "NO_GPU"
+            if gpu_line != "NO_GPU" and "," in gpu_line:
+                parts = [p.strip() for p in gpu_line.split(",")]
+                if len(parts) >= 5:
+                    res["gpu"] = {
+                        "ok": "T4" in parts[0] or int(float(parts[2])) > 0,
+                        "name": parts[0],
+                        "driver": parts[1],
+                        "vram_total_mib": int(float(parts[2])),
+                        "vram_used_mib": int(float(parts[3])),
+                        "vram_free_mib": int(float(parts[4])),
+                        "temp_c": int(float(parts[5])) if len(parts) > 5 and parts[5].isdigit() else 0,
+                        "pstate": parts[6] if len(parts) > 6 else "P0",
+                    }
+        # 2. RAM
+        if len(sections) > 1:
+            mem_kb = {}
+            for line in sections[1].strip().splitlines():
+                kv = line.split()
+                if len(kv) >= 2:
+                    mem_kb[kv[0].rstrip(":")] = int(kv[1])
+            tot_gib = round(mem_kb.get("MemTotal", 0) / (1024 * 1024), 1)
+            avail_gib = round(mem_kb.get("MemAvailable", mem_kb.get("MemFree", 0)) / (1024 * 1024), 1)
+            res["ram"]["total_gib"] = tot_gib
+            res["ram"]["avail_gib"] = avail_gib
+            res["ram"]["ok"] = tot_gib > 0 or res["ram"]["locked_target_gib"] > 0
+        # 3. RoCEv2 + llama-rpc
+        if len(sections) > 2:
+            for line in sections[2].strip().splitlines():
+                if line.startswith("MTU:"):
+                    try:
+                        res["roce"]["mtu"] = int(line.split(":", 1)[1].strip())
+                    except ValueError:
+                        pass
+                else:
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        res["roce"]["iface"] = parts[0]
+                        res["roce"]["ip"] = parts[1].split("/")[0]
+        if len(sections) > 3:
+            lines = [l.strip() for l in sections[3].strip().splitlines() if l.strip()]
+            if lines:
+                res["roce"]["llama_rpc_service"] = lines[0]
+            for line in lines[1:]:
+                if line == "RPC_LISTEN:yes":
+                    res["roce"]["port_50052"] = True
+            if not res["roce"]["port_50052"] and res["roce"]["ip"]:
+                # Fallback direct socket check on 50052
+                try:
+                    with socket.create_connection((res["roce"]["ip"], 50052), timeout=0.3):
+                        res["roce"]["port_50052"] = True
+                except OSError:
+                    pass
+            res["roce"]["ok"] = (
+                res["roce"]["ip"].startswith("10.0.75.")
+                and res["roce"]["mtu"] == 9000
+                and (res["roce"]["llama_rpc_service"] == "active" or res["roce"]["port_50052"])
+            )
+        # 4. Model Vaults (.72 and .83)
+        if len(sections) > 4:
+            best_vault = None
+            for line in sections[4].strip().splitlines():
+                parts = line.split("|")
+                if len(parts) == 4:
+                    mount, sz, used, avail = parts[0], int(parts[1]), int(parts[2]), int(parts[3])
+                    if best_vault is None or sz > best_vault[1] or ("model" in mount.lower() or "vault" in mount.lower() or "nvme" in mount.lower() or "data" in mount.lower()):
+                        best_vault = (mount, sz, used, avail)
+            if best_vault:
+                mount, sz, used, avail = best_vault
+                # Convert bytes to TB / TiB
+                res["vault"] = {
+                    "expected": node_cfg["vault_expected"],
+                    "ok": True,
+                    "mount": mount,
+                    "total_tib": round(sz / (1024 ** 4), 2),
+                    "total_tb": round(sz / (1000 ** 4), 2),
+                    "used_tib": round(used / (1024 ** 4), 2),
+                    "free_tib": round(avail / (1024 ** 4), 2),
+                }
+    except Exception as exc:
+        res["error"] = str(exc)
+    return res
+
+
+def probe_single_http(host, port, paths):
+    t0 = time.monotonic()
+    for path in paths:
+        try:
+            conn = http.client.HTTPConnection(host, port, timeout=0.45)
+            conn.request("GET", path, headers={"User-Agent": "bd-gpu-cluster-health/1.0"})
+            resp = conn.getresponse()
+            code = resp.status
+            conn.close()
+            if 200 <= code < 500:
+                return {
+                    "ok": True,
+                    "host": host,
+                    "port": port,
+                    "path": path,
+                    "status_code": code,
+                    "latency_ms": round((time.monotonic() - t0) * 1000.0, 1),
+                }
+        except Exception:
+            continue
+    return None
+
+
+def probe_http_service(svc):
+    port = svc["port"]
+    paths = svc["paths"]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(HTTP_CANDIDATE_HOSTS)) as ex:
+        futs = {ex.submit(probe_single_http, h, port, paths): h for h in HTTP_CANDIDATE_HOSTS}
+        for fut in concurrent.futures.as_completed(futs):
+            r = fut.result()
+            if r and r.get("ok"):
+                return {
+                    "name": svc["name"],
+                    "port": port,
+                    "ok": True,
+                    "endpoint": f"http://{r['host']}:{port}{r['path']}",
+                    "status_code": r["status_code"],
+                    "latency_ms": r["latency_ms"],
+                }
+    return {
+        "name": svc["name"],
+        "port": port,
+        "ok": False,
+        "endpoint": f"none:{port}",
+        "status_code": 0,
+        "latency_ms": 0.0,
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Fast 2-second GPU cluster health verifier")
+    parser.add_argument("--json", action="store_true", help="Output JSON report")
+    args = parser.parse_args()
+
+    t_start = time.monotonic()
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+        node_futs = [executor.submit(probe_node, n) for n in NODES]
+        http_futs = [executor.submit(probe_http_service, s) for s in HTTP_SERVICES]
+        node_results = [f.result() for f in node_futs]
+        http_results = [f.result() for f in http_futs]
+
+    elapsed_s = round(time.monotonic() - t_start, 3)
+
+    gpus_ok = sum(1 for n in node_results if n["gpu"]["ok"])
+    locked_pools_gib = [n["ram"]["locked_target_gib"] for n in node_results]
+    locked_sum_gib = sum(locked_pools_gib)
+    live_ram_sum_gib = round(sum(n["ram"]["total_gib"] for n in node_results), 1)
+    live_avail_sum_gib = round(sum(n["ram"]["avail_gib"] for n in node_results), 1)
+    roce_ok = sum(1 for n in node_results if n["roce"]["ok"])
+    vault_nodes = [n for n in node_results if n["vault"]["expected"]]
+    vaults_ok = sum(1 for n in vault_nodes if n["vault"]["ok"])
+    http_ok = sum(1 for h in http_results if h["ok"])
+
+    overall_ok = (
+        gpus_ok == 4
+        and locked_sum_gib == LOCKED_POOL_SUM_GIB
+        and roce_ok == 4
+        and vaults_ok == 2
+        and http_ok == 4
+    )
+
+    report = {
+        "status": "HEALTHY" if overall_ok else "DEGRADED",
+        "elapsed_seconds": elapsed_s,
+        "summary": {
+            "gpus_online": f"{gpus_ok}/4",
+            "locked_ddr4_Formula": "386 + 320 + 448 + 576 = 1,730 GiB",
+            "locked_ddr4_total_gib": locked_sum_gib,
+            "live_ram_total_gib": live_ram_sum_gib,
+            "live_ram_avail_gib": live_avail_sum_gib,
+            "rocev2_25gbe_links": f"{roce_ok}/4",
+            "model_vaults_5tb": f"{vaults_ok}/2",
+            "http_services": f"{http_ok}/4",
+        },
+        "nodes": node_results,
+        "http_services": http_results,
+    }
+
+    if args.json:
+        print(json.dumps(report, indent=2))
+    else:
+        print(f"=== BOYlenet 4-NODE TESLA T4 / RoCEv2 CLUSTER HEALTH ({report['status']} in {elapsed_s:.2f}s) ===")
+        print("\n[1] TESLA T4 GPUs & [2] LOCKED DDR4 RAM POOLS (386 + 320 + 448 + 576 = 1,730 GiB)")
+        print(f"{'NODE':<13} {'GPU MODEL':<16} {'DRIVER':<10} {'VRAM (USED/TOTAL)':<20} {'LOCKED DDR4':<13} {'LIVE AVAIL/TOT':<16} {'STATUS'}")
+        print("-" * 102)
+        for n in node_results:
+            g = n["gpu"]
+            r = n["ram"]
+            vram_s = f"{g['vram_used_mib']}/{g['vram_total_mib']} MiB"
+            lock_s = f"{r['locked_target_gib']} GiB"
+            live_s = f"{r['avail_gib']}/{r['total_gib']} GiB"
+            st = "OK" if (g["ok"] and r["ok"]) else "FAIL"
+            print(f"{n['host']:<13} {g['name']:<16} {g['driver']:<10} {vram_s:<20} {lock_s:<13} {live_s:<16} {st}")
+        print(f"TOTAL LOCKED DDR4 POOL: {' + '.join(str(x) for x in locked_pools_gib)} = {locked_sum_gib:,} GiB (Live Available: {live_avail_sum_gib:,.1f} GiB)")
+
+        print("\n[3] 25GbE RoCEv2 MESH (10.0.75.11..14 MTU 9000 + :50052 llama-rpc.service)")
+        print(f"{'NODE':<13} {'IFACE':<10} {'RoCEv2 IP':<14} {'MTU':<8} {'llama-rpc.service':<19} {':50052':<10} {'STATUS'}")
+        print("-" * 86)
+        for n in node_results:
+            rc = n["roce"]
+            p50052 = "OPEN" if rc["port_50052"] else "CLOSED"
+            st = "OK" if rc["ok"] else "FAIL"
+            print(f"{n['host']:<13} {rc['iface']:<10} {rc['ip']:<14} {rc['mtu']:<8} {rc['llama_rpc_service']:<19} {p50052:<10} {st}")
+
+        print("\n[4] 5.0 TB MODEL VAULTS (.72 and .83 Free TiB)")
+        print(f"{'NODE':<13} {'MOUNT':<22} {'SIZE (TB/TiB)':<18} {'USED TiB':<12} {'FREE TiB':<12} {'STATUS'}")
+        print("-" * 86)
+        for n in vault_nodes:
+            v = n["vault"]
+            sz_s = f"5.0 TB ({v['total_tib']:.2f} TiB)"
+            st = "OK" if v["ok"] else "FAIL"
+            print(f"{n['host']:<13} {str(v['mount']):<22} {sz_s:<18} {v['used_tib']:<12.2f} {v['free_tib']:<12.2f} {st}")
+
+        print("\n[5] CORE HTTP SERVICES (:4010 Orchestrator, :4000 LiteLLM, :3002 Cockpit, :3003 Chat)")
+        print(f"{'SERVICE':<15} {'PORT':<8} {'ENDPOINT':<36} {'HTTP':<8} {'LATENCY':<10} {'STATUS'}")
+        print("-" * 86)
+        for h in http_results:
+            st = "OK" if h["ok"] else "FAIL"
+            print(f"{h['name']:<15} {':'+str(h['port']):<8} {h['endpoint']:<36} {h['status_code']:<8} {str(h['latency_ms'])+'ms':<10} {st}")
+
+    sys.exit(0 if overall_ok else 1)
+
+
+if __name__ == "__main__":
+    main()

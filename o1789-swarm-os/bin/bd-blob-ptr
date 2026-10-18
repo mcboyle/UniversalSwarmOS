@@ -1,0 +1,159 @@
+#!/usr/bin/env python3
+"""
+bd-blob-ptr -- Robust Transparent Tool Output Decoupler & Pointer Wrapper.
+Diverts bulky outputs (>15 lines or >800 bytes) to /var/tmp/bd-blobs/<sha256>.log
+Emits 4-line pointer envelope. Preserves exact exit codes and signal conventions.
+"""
+from __future__ import annotations
+
+import hashlib
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+BLOB_DIR = Path("/var/tmp/bd-blobs")
+MAX_LINES = 15
+MAX_BYTES = 800
+MAX_CAPTURE_BYTES = 50 * 1024 * 1024  # 50 MB safety ceiling
+
+
+def normalize_exit_code(rc: int) -> int:
+    """Normalize negative signal returncode (-S) to standard POSIX (128 + S)."""
+    if rc < 0:
+        return 128 + abs(rc)
+    return rc
+
+
+def process_payload(out_bytes: bytes, returncode: int) -> None:
+    """Assess payload against dual threshold and either pass through or divert to CAS blob."""
+    exit_code = normalize_exit_code(returncode)
+    text_repr = out_bytes.decode("utf-8", errors="replace")
+    lines = text_repr.splitlines()
+
+    # Pass-through if lean (<= 15 lines AND <= 800 bytes)
+    if len(lines) <= MAX_LINES and len(out_bytes) <= MAX_BYTES:
+        sys.stdout.buffer.write(out_bytes)
+        sys.stdout.buffer.flush()
+        sys.exit(exit_code)
+
+    # Bulky output: write to content-addressable blob store
+    BLOB_DIR.mkdir(parents=True, exist_ok=True, mode=0o775)
+    sha256_hash = hashlib.sha256(out_bytes).hexdigest()
+    short_sha = sha256_hash[:8]
+    blob_file = BLOB_DIR / f"{sha256_hash}.log"
+
+    if not blob_file.exists():
+        tmp_file = BLOB_DIR / f".tmp.{os.getpid()}.{short_sha}.log"
+        try:
+            tmp_file.write_bytes(out_bytes)
+            try:
+                tmp_file.chmod(0o664)
+            except OSError:
+                pass
+            os.replace(tmp_file, blob_file)
+        except OSError:
+            if tmp_file.exists():
+                tmp_file.unlink(missing_ok=True)
+
+    size_kb = round(len(out_bytes) / 1024.0, 1)
+    head_lines = [l.strip() for l in lines[:3] if l.strip()]
+    tail_lines = [l.strip() for l in lines[-3:] if l.strip()]
+    head_snip = " | ".join(head_lines) if head_lines else (" | ".join(lines[:3]) if lines else "")
+    tail_snip = " | ".join(tail_lines) if tail_lines else (" | ".join(lines[-3:]) if lines else "")
+    head_snip = head_snip.replace("\n", " ").replace("\r", "")[:120]
+    tail_snip = tail_snip.replace("\n", " ").replace("\r", "")[:120]
+
+    envelope = (
+        f"[BLOB-PTR: sha256:{short_sha} | {size_kb} KB | {len(lines)} lines | Exit {exit_code}]\n"
+        f"HEAD: {head_snip}\n"
+        f"TAIL: {tail_snip}\n"
+        f"LOG: file://{blob_file.resolve()}\n"
+    )
+
+    sys.stdout.write(envelope)
+    sys.stdout.flush()
+    sys.exit(exit_code)
+
+
+def main() -> None:
+    args = sys.argv[1:]
+
+    # Help check
+    if args and args[0] in ("-h", "--help"):
+        print("Usage: bd-blob-ptr [--] <command> [args...] or cmd | bd-blob-ptr [--pipe] [--rc N]", file=sys.stdout)
+        sys.exit(0)
+
+    # Determine if pipe mode is invoked. Own flags are read ONLY before the first `--` (N25): everything after it is
+    # the wrapped argv, untouched, so `bd-blob-ptr -- cat --pipe` runs cat on a file named --pipe.
+    is_pipe = False
+    pipe_rc = 0
+    own = args[:args.index("--")] if "--" in args else args
+
+    if "--pipe" in own:
+        is_pipe = True
+        # Extract optional --rc or --exit-code
+        rem_args = []
+        i = 0
+        while i < len(own):
+            arg = own[i]
+            if arg == "--pipe":
+                i += 1
+            elif arg in ("--rc", "--exit-code") and i + 1 < len(own):
+                try:
+                    pipe_rc = int(own[i + 1])
+                except ValueError:
+                    pass
+                i += 2
+            elif arg.startswith(("--rc=", "--exit-code=")):
+                try:
+                    pipe_rc = int(arg.split("=", 1)[1])
+                except ValueError:
+                    pass
+                i += 1
+            else:
+                rem_args.append(arg)
+                i += 1
+        args = rem_args
+
+    if is_pipe:
+        out_bytes = sys.stdin.buffer.read(MAX_CAPTURE_BYTES)
+        process_payload(out_bytes, pipe_rc)
+
+    # Subprocess execution mode
+    if not args:
+        print("Usage: bd-blob-ptr [--] <command> [args...] or cmd | bd-blob-ptr --pipe [--rc N]", file=sys.stderr)
+        sys.exit(2)
+
+    cmd = args
+    if cmd[0] == "--":
+        cmd = cmd[1:]
+    if not cmd:
+        sys.exit(2)
+
+    child_env = dict(os.environ)
+    child_env.setdefault("PYTHONUNBUFFERED", "1")
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=False,
+            check=False,
+            env=child_env,
+        )
+        process_payload(proc.stdout or b"", proc.returncode)
+    except FileNotFoundError as e:
+        print(f"[BLOB-PTR ERROR] Failed to execute {cmd}: {e}", file=sys.stderr)
+        sys.exit(127)
+    except PermissionError as e:
+        print(f"[BLOB-PTR ERROR] Failed to execute {cmd}: {e}", file=sys.stderr)
+        sys.exit(126)
+    except (OSError, subprocess.SubprocessError) as e:
+        print(f"[BLOB-PTR ERROR] Failed to execute {cmd}: {e}", file=sys.stderr)
+        sys.exit(127)
+
+
+if __name__ == "__main__":
+    main()

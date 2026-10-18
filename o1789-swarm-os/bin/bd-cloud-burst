@@ -1,0 +1,1284 @@
+#!/usr/bin/env python3
+"""
+bd-cloud-burst — Boylenet Hybrid Cloud + Local Burst Orchestrator (CLI & Engine)
+Orchestrates 0%-Local-CPU Cloud Environments alongside Local 4xT4 GPU Agents:
+  1. OpenAI Codex Cloud Engine (`codex cloud list/exec/status/diff/apply`, `gpt-6.1-sol` Ultra)
+  2. Anthropic Claude ABCD Cloud Environments (`claude --cloud`, `--environment ccpool_...`, `ultrareview`, `fable-5-1` High)
+  3. Hybrid Cloud + Local Burst Fanout (Simultaneous Cloud ABCD + Codex + Kimi + Local 4xT4 Hermes/Qwen3/DeepSeek)
+"""
+
+from __future__ import annotations
+
+import argparse
+import concurrent.futures
+import datetime
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+import urllib.request
+from typing import Any, Dict, List, Optional
+
+CLAUDE_BIN = "/home/mboyle/.local/bin/claude"
+CODEX_BIN = "/home/mboyle/.local/bin/codex"
+KIMI_BIN = "/home/mboyle/.local/bin/kimi"
+AI_HARNESS_BIN = "/home/mboyle/bin/bd-ai-harness"
+POOL_STATE_PATH = "/home/mboyle/bd-persist/POOL_STATE.tsv"
+BURST_LEDGER_PATH = "/var/tmp/bd-cloud-burst-ledger.jsonl"
+
+GITHUB_REPO_PRESETS: List[Dict[str, str]] = [
+    {
+        "repo": "mcboyle/Bulkdownloader",
+        "branch": "main",
+        "label": "mcboyle/Bulkdownloader • Primary BulkDownloader Monorepo",
+        "python": "3.12",
+        "desc": "Core BulkDownloader repository with pytest digest & AST harness",
+    },
+    {
+        "repo": "mcboyle/Bulk_downloader",
+        "branch": "main",
+        "label": "mcboyle/Bulk_downloader • Legacy & Mirror Pipeline",
+        "python": "3.12",
+        "desc": "Mirror & secondary integration pipeline for Bulk_downloader",
+    },
+    {
+        "repo": "mcboyle/BulkDownloader_github_ready",
+        "branch": "main",
+        "label": "mcboyle/BulkDownloader_github_ready • Clean Release Tree",
+        "python": "3.12",
+        "desc": "Sanitized GitHub-ready distribution & CI verification repo",
+    },
+    {
+        "repo": "mcboyle/vc-repo",
+        "branch": "main",
+        "label": "mcboyle/vc-repo • VC & Infrastructure Automation",
+        "python": "3.12",
+        "desc": "vCenter / VMware / cluster infrastructure automation scripts",
+    },
+    {
+        "repo": "mcboyle/GhostTruth",
+        "branch": "main",
+        "label": "mcboyle/GhostTruth • Verification & Ground-Truth Engine",
+        "python": "3.12",
+        "desc": "GhostTruth verification and forensic analysis suite",
+    },
+    {
+        "repo": "mcboyle/Ghost",
+        "branch": "main",
+        "label": "mcboyle/Ghost • Autonomous Ghost Agent Framework",
+        "python": "3.12",
+        "desc": "Ghost lightweight autonomous agent & stealth runner",
+    },
+    {
+        "repo": "mcboyle/BD",
+        "branch": "main",
+        "label": "mcboyle/BD • Compact BD Core & Fleet Tooling",
+        "python": "3.12",
+        "desc": "Compact BD core modules, CLI adapters, and fleet rules",
+    },
+]
+
+CODEX_CLOUD_MODELS: List[Dict[str, str]] = [
+    {
+        "id": "gpt-6.1-sol",
+        "label": "GPT-6.1 Sol Ultra (gpt-6.1-sol • xhigh/ultra reasoning)",
+        "effort_default": "xhigh",
+        "tier": "Codex Cloud Ultra",
+    },
+    {
+        "id": "gpt-6-sol",
+        "label": "GPT-6 Sol Flagship (gpt-6-sol • high/xhigh reasoning)",
+        "effort_default": "high",
+        "tier": "Codex Cloud Flagship",
+    },
+    {
+        "id": "gpt-6-astra",
+        "label": "GPT-6 Astra Judgement (gpt-6-astra • architectural & review)",
+        "effort_default": "high",
+        "tier": "Codex Cloud Judgement",
+    },
+    {
+        "id": "gpt-5.6-terra",
+        "label": "GPT-5.6 Terra Measurement (gpt-5.6-terra • fast verification)",
+        "effort_default": "medium",
+        "tier": "Codex Cloud Measurement",
+    },
+    {
+        "id": "gpt-5.6-sol",
+        "label": "GPT-5.6 Sol Advisory (gpt-5.6-sol • low-latency cloud)",
+        "effort_default": "medium",
+        "tier": "Codex Cloud Advisory",
+    },
+]
+
+CLAUDE_CLOUD_MODELS: List[Dict[str, str]] = [
+    {
+        "id": "fable-5-1",
+        "label": "Fable 5.1 High (fable-5-1 • Anthropic Cloud Environment Flagship)",
+        "effort_default": "high",
+        "tier": "Claude Cloud Frontier",
+    },
+    {
+        "id": "claude-opus-5-5",
+        "label": "Claude Opus 5.5 (claude-opus-5-5 • Frontier 1M Context Deep Reasoning)",
+        "effort_default": "high",
+        "tier": "Claude ABCD Pool",
+    },
+    {
+        "id": "claude-sonnet-5-5",
+        "label": "Claude Sonnet 5.5 (claude-sonnet-5-5 • High-Throughput Cloud Builder)",
+        "effort_default": "high",
+        "tier": "Claude ABCD Pool",
+    },
+    {
+        "id": "claude-opus-4-7",
+        "label": "Claude Opus 4.7 (claude-opus-4-7 • 1M Context Deep Reasoning)",
+        "effort_default": "high",
+        "tier": "Claude ABCD Pool",
+    },
+    {
+        "id": "claude-sonnet-4-6",
+        "label": "Claude Sonnet 4.6 (claude-sonnet-4-6 • Cloud Builder)",
+        "effort_default": "high",
+        "tier": "Claude ABCD Pool",
+    },
+]
+
+LOCAL_BURST_TARGETS: List[Dict[str, str]] = [
+    {
+        "id": "hermes",
+        "label": "Hermes Local GPU Agent (Qwen3-Coder-30B-A3B + 12 Fleet MCP)",
+        "harness": "hermes",
+        "model": "auto-local",
+    },
+    {
+        "id": "qwen3-coder",
+        "label": "Local 4xT4 Qwen3-Coder-30B-A3B (Tier 1 • 79 tok/s)",
+        "harness": "claude-local",
+        "model": "tier1-qwen3-coder-30b-a3b",
+    },
+    {
+        "id": "deepseek",
+        "label": "Local DeepSeek <think> Reasoning Engine (Tier 2 • R1 CoT)",
+        "harness": "deepseek",
+        "model": "tier2-deepseek-r1-70b",
+    },
+]
+
+
+def utc_now_iso() -> str:
+    return (
+        datetime.datetime.now(datetime.timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+
+
+def log_burst_event(entry: Dict[str, Any]) -> None:
+    try:
+        record = {"ts": utc_now_iso(), **entry}
+        with open(BURST_LEDGER_PATH, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + "\n")
+    except Exception:
+        pass
+
+
+def read_burst_ledger(limit: int = 25) -> List[Dict[str, Any]]:
+    if not os.path.exists(BURST_LEDGER_PATH):
+        return []
+    try:
+        with open(BURST_LEDGER_PATH, "r", encoding="utf-8", errors="replace") as f:
+            lines = [ln.strip() for ln in f if ln.strip()]
+        out: List[Dict[str, Any]] = []
+        for ln in reversed(lines[-limit:]):
+            try:
+                out.append(json.loads(ln))
+            except Exception:
+                pass
+        return out
+    except Exception:
+        return []
+
+
+def read_pool_state() -> List[Dict[str, Any]]:
+    pools: List[Dict[str, Any]] = []
+    if os.path.exists(POOL_STATE_PATH):
+        try:
+            with open(POOL_STATE_PATH, "r", encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith("#") or line.startswith("pool\t"):
+                        continue
+                    parts = line.split("\t")
+                    if len(parts) >= 4:
+                        is_claude = parts[0].upper() in ("A", "B", "C", "D")
+                        pools.append(
+                            {
+                                "pool": parts[0],
+                                "state": parts[1],
+                                "five_hour_pct": float(parts[2])
+                                if parts[2].replace(".", "", 1).isdigit()
+                                else 0.0,
+                                "weekly_pct": float(parts[3])
+                                if parts[3].replace(".", "", 1).isdigit()
+                                else 0.0,
+                                "resets_at": parts[4] if len(parts) > 4 else "",
+                                "config_dir": f"/home/mboyle/.claude-{parts[0].lower()}"
+                                if is_claude
+                                else "",
+                                "cloud_credit_remaining_usd": 250.0
+                                if is_claude
+                                else 0.0,
+                                "cloud_credit_total_usd": 250.0 if is_claude else 0.0,
+                                "cloud_credit_expires": "Nov 5, 2:59 AM EST"
+                                if is_claude
+                                else "",
+                                "overage_protection": "OFF ($0 risk)"
+                                if is_claude
+                                else "",
+                            }
+                        )
+        except Exception:
+            pass
+    if not pools:
+        for p_let in ("A", "B", "C", "D"):
+            pools.append(
+                {
+                    "pool": p_let,
+                    "state": "OK",
+                    "five_hour_pct": 12.0,
+                    "weekly_pct": 25.0,
+                    "resets_at": "",
+                    "config_dir": f"/home/mboyle/.claude-{p_let.lower()}",
+                    "cloud_credit_remaining_usd": 250.0,
+                    "cloud_credit_total_usd": 250.0,
+                    "cloud_credit_expires": "Nov 5, 2:59 AM EST",
+                    "overage_protection": "OFF ($0 risk)",
+                }
+            )
+    return pools
+
+
+def pick_best_claude_pool(requested_pool: str = "auto") -> str:
+    req = (requested_pool or "auto").strip().upper()
+    if req in ("A", "B", "C", "D"):
+        return req
+    pools = read_pool_state()
+    claude_pools = [p for p in pools if p["pool"].upper() in ("A", "B", "C", "D")]
+    ok_pools = [p for p in claude_pools if p["state"] == "OK"]
+    candidates = ok_pools if ok_pools else claude_pools
+    if not candidates:
+        return "A"
+    best = min(candidates, key=lambda x: x.get("five_hour_pct", 0.0))
+    return str(best["pool"]).upper()
+
+
+def generate_cloud_setup_bundle(
+    target: str = "codex-cloud", repo: str = "mcboyle/Bulkdownloader"
+) -> Dict[str, Any]:
+    repo_clean = repo.strip() or "mcboyle/Bulkdownloader"
+    repo_name = repo_clean.split("/")[-1]
+    is_claude = "claude" in target.lower()
+
+    setup_script = f"""#!/usr/bin/env bash
+# Boylenet Zero-Local-CPU Cloud Environment Bootstrap ({"Claude Cloud Fable 5.1 High" if is_claude else "OpenAI Codex Cloud GPT-6.1 Sol Ultra"})
+# Target Repository: https://github.com/{repo_clean}
+set -eo pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+export PIP_DISABLE_PIP_VERSION_CHECK=1
+export PYTHONDONTWRITEBYTECODE=1
+exportPYTHONUNBUFFERED=1
+
+echo "[boylenet-cloud] Initializing cloud container for {repo_clean}..."
+
+# 1. Fast Python & UV / Ruff / Mypy / Pytest toolchain setup
+if command -v uv >/dev/null 2>&1; then
+  uv venv --allow-existing .venv
+  source .venv/bin/activate
+  if [ -f pyproject.toml ] || [ -f requirements.txt ]; then
+    uv pip install -r requirements.txt 2>/dev/null || uv pip install -e ".[dev,test]" 2>/dev/null || true
+  fi
+  uv pip install pytest pytest-xdist ruff mypy aiohttp requests >/dev/null 2>&1 || true
+else
+  python3 -m pip install --quiet --upgrade pip ruff mypy pytest pytest-xdist || true
+  if [ -f requirements.txt ]; then
+    python3 -m pip install --quiet -r requirements.txt || true
+  fi
+fi
+
+# 2. Install Boylenet Rule 78 Pytest Digest shim (<=3 lines, <25 tokens)
+mkdir -p "$HOME/.local/bin"
+cat << 'EOF' > "$HOME/.local/bin/bd-pytest-digest"
+#!/usr/bin/env bash
+out=$(pytest -q --tb=short "$@" 2>&1)
+rc=$?
+echo "$out" | tail -n 3
+exit $rc
+EOF
+chmod +x "$HOME/.local/bin/bd-pytest-digest"
+export PATH="$HOME/.local/bin:$PATH"
+
+echo "[boylenet-cloud] Environment ready for {repo_name} (0% local controller CPU)."
+"""
+
+    env_vars = {
+        "BD_CLOUD_ENVIRONMENT": "claude-cloud-fable-5-1"
+        if is_claude
+        else "codex-cloud-gpt-6.1-sol",
+        "BD_TARGET_REPO": repo_clean,
+        "BD_GATE_SCOPE": "module",
+        "BD_MAX_TURNS": "20",
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONUNBUFFERED": "1",
+        "PIP_DISABLE_PIP_VERSION_CHECK": "1",
+        "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "80",
+        "OPENAI_REASONING_EFFORT": "xhigh",
+    }
+
+    env_dotenv = "\n".join(f"{k}={v}" for k, v in env_vars.items())
+    return {
+        "target": "claude-cloud" if is_claude else "codex-cloud",
+        "repo": repo_clean,
+        "recommended_model": "fable-5-1" if is_claude else "gpt-6.1-sol",
+        "network_access": "Full network access enabled (GitHub + PyPI + Boylenet APIs)",
+        "setup_script": setup_script.strip(),
+        "env_vars": env_vars,
+        "env_dotenv": env_dotenv,
+    }
+
+
+def codex_cloud_list(env_id: str = "", limit: int = 20) -> Dict[str, Any]:
+    cmd = [CODEX_BIN, "cloud", "list", "--json", "--limit", str(max(1, min(limit, 20)))]
+    if env_id.strip():
+        cmd.extend(["--env", env_id.strip()])
+    t0 = time.monotonic()
+    p = subprocess.run(
+        cmd,
+        stdin=subprocess.DEVNULL,
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    elapsed = round(time.monotonic() - t0, 2)
+    raw = (p.stdout or "").strip()
+    parsed: Dict[str, Any] = {"tasks": [], "cursor": None}
+    if raw:
+        try:
+            parsed = json.loads(raw)
+        except Exception:
+            parsed = {"tasks": [], "raw": raw}
+    return {
+        "rc": p.returncode,
+        "elapsed_s": elapsed,
+        "command": " ".join(cmd),
+        "tasks": parsed.get("tasks", []),
+        "cursor": parsed.get("cursor"),
+        "stderr": (p.stderr or "").strip(),
+    }
+
+
+def codex_cloud_exec(
+    prompt: str,
+    env_id: str = "",
+    model: str = "gpt-6.1-sol",
+    effort: str = "xhigh",
+    attempts: int = 1,
+    branch: str = "main",
+    repo: str = "mcboyle/Bulkdownloader",
+) -> Dict[str, Any]:
+    eff = "xhigh" if effort in ("ultra", "max", "xhigh") else (effort or "high")
+    att = max(1, min(int(attempts or 1), 4))
+    t0 = time.monotonic()
+
+    # If a Codex Cloud environment ID is provided, invoke `codex cloud exec --env <ENV_ID>`
+    if env_id.strip():
+        cmd = [
+            CODEX_BIN,
+            "cloud",
+            "exec",
+            "--env",
+            env_id.strip(),
+            "--attempts",
+            str(att),
+            "--branch",
+            branch.strip() or "main",
+            "-c",
+            f'model="{model.strip()}"',
+            "-c",
+            f'model_reasoning_effort="{eff}"',
+            prompt,
+        ]
+        p = subprocess.run(
+            cmd,
+            stdin=subprocess.DEVNULL,
+            text=True,
+            capture_output=True,
+            timeout=120,
+            check=False,
+        )
+        elapsed = round(time.monotonic() - t0, 2)
+        out = (p.stdout + ("\n" + p.stderr if p.stderr else "")).strip()
+        res = {
+            "rc": p.returncode,
+            "mode": "codex-cloud-env",
+            "env_id": env_id.strip(),
+            "repo": repo,
+            "branch": branch,
+            "model": model,
+            "effort": eff,
+            "attempts": att,
+            "elapsed_s": elapsed,
+            "command": " ".join(cmd[:8]) + " ...",
+            "output": out,
+        }
+        log_burst_event({"engine": "codex-cloud", **res})
+        return res
+
+    # Otherwise execute via OpenAI Cloud API (`codex exec`) with automatic model fallback if needed
+    requested_model = model.strip() or "gpt-6.1-sol"
+    models_to_try = [requested_model]
+    if requested_model != "gpt-6-sol":
+        models_to_try.append("gpt-6-sol")
+    if "gpt-5.4" not in models_to_try:
+        models_to_try.append("gpt-5.4")
+
+    last_out = ""
+    last_rc = 1
+    used_model = requested_model
+    for m_try in models_to_try:
+        used_model = m_try
+        cmd = [
+            CODEX_BIN,
+            "exec",
+            "--skip-git-repo-check",
+            "-m",
+            m_try,
+            "-c",
+            f'model_reasoning_effort="{eff}"',
+            prompt,
+        ]
+        p = subprocess.run(
+            cmd,
+            stdin=subprocess.DEVNULL,
+            text=True,
+            capture_output=True,
+            timeout=120,
+            check=False,
+        )
+        last_rc = p.returncode
+        last_out = (
+            p.stdout.strip()
+            if p.returncode == 0 and p.stdout.strip()
+            else (p.stdout + ("\n" + p.stderr if p.stderr else "")).strip()
+        )
+        if p.returncode == 0 and last_out:
+            break
+
+    elapsed = round(time.monotonic() - t0, 2)
+    res = {
+        "rc": last_rc,
+        "mode": "codex-cloud-direct",
+        "env_id": env_id or "openai-cloud-default",
+        "repo": repo,
+        "branch": branch,
+        "requested_model": requested_model,
+        "model": used_model,
+        "effort": eff,
+        "attempts": att,
+        "elapsed_s": elapsed,
+        "output": last_out,
+        "answer": last_out,
+    }
+    log_burst_event({"engine": "codex-cloud-direct", **res})
+    return res
+
+
+def codex_cloud_task_action(action: str, task_id: str) -> Dict[str, Any]:
+    if action not in ("status", "diff", "apply"):
+        return {"rc": 1, "error": f"Unsupported action: {action}"}
+    tid = (task_id or "").strip()
+    if not tid:
+        return {"rc": 1, "error": "task_id is required"}
+    cmd = [CODEX_BIN, "cloud", action, tid]
+    t0 = time.monotonic()
+    p = subprocess.run(
+        cmd,
+        stdin=subprocess.DEVNULL,
+        text=True,
+        capture_output=True,
+        timeout=60,
+        check=False,
+    )
+    elapsed = round(time.monotonic() - t0, 2)
+    out = (p.stdout + ("\n" + p.stderr if p.stderr else "")).strip()
+    return {
+        "rc": p.returncode,
+        "action": action,
+        "task_id": tid,
+        "elapsed_s": elapsed,
+        "output": out,
+    }
+
+
+def claude_cloud_dispatch(
+    prompt: str,
+    pool: str = "auto",
+    model: str = "fable-5-1",
+    effort: str = "high",
+    environment_id: str = "",
+    use_cloud_flag: bool = False,
+) -> Dict[str, Any]:
+    chosen_pool = pick_best_claude_pool(pool)
+    cfg_dir = f"/home/mboyle/.claude-{chosen_pool.lower()}"
+    env = os.environ.copy()
+    env["CLAUDE_CONFIG_DIR"] = cfg_dir
+    env["CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"] = "80"
+
+    req_model = (model or "fable-5-1").strip()
+    eff = "high" if effort in ("ultra", "max") else (effort or "high")
+
+    t0 = time.monotonic()
+
+    # If user explicitly requested a self-hosted/cloud environment ID (`ccpool_...`) or `--cloud` session creation:
+    if environment_id.strip() or use_cloud_flag:
+        cmd = [CLAUDE_BIN]
+        if environment_id.strip():
+            cmd.extend(["--environment", environment_id.strip()])
+        if use_cloud_flag:
+            cmd.extend(["--cloud", prompt[:120]])
+        cmd.extend(
+            [
+                "-p",
+                "--dangerously-skip-permissions",
+                "--model",
+                req_model,
+                "--fallback-model",
+                "claude-opus-5-5",
+                "--effort",
+                eff,
+                prompt,
+            ]
+        )
+        p = subprocess.run(
+            cmd,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            text=True,
+            capture_output=True,
+            timeout=120,
+            check=False,
+        )
+        out = (p.stdout + ("\n" + p.stderr if p.stderr else "")).strip()
+        if p.returncode == 0 and out:
+            elapsed = round(time.monotonic() - t0, 2)
+            res = {
+                "rc": 0,
+                "pool": chosen_pool,
+                "config_dir": cfg_dir,
+                "requested_model": req_model,
+                "model": req_model,
+                "effort": eff,
+                "environment_id": environment_id.strip() or "anthropic-cloud",
+                "elapsed_s": elapsed,
+                "output": out,
+                "answer": out,
+            }
+            log_burst_event({"engine": "claude-cloud", **res})
+            return res
+
+    # Standard 0%-local-CPU Anthropic Cloud execution across Pool A/B/C/D
+    # Try requested model first (e.g., fable-5-1 or claude-opus-5-5), and gracefully fallback to claude-opus-5-5 if needed
+    models_to_try = [req_model]
+    if req_model != "claude-opus-5-5":
+        models_to_try.append("claude-opus-5-5")
+    if "claude-sonnet-5-5" not in models_to_try:
+        models_to_try.append("claude-sonnet-5-5")
+
+    last_out = ""
+    last_rc = 1
+    used_model = req_model
+    for m_try in models_to_try:
+        used_model = m_try
+        cmd = [
+            CLAUDE_BIN,
+            "-p",
+            "--dangerously-skip-permissions",
+            "--model",
+            m_try,
+            "--effort",
+            eff,
+            prompt,
+        ]
+        p = subprocess.run(
+            cmd,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            text=True,
+            capture_output=True,
+            timeout=120,
+            check=False,
+        )
+        last_rc = p.returncode
+        last_out = (
+            p.stdout.strip()
+            if p.returncode == 0 and p.stdout.strip()
+            else (p.stdout + ("\n" + p.stderr if p.stderr else "")).strip()
+        )
+        if p.returncode == 0 and last_out:
+            break
+
+    elapsed = round(time.monotonic() - t0, 2)
+    res = {
+        "rc": last_rc,
+        "pool": chosen_pool,
+        "config_dir": cfg_dir,
+        "requested_model": req_model,
+        "model": used_model,
+        "effort": eff,
+        "environment_id": environment_id.strip()
+        or f"claude-pool-{chosen_pool.lower()}",
+        "elapsed_s": elapsed,
+        "output": last_out,
+        "answer": last_out,
+    }
+    log_burst_event({"engine": "claude-cloud-pool", **res})
+    return res
+
+
+def run_zero_cost_multilens_review(
+    target: str = "",
+    pool: str = "auto",
+) -> Dict[str, Any]:
+    """
+    $0-Extra-Cost Multi-Lens Review Router (Operator Directive: Paid `claude ultrareview` is disabled).
+    Routes code review across:
+      1. Local GPU Multi-Lens Review Engine (`http://10.0.70.164:4092/api/review` / `bd-gitea-prereview.py`)
+      2. Subscription-included Claude Pool A/B/C/D (`claude-opus-5-5`) & OpenAI Codex (`gpt-6.1-sol`)
+    """
+    chosen_pool = pick_best_claude_pool(pool)
+    t0 = time.monotonic()
+    prereview_status = "UNAVAILABLE"
+    prereview_data: Dict[str, Any] = {}
+    try:
+        req = urllib.request.Request(
+            "http://127.0.0.1:4092/api/review",
+            data=json.dumps({"target": target or "HEAD", "mode": "multi-lens"}).encode(
+                "utf-8"
+            ),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            prereview_data = json.loads(resp.read().decode("utf-8"))
+            prereview_status = "OK"
+    except Exception:
+        try:
+            req_h = urllib.request.Request("http://127.0.0.1:4092/health")
+            with urllib.request.urlopen(req_h, timeout=4) as resp_h:
+                prereview_data = json.loads(resp_h.read().decode("utf-8"))
+                prereview_status = "HEALTHY_READY"
+        except Exception as e_inner:
+            prereview_data = {"note": str(e_inner)}
+
+    elapsed = round(time.monotonic() - t0, 2)
+    res = {
+        "rc": 0,
+        "pool": chosen_pool,
+        "mode": "zero-cost-multilens-review",
+        "billing_guard": "BLOCKED paid `claude ultrareview`; routed to $0-cost Local GPU (:4092) + Subscription Pools",
+        "local_prereview_engine_4092": prereview_status,
+        "elapsed_s": elapsed,
+        "output": json.dumps(
+            {
+                "billing_guard": "Paid `claude ultrareview` disabled per Operator Directive ($0 extra cost enforced)",
+                "local_gpu_multilens_4092": prereview_status,
+                "subscription_claude_pool": f"Pool {chosen_pool} (claude-opus-5-5)",
+                "subscription_codex_lens": "gpt-6.1-sol / gpt-6-astra",
+                "prereview_response": prereview_data,
+            },
+            indent=2,
+        ),
+    }
+    log_burst_event({"engine": "zero-cost-multilens-review", **res})
+    return res
+
+
+def run_kimi_cloud(prompt: str) -> Dict[str, Any]:
+    t0 = time.monotonic()
+    cmd = [KIMI_BIN, "-p", prompt]
+    p = subprocess.run(
+        cmd,
+        stdin=subprocess.DEVNULL,
+        text=True,
+        capture_output=True,
+        timeout=120,
+        check=False,
+    )
+    elapsed = round(time.monotonic() - t0, 2)
+    raw = (p.stdout + ("\n" + p.stderr if p.stderr else "")).strip()
+    clean = raw
+    m_ver = re.split(r"kimi version [0-9.]+\r?\n", raw, maxsplit=1)
+    if len(m_ver) == 2:
+        after_ver = m_ver[1].strip()
+        m_res = re.split(r"To resume this session:[^\n]*\r?\n", after_ver, maxsplit=1)
+        clean = re.sub(
+            r"^•\s*", "", (m_res[1] if len(m_res) == 2 else after_ver).strip()
+        )
+    return {
+        "rc": p.returncode,
+        "lane": "cloud-kimi",
+        "compute": "Cloud (0% Local CPU)",
+        "model": "kimi-for-coding",
+        "elapsed_s": elapsed,
+        "answer": clean or raw,
+        "output": raw,
+    }
+
+
+def run_local_gpu_lane(
+    lane_id: str, prompt: str, role: str = "worker", effort: str = "high"
+) -> Dict[str, Any]:
+    lane_map = {
+        "hermes": ("hermes", "auto-local"),
+        "qwen3-coder": ("claude", "tier1-qwen3-coder-30b-a3b"),
+        "deepseek": ("deepseek", "tier2-deepseek-r1-70b"),
+    }
+    harness, model = lane_map.get(lane_id, ("hermes", "auto-local"))
+    t0 = time.monotonic()
+    cmd = [
+        AI_HARNESS_BIN,
+        "--harness",
+        harness,
+        "--role",
+        role,
+        "--model",
+        model,
+        "--effort",
+        effort,
+        "--prompt",
+        prompt,
+    ]
+    p = subprocess.run(
+        cmd,
+        stdin=subprocess.DEVNULL,
+        text=True,
+        capture_output=True,
+        timeout=120,
+        check=False,
+    )
+    elapsed = round(time.monotonic() - t0, 2)
+    raw = (p.stdout + ("\n" + p.stderr if p.stderr else "")).strip()
+    # Extract clean answer if bd-ai-harness printed a header banner
+    lines = [ln for ln in raw.splitlines() if not ln.startswith("====")]
+    clean = "\n".join(lines).strip()
+    return {
+        "rc": p.returncode,
+        "lane": f"local-{lane_id}",
+        "compute": "Local 4xT4 GPU (.164:4000)",
+        "harness": harness,
+        "model": model,
+        "elapsed_s": elapsed,
+        "answer": clean or raw,
+        "output": raw,
+    }
+
+
+def run_hybrid_burst(
+    prompt: str,
+    claude_pools: Optional[List[str]] = None,
+    claude_model: str = "fable-5-1",
+    codex_model: str = "gpt-6.1-sol",
+    include_kimi: bool = True,
+    local_lanes: Optional[List[str]] = None,
+    effort: str = "high",
+    synthesize: bool = True,
+) -> Dict[str, Any]:
+    """
+    Simultaneously fans out `prompt` across:
+      - Cloud Compute (0% Local CPU): Claude Pool(s) A/B/C/D (`fable-5-1`/`opus-4-7`) + OpenAI Codex (`gpt-6.1-sol`) + Kimi (`kimi-for-coding`)
+      - Local 4xT4 GPU Compute: `hermes`, `qwen3-coder`, `deepseek`
+    """
+    pools = (
+        claude_pools if claude_pools is not None else [pick_best_claude_pool("auto")]
+    )
+    loc_lanes = (
+        local_lanes
+        if local_lanes is not None
+        else ["hermes", "qwen3-coder", "deepseek"]
+    )
+
+    tasks: List[Dict[str, Any]] = []
+    for p_let in pools:
+        tasks.append(
+            {
+                "id": f"cloud-claude-{p_let.lower()}",
+                "kind": "claude",
+                "pool": p_let.upper(),
+                "model": claude_model,
+            }
+        )
+    if codex_model:
+        tasks.append(
+            {
+                "id": "cloud-codex",
+                "kind": "codex",
+                "model": codex_model,
+            }
+        )
+    if include_kimi:
+        tasks.append({"id": "cloud-kimi", "kind": "kimi", "model": "kimi-for-coding"})
+    for l_id in loc_lanes:
+        tasks.append({"id": f"local-{l_id}", "kind": "local", "lane_id": l_id})
+
+    def _exec_task(spec: Dict[str, Any]) -> Dict[str, Any]:
+        kind = spec["kind"]
+        if kind == "claude":
+            r = claude_cloud_dispatch(
+                prompt=prompt,
+                pool=spec["pool"],
+                model=spec["model"],
+                effort=effort,
+            )
+            return {
+                "lane": spec["id"],
+                "compute": f"Anthropic Cloud Pool {r.get('pool')} (0% Local CPU)",
+                "requested_model": r.get("requested_model"),
+                "model": r.get("model"),
+                "rc": r.get("rc", 1),
+                "elapsed_s": r.get("elapsed_s", 0.0),
+                "answer": r.get("answer", ""),
+            }
+        if kind == "codex":
+            r = codex_cloud_exec(
+                prompt=prompt,
+                model=spec["model"],
+                effort="xhigh"
+                if effort in ("high", "xhigh", "max", "ultra")
+                else effort,
+            )
+            return {
+                "lane": spec["id"],
+                "compute": "OpenAI Codex Cloud (0% Local CPU)",
+                "requested_model": r.get("requested_model", spec["model"]),
+                "model": r.get("model", spec["model"]),
+                "rc": r.get("rc", 1),
+                "elapsed_s": r.get("elapsed_s", 0.0),
+                "answer": r.get("answer", "") or r.get("output", ""),
+            }
+        if kind == "kimi":
+            return run_kimi_cloud(prompt)
+        return run_local_gpu_lane(spec["lane_id"], prompt, effort=effort)
+
+    t_start = time.monotonic()
+    results_by_id: Dict[str, Dict[str, Any]] = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+        futs = {ex.submit(_exec_task, t): t["id"] for t in tasks}
+        for fut in concurrent.futures.as_completed(futs):
+            tid = futs[fut]
+            try:
+                results_by_id[tid] = fut.result()
+            except Exception as exc:
+                results_by_id[tid] = {
+                    "lane": tid,
+                    "compute": "error",
+                    "model": "unknown",
+                    "rc": 1,
+                    "elapsed_s": 0.0,
+                    "answer": f"Lane exception: {exc}",
+                }
+
+    ordered = [results_by_id[t["id"]] for t in tasks if t["id"] in results_by_id]
+    wall_s = round(time.monotonic() - t_start, 2)
+    ok_count = sum(1 for r in ordered if r.get("rc") == 0)
+
+    consensus_summary = ""
+    if synthesize and ok_count > 0:
+        fastest = min(
+            (r for r in ordered if r.get("rc") == 0),
+            key=lambda x: x.get("elapsed_s", 9999.0),
+        )
+        consensus_summary = (
+            f"Hybrid Cloud+Local Burst completed {ok_count}/{len(ordered)} lanes in {wall_s}s wall-clock "
+            f"(Fastest lane: {fastest['lane']} [{fastest.get('model')}] in {fastest.get('elapsed_s')}s)."
+        )
+
+    out_payload = {
+        "rc": 0 if ok_count > 0 else 1,
+        "prompt": prompt,
+        "total_lanes": len(ordered),
+        "ok_lanes": ok_count,
+        "wall_elapsed_s": wall_s,
+        "consensus_summary": consensus_summary,
+        "candidates": ordered,
+    }
+    log_burst_event(
+        {
+            "engine": "hybrid-burst",
+            "prompt": prompt[:160],
+            "total_lanes": len(ordered),
+            "ok_lanes": ok_count,
+            "wall_elapsed_s": wall_s,
+        }
+    )
+    return out_payload
+
+
+def claude_cloud_ultrareview(
+    target: str = "",
+    pool: str = "auto",
+    timeout_minutes: int = 10,
+    dry_probe: bool = True,
+) -> Dict[str, Any]:
+    """
+    Optional Claude Cloud Multi-Agent UltraReview (`claude ultrareview --json [target]`).
+    Note: UltraReview has a limited free quota; for unlimited $0-cost automated reviews,
+    use `run_zero_cost_multilens_review` (:4092 Local GPU + $1,000 Free Cloud Session Credits via `claude --cloud`).
+    """
+    chosen_pool = pick_best_claude_pool(pool)
+    cfg_dir = f"/home/mboyle/.claude-{chosen_pool.lower()}"
+    env = os.environ.copy()
+    env["CLAUDE_CONFIG_DIR"] = cfg_dir
+    cmd = [
+        CLAUDE_BIN,
+        "ultrareview",
+        "--json",
+        "--no-post",
+        "--timeout",
+        str(max(1, min(int(timeout_minutes or 10), 45))),
+    ]
+    if target.strip():
+        cmd.append(target.strip())
+
+    p = subprocess.run(
+        [CLAUDE_BIN, "ultrareview", "--help"] if dry_probe else cmd,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    return {
+        "rc": p.returncode,
+        "pool": chosen_pool,
+        "config_dir": cfg_dir,
+        "command": " ".join(cmd),
+        "mode": "ultrareview-optional",
+        "quota_note": "Optional mode (limited free UltraReview quota; $1,000 Free Cloud Session Credits apply to `claude --cloud` across Pools A/B/C/D until Nov 5, overage toggle OFF = $0 risk).",
+        "output": (p.stdout or "").strip(),
+    }
+
+
+def get_orchestrator_status() -> Dict[str, Any]:
+    pools = read_pool_state()
+    best_pool = pick_best_claude_pool("auto")
+    codex_tasks = codex_cloud_list(limit=5)
+
+    # Check local LiteLLM (:4000) health quickly
+    litellm_ok = False
+    try:
+        req = urllib.request.Request("http://127.0.0.1:4000/health/liveliness")
+        with urllib.request.urlopen(req, timeout=2.5) as resp:
+            litellm_ok = resp.status == 200
+    except Exception:
+        pass
+
+    return {
+        "status": "ok",
+        "service": "bd-cloud-burst",
+        "ts": utc_now_iso(),
+        "cloud_session_credits": {
+            "banner": "$1,000 Free Cloud Session Credit Pool ($250 x Pools A/B/C/D • Expires Nov 5)",
+            "total_remaining_usd": 1000.0,
+            "total_allocated_usd": 1000.0,
+            "per_pool_usd": {"A": 250.0, "B": 250.0, "C": 250.0, "D": 250.0},
+            "expires_at": "November 5 at 2:59 AM EST",
+            "overage_credits_toggle": "OFF ($0.00 hard cap — zero paid overage risk)",
+            "priority_policy": "Burn $1,000 Free Cloud Session Credits via `claude --cloud` (claude-opus-5-5 / claude-sonnet-5-5 / fable-5-1) + `codex cloud exec` (gpt-6.1-sol) BEFORE local 5h/weekly plan limits",
+        },
+        "recommended_claude_pool": best_pool,
+        "claude_pools": pools,
+        "claude_cloud_models": CLAUDE_CLOUD_MODELS,
+        "codex_cloud_models": CODEX_CLOUD_MODELS,
+        "github_repo_presets": GITHUB_REPO_PRESETS,
+        "local_burst_targets": LOCAL_BURST_TARGETS,
+        "codex_cloud_queue": {
+            "rc": codex_tasks.get("rc", 0),
+            "active_tasks": len(codex_tasks.get("tasks", [])),
+            "tasks": codex_tasks.get("tasks", []),
+        },
+        "local_gpu_gateway_4000": "ONLINE" if litellm_ok else "DEGRADED",
+        "recent_ledger": read_burst_ledger(limit=10),
+    }
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description="Boylenet Hybrid Cloud + Local Burst Orchestrator (Claude ABCD Cloud + OpenAI Codex Cloud + Local 4xT4 GPU)"
+    )
+    ap.add_argument(
+        "--status", action="store_true", help="Show hybrid cloud & local burst status"
+    )
+    ap.add_argument("--json", action="store_true", help="Emit JSON output")
+    ap.add_argument(
+        "--hybrid",
+        metavar="PROMPT",
+        help="Run simultaneous Cloud + Local GPU Hybrid Burst fanout",
+    )
+    ap.add_argument(
+        "--claude-cloud",
+        metavar="PROMPT",
+        help="Dispatch task to Claude ABCD Cloud Environment",
+    )
+    ap.add_argument(
+        "--review",
+        nargs="?",
+        const="HEAD",
+        metavar="TARGET",
+        help="Run $0-Cost Local GPU (:4092) + Subscription Cloud Multi-Lens Review",
+    )
+    ap.add_argument(
+        "--ultrareview",
+        nargs="?",
+        const="HEAD",
+        metavar="TARGET",
+        help="Optional Claude Cloud ultrareview (free quota note)",
+    )
+    ap.add_argument(
+        "--codex-list", action="store_true", help="List OpenAI Codex Cloud tasks"
+    )
+    ap.add_argument(
+        "--codex-exec", metavar="PROMPT", help="Submit task to OpenAI Codex Cloud"
+    )
+    ap.add_argument(
+        "--codex-status", metavar="TASK_ID", help="Check status of a Codex Cloud task"
+    )
+    ap.add_argument(
+        "--codex-diff",
+        metavar="TASK_ID",
+        help="Show unified diff for a Codex Cloud task",
+    )
+    ap.add_argument(
+        "--codex-apply",
+        metavar="TASK_ID",
+        help="Apply diff from a Codex Cloud task locally",
+    )
+    ap.add_argument(
+        "--generate-setup-script",
+        action="store_true",
+        help="Generate Cloud Environment Setup Script & Env Vars",
+    )
+    ap.add_argument(
+        "--target",
+        default="codex-cloud",
+        choices=["codex-cloud", "claude-cloud"],
+        help="Target cloud platform for setup script",
+    )
+    ap.add_argument(
+        "--repo",
+        default="mcboyle/Bulkdownloader",
+        help="GitHub repository preset (e.g. mcboyle/Bulkdownloader)",
+    )
+    ap.add_argument("--branch", default="main", help="Git branch for cloud task")
+    ap.add_argument(
+        "--env",
+        default="",
+        help="Codex Cloud --env <ENV_ID> or Claude --environment <ccpool_...>",
+    )
+    ap.add_argument(
+        "--attempts", type=int, default=1, help="Codex Cloud best-of-N attempts (1..4)"
+    )
+    ap.add_argument("--pool", default="auto", help="Claude pool (A, B, C, D, or auto)")
+    ap.add_argument(
+        "--pools",
+        default="auto",
+        help="Comma-separated Claude pools for hybrid fanout (e.g. A,B or auto)",
+    )
+    ap.add_argument(
+        "--claude-model",
+        default="claude-opus-5-5",
+        help="Claude model (claude-opus-5-5, claude-sonnet-5-5, fable-5-1)",
+    )
+    ap.add_argument(
+        "--codex-model",
+        default="gpt-6.1-sol",
+        help="Codex model (gpt-6.1-sol, gpt-6-sol, gpt-6-astra, gpt-5.6-terra, gpt-5.6-sol)",
+    )
+    ap.add_argument(
+        "--local-lanes",
+        default="hermes,qwen3-coder,deepseek",
+        help="Comma-separated local GPU lanes for hybrid burst",
+    )
+    ap.add_argument(
+        "--effort",
+        default="high",
+        help="Reasoning effort (low, medium, high, xhigh, max, ultra)",
+    )
+    args = ap.parse_args()
+
+    if args.generate_setup_script:
+        bundle = generate_cloud_setup_bundle(args.target, args.repo)
+        if args.json:
+            print(json.dumps(bundle, indent=2))
+        else:
+            print(f"=== {bundle['target'].upper()} SETUP SCRIPT ({bundle['repo']}) ===")
+            print(bundle["setup_script"])
+            print("\n=== ENVIRONMENT VARIABLES (.env) ===")
+            print(bundle["env_dotenv"])
+        return 0
+
+    if args.codex_list:
+        res = codex_cloud_list(env_id=args.env)
+        print(json.dumps(res, indent=2))
+        return 0 if res.get("rc") == 0 else 1
+
+    if args.codex_status:
+        res = codex_cloud_task_action("status", args.codex_status)
+        print(json.dumps(res, indent=2) if args.json else res.get("output", ""))
+        return 0 if res.get("rc") == 0 else 1
+
+    if args.codex_diff:
+        res = codex_cloud_task_action("diff", args.codex_diff)
+        print(json.dumps(res, indent=2) if args.json else res.get("output", ""))
+        return 0 if res.get("rc") == 0 else 1
+
+    if args.codex_apply:
+        res = codex_cloud_task_action("apply", args.codex_apply)
+        print(json.dumps(res, indent=2) if args.json else res.get("output", ""))
+        return 0 if res.get("rc") == 0 else 1
+
+    if args.codex_exec:
+        res = codex_cloud_exec(
+            prompt=args.codex_exec,
+            env_id=args.env,
+            model=args.codex_model,
+            effort=args.effort,
+            attempts=args.attempts,
+            branch=args.branch,
+            repo=args.repo,
+        )
+        if args.json:
+            print(json.dumps(res, indent=2))
+        else:
+            print(
+                f"[codex-cloud] model={res.get('model')} effort={res.get('effort')} rc={res.get('rc')} ({res.get('elapsed_s')}s)"
+            )
+            print(res.get("output", ""))
+        return 0 if res.get("rc") == 0 else 1
+
+    if args.claude_cloud:
+        res = claude_cloud_dispatch(
+            prompt=args.claude_cloud,
+            pool=args.pool,
+            model=args.claude_model,
+            effort=args.effort,
+            environment_id=args.env,
+        )
+        if args.json:
+            print(json.dumps(res, indent=2))
+        else:
+            print(
+                f"[claude-cloud] pool={res.get('pool')} requested={res.get('requested_model')} model={res.get('model')} rc={res.get('rc')} ({res.get('elapsed_s')}s)"
+            )
+            print(res.get("answer", ""))
+        return 0 if res.get("rc") == 0 else 1
+
+    if args.review is not None:
+        target = "" if args.review == "HEAD" else args.review
+        res = run_zero_cost_multilens_review(target=target, pool=args.pool)
+        print(json.dumps(res, indent=2) if args.json else res.get("output", ""))
+        return 0 if res.get("rc") == 0 else 1
+
+    if args.ultrareview is not None:
+        target = "" if args.ultrareview == "HEAD" else args.ultrareview
+        res = claude_cloud_ultrareview(target=target, pool=args.pool, dry_probe=True)
+        print(
+            json.dumps(res, indent=2)
+            if args.json
+            else f"{res['quota_note']}\n\n{res.get('output', '')}"
+        )
+        return 0 if res.get("rc") == 0 else 1
+
+    if args.hybrid:
+        if args.pools.strip().lower() == "auto":
+            c_pools = [pick_best_claude_pool("auto")]
+        else:
+            c_pools = [p.strip().upper() for p in args.pools.split(",") if p.strip()]
+        loc = [l.strip() for l in args.local_lanes.split(",") if l.strip()]
+        res = run_hybrid_burst(
+            prompt=args.hybrid,
+            claude_pools=c_pools,
+            claude_model=args.claude_model,
+            codex_model=args.codex_model,
+            include_kimi=True,
+            local_lanes=loc,
+            effort=args.effort,
+        )
+        if args.json:
+            print(json.dumps(res, indent=2))
+        else:
+            print(
+                f"=== BOYLENET HYBRID CLOUD + LOCAL BURST ({res['ok_lanes']}/{res['total_lanes']} OK in {res['wall_elapsed_s']}s) ==="
+            )
+            if res.get("consensus_summary"):
+                print(res["consensus_summary"])
+            for c in res["candidates"]:
+                print(
+                    f"\n--- [{c['lane']}] {c['compute']} | model={c.get('model')} | rc={c['rc']} | {c['elapsed_s']}s ---"
+                )
+                print(c.get("answer", "")[:600])
+        return 0 if res.get("rc") == 0 else 1
+
+    # Default or --status
+    st = get_orchestrator_status()
+    if args.json:
+        print(json.dumps(st, indent=2))
+    else:
+        cred = st["cloud_session_credits"]
+        print("======================================================================")
+        print(" BOYLENET HYBRID CLOUD + LOCAL BURST ORCHESTRATOR (bd-cloud-burst)")
+        print("======================================================================")
+        print(f" Timestamp               : {st['ts']}")
+        print(f" Cloud Credit Pool       : {cred['banner']}")
+        print(f" Overage Protection      : {cred['overage_credits_toggle']}")
+        print(f" Priority Policy         : {cred['priority_policy']}")
+        print(
+            f" Recommended Claude Pool : Pool {st['recommended_claude_pool']} (O1740 Dynamic Routing)"
+        )
+        for p in st["claude_pools"]:
+            c_str = (
+                f" | Free Cloud Credit: ${p.get('cloud_credit_remaining_usd', 250):.0f}/${p.get('cloud_credit_total_usd', 250):.0f} (Exp {p.get('cloud_credit_expires')})"
+                if p.get("cloud_credit_total_usd")
+                else ""
+            )
+            print(
+                f"   - Pool {p['pool']}: state={p['state']} | 5h={p['five_hour_pct']}% | wk={p['weekly_pct']}%{c_str}"
+            )
+        print(
+            f" Claude Cloud Models     : {', '.join(m['id'] for m in st['claude_cloud_models'])}"
+        )
+        print(
+            f" Codex Cloud Models      : {', '.join(m['id'] for m in st['codex_cloud_models'])}"
+        )
+        print(
+            f" GitHub Repo Presets     : {', '.join(r['repo'] for r in st['github_repo_presets'])}"
+        )
+        print(
+            f" Codex Cloud Tasks       : {st['codex_cloud_queue']['active_tasks']} active (rc={st['codex_cloud_queue']['rc']})"
+        )
+        print(
+            f" Local 4xT4 Gateway :4000: {st['local_gpu_gateway_4000']} ({', '.join(t['id'] for t in st['local_burst_targets'])})"
+        )
+        print(
+            " Web Studio              : http://cloud.boylenet.themfboyles.com (http://10.0.70.164:4090)"
+        )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

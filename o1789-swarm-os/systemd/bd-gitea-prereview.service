@@ -1,0 +1,16 @@
+[Unit]
+Description=Boylenet Gitea Autonomous Pre-Review & OffSec Red-Team Swarm (:4092)
+After=network.target
+
+[Service]
+Type=simple
+User=mboyle
+WorkingDirectory=/home/mboyle
+Environment="HOME=/home/mboyle"
+Environment="BD_PREREVIEW_PORT=4092"
+ExecStart=/usr/bin/python3 /home/mboyle/bin/bd-gitea-prereview.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

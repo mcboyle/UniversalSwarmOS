@@ -1,0 +1,169 @@
+#!/usr/bin/env python3
+"""bd-local-bench-matrix: Print Argon-4 verified llama-bench speed matrix."""
+
+import argparse
+import json
+import sys
+
+MATRIX = [
+    {
+        "model": "Qwen3-Coder-30B-A3B",
+        "quant": "MoE-A3B",
+        "tg_tok_s": "77.62 tok/s",
+        "tg_value": 77.62,
+        "pp_tok_s": "-",
+        "pp_value": None,
+        "mode": "GPU/MoE",
+        "notes": "Argon-4 verified",
+    },
+    {
+        "model": "CyberStrike-35B-Q4_K_M",
+        "quant": "Q4_K_M",
+        "tg_tok_s": "66.47 tok/s",
+        "tg_value": 66.47,
+        "pp_tok_s": "-",
+        "pp_value": None,
+        "mode": "GPU",
+        "notes": "Argon-4 verified",
+    },
+    {
+        "model": "Qwythos-9B-Q8_0",
+        "quant": "Q8_0",
+        "tg_tok_s": "21.39 tok/s",
+        "tg_value": 21.39,
+        "pp_tok_s": "1005.86 tok/s pp",
+        "pp_value": 1005.86,
+        "mode": "GPU",
+        "notes": "21.39 tok/s / 1005.86 tok/s pp",
+    },
+    {
+        "model": "Qwythos-9B-BF16",
+        "quant": "BF16",
+        "tg_tok_s": "16.28 tok/s",
+        "tg_value": 16.28,
+        "pp_tok_s": "-",
+        "pp_value": None,
+        "mode": "GPU",
+        "notes": "Argon-4 verified",
+    },
+    {
+        "model": "Qwythos-27B-Q4_K_M",
+        "quant": "Q4_K_M",
+        "tg_tok_s": "12.30 tok/s",
+        "tg_value": 12.30,
+        "pp_tok_s": "-",
+        "pp_value": None,
+        "mode": "GPU",
+        "notes": "Argon-4 verified",
+    },
+    {
+        "model": "Qwen2.5-Coder-32B",
+        "quant": "Q4_K_M",
+        "tg_tok_s": "11.27 tok/s",
+        "tg_value": 11.27,
+        "pp_tok_s": "-",
+        "pp_value": None,
+        "mode": "GPU",
+        "notes": "Argon-4 verified",
+    },
+    {
+        "model": "CyberStrike-35B-BF16",
+        "quant": "BF16",
+        "tg_tok_s": "7.39 tok/s",
+        "tg_value": 7.39,
+        "pp_tok_s": "-",
+        "pp_value": None,
+        "mode": "GPU/Hybrid",
+        "notes": "Argon-4 verified",
+    },
+    {
+        "model": "Qwythos-27B-BF16",
+        "quant": "BF16",
+        "tg_tok_s": "4.48 tok/s",
+        "tg_value": 4.48,
+        "pp_tok_s": "-",
+        "pp_value": None,
+        "mode": "GPU/Hybrid",
+        "notes": "Argon-4 verified",
+    },
+    {
+        "model": "DeepSeek-R1-70B",
+        "quant": "Q4_K_M",
+        "tg_tok_s": "3.90 tok/s",
+        "tg_value": 3.90,
+        "pp_tok_s": "-",
+        "pp_value": None,
+        "mode": "Hybrid",
+        "notes": "Argon-4 verified",
+    },
+    {
+        "model": "Llama-3.3-70B",
+        "quant": "Q4_K_M",
+        "tg_tok_s": "3.59 tok/s",
+        "tg_value": 3.59,
+        "pp_tok_s": "-",
+        "pp_value": None,
+        "mode": "Hybrid",
+        "notes": "Argon-4 verified",
+    },
+    {
+        "model": "DeepSeek-V3-671B",
+        "quant": "MoE-Hybrid",
+        "tg_tok_s": "1.97-2.31 tok/s",
+        "tg_value": [1.97, 2.31],
+        "pp_tok_s": "-",
+        "pp_value": None,
+        "mode": "hybrid",
+        "notes": "1.97-2.31 tok/s hybrid",
+    },
+]
+
+
+def print_table() -> None:
+    headers = ("Model", "Quant", "Gen Speed (tg)", "Prompt Speed (pp)", "Mode")
+    rows = [
+        (r["model"], r["quant"], r["tg_tok_s"], r["pp_tok_s"], r["mode"])
+        for r in MATRIX
+    ]
+    widths = [
+        max(len(headers[i]), *(len(row[i]) for row in rows))
+        for i in range(len(headers))
+    ]
+    fmt = "  ".join(f"{{:<{w}}}" for w in widths)
+    sep = "  ".join("-" * w for w in widths)
+    print("Argon-4 Verified llama-bench Speed Matrix")
+    print(sep)
+    print(fmt.format(*headers))
+    print(sep)
+    for row in rows:
+        print(fmt.format(*row))
+    print(sep)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Print the Argon-4 verified llama-bench speed matrix."
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output matrix in JSON format",
+    )
+    args = parser.parse_args()
+
+    if args.json:
+        payload = {
+            "host": "Argon-4",
+            "benchmark": "llama-bench",
+            "verified": True,
+            "count": len(MATRIX),
+            "models": MATRIX,
+        }
+        print(json.dumps(payload, indent=2))
+    else:
+        print_table()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

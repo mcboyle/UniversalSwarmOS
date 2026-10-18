@@ -1,0 +1,363 @@
+#!/usr/bin/env python3
+"""
+bd-log-correlator — 27-Node Elasticsearch Log Correlator (Swarm #23 & #C14)
+Polls recent critical kernel (dmesg -l err,crit,alert,emerg), systemd (journalctl -p err -n 20 --no-pager),
+GPU Xid errors, and Docker container restarts across .164, .72, .83, .125, .228, .82, .149.
+Indexes structured anomaly events into local Elasticsearch (http://10.0.70.164:9200/boylenet-anomalies/_doc)
+and prints a concise cluster anomaly digest (--scan, --json).
+"""
+
+import argparse
+import concurrent.futures
+import datetime
+import hashlib
+import json
+import re
+import socket
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+from typing import Any, Dict, List, Tuple
+
+TARGET_NODES: List[Tuple[str, str, str]] = [
+    (".164", "10.0.70.164", "controller"),
+    (".72", "10.0.70.72", "infra-core"),
+    (".83", "10.0.70.83", "gpu-train"),
+    (".125", "10.0.70.125", "ai-infer01"),
+    (".228", "10.0.70.228", "ai-ollama01"),
+    (".82", "10.0.70.82", "wrk-test04"),
+    (".149", "10.0.70.149", "spr-pool02"),
+]
+
+ES_BASE_URL = "http://10.0.70.164:9200"
+ES_INDEX = "boylenet-anomalies"
+
+REMOTE_PROBE_SCRIPT = r"""
+echo "===SECTION:KERNEL==="
+dmesg -T -l err,crit,alert,emerg 2>/dev/null | tail -n 15 || dmesg 2>/dev/null | grep -iE 'error|crit|alert|emerg|oom-killer|Hang|reset' | tail -n 15 || true
+echo "===SECTION:SYSTEMD==="
+journalctl -p err -n 20 --no-pager -o short-iso 2>/dev/null | tail -n 20 || true
+echo "===SECTION:GPU_XID==="
+(dmesg -T 2>/dev/null | grep -iE 'NVRM: Xid|Xid \(PCI:|amdgpu.*ERROR|GPU has fallen off' | tail -n 10) || true
+echo "===SECTION:DOCKER==="
+if command -v docker >/dev/null 2>&1; then
+    docker ps -a --format '{{.Names}}|{{.Status}}|{{.Image}}' 2>/dev/null | grep -iE 'Restarting|Exited \([1-9][0-9]*\)|unhealthy' | head -n 15 || true
+fi
+"""
+
+BENIGN_NOISE_PATTERNS = [
+    re.compile(r"-- No entries --", re.I),
+    re.compile(r"^Logs begin at ", re.I),
+    re.compile(r"pam_unix\(.*?\): session", re.I),
+    re.compile(r"Connection reset by peer", re.I),
+]
+
+
+def is_local_node(ip: str) -> bool:
+    if ip in ("127.0.0.1", "10.0.70.164"):
+        return True
+    try:
+        hostname_ips = subprocess.check_output(["hostname", "-I"], text=True, timeout=2).split()
+        return ip in hostname_ips
+    except Exception:
+        return False
+
+
+def normalize_signature(category: str, line: str) -> str:
+    cleaned = re.sub(r"\[[^\]]+\]", "", line)
+    cleaned = re.sub(r"\b\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?\b", "", cleaned)
+    cleaned = re.sub(r"\b0x[0-9a-fA-F]+\b", "0xHEX", cleaned)
+    cleaned = re.sub(r"\b\d+\b", "N", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return f"{category}:{cleaned[:96]}"
+
+
+def classify_severity(category: str, line: str) -> str:
+    low = line.lower()
+    if category == "gpu_xid" or "xid" in low or "fallen off the bus" in low or "oom-killer" in low or "panic" in low:
+        return "CRITICAL"
+    if category == "docker_restart" or "restarting" in low or "unhealthy" in low:
+        return "HIGH"
+    if category == "kernel":
+        return "HIGH"
+    return "ERROR"
+
+
+def parse_probe_output(short_id: str, ip: str, role: str, raw: str, scan_ts: str) -> List[Dict[str, Any]]:
+    events: List[Dict[str, Any]] = []
+    section = ""
+    for raw_line in raw.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("===SECTION:") and line.endswith("==="):
+            section = line[len("===SECTION:") : -3]
+            continue
+        if any(p.search(line) for p in BENIGN_NOISE_PATTERNS):
+            continue
+
+        cat_map = {
+            "KERNEL": "kernel",
+            "SYSTEMD": "systemd",
+            "GPU_XID": "gpu_xid",
+            "DOCKER": "docker_restart",
+        }
+        category = cat_map.get(section, "unknown")
+        severity = classify_severity(category, line)
+        sig = normalize_signature(category, line)
+        doc_id = hashlib.sha256(f"{ip}|{category}|{line}".encode("utf-8", errors="ignore")).hexdigest()[:24]
+
+        events.append(
+            {
+                "@timestamp": scan_ts,
+                "event_id": doc_id,
+                "node_short": short_id,
+                "node_ip": ip,
+                "node_role": role,
+                "category": category,
+                "severity": severity,
+                "signature": sig,
+                "message": line[:500],
+            }
+        )
+    return events
+
+
+def probe_node(node: Tuple[str, str, str], scan_ts: str, timeout_sec: float = 5.0) -> Dict[str, Any]:
+    short_id, ip, role = node
+    try:
+        if is_local_node(ip):
+            proc = subprocess.run(
+                ["bash", "-c", REMOTE_PROBE_SCRIPT],
+                capture_output=True,
+                text=True,
+                timeout=timeout_sec,
+            )
+        else:
+            proc = subprocess.run(
+                [
+                    "ssh",
+                    "-o",
+                    "BatchMode=yes",
+                    "-o",
+                    "ConnectTimeout=2",
+                    "-o",
+                    "StrictHostKeyChecking=no",
+                    f"mboyle@{ip}",
+                    REMOTE_PROBE_SCRIPT,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=timeout_sec,
+            )
+        reachable = proc.returncode == 0 or bool(proc.stdout.strip())
+        events = parse_probe_output(short_id, ip, role, proc.stdout, scan_ts) if reachable else []
+        return {
+            "node_short": short_id,
+            "node_ip": ip,
+            "node_role": role,
+            "reachable": reachable,
+            "event_count": len(events),
+            "events": events,
+            "error": None if reachable else (proc.stderr.strip()[:200] or f"rc={proc.returncode}"),
+        }
+    except Exception as exc:
+        return {
+            "node_short": short_id,
+            "node_ip": ip,
+            "node_role": role,
+            "reachable": False,
+            "event_count": 0,
+            "events": [],
+            "error": str(exc)[:200],
+        }
+
+
+def index_events_elasticsearch(events: List[Dict[str, Any]], es_base: str = ES_BASE_URL) -> Dict[str, Any]:
+    """Index structured anomaly events into http://10.0.70.164:9200/boylenet-anomalies/_doc (and _bulk)."""
+    if not events:
+        return {"indexed": 0, "status": "NO_EVENTS"}
+
+    indexed = 0
+    errors: List[str] = []
+
+    # First ensure index exists or post directly to /boylenet-anomalies/_doc as specified in mission
+    # We use _bulk for speed plus single _doc verification on the first event so both endpoints are exercised.
+    first_ev = events[0]
+    doc_url = f"{es_base}/{ES_INDEX}/_doc/{first_ev['event_id']}"
+    try:
+        req = urllib.request.Request(
+            doc_url,
+            data=json.dumps(first_ev).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            if resp.status in (200, 201):
+                indexed += 1
+    except Exception as exc:
+        errors.append(f"_doc: {exc}")
+
+    remaining = events[1:]
+    if remaining:
+        bulk_lines: List[str] = []
+        for ev in remaining:
+            meta = {"index": {"_index": ES_INDEX, "_id": ev["event_id"]}}
+            bulk_lines.append(json.dumps(meta))
+            bulk_lines.append(json.dumps(ev))
+        bulk_payload = "\n".join(bulk_lines) + "\n"
+        try:
+            req = urllib.request.Request(
+                f"{es_base}/_bulk",
+                data=bulk_payload.encode("utf-8"),
+                headers={"Content-Type": "application/x-ndjson"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=4.0) as resp:
+                body = json.loads(resp.read().decode("utf-8", errors="replace"))
+                if not body.get("errors"):
+                    indexed += len(remaining)
+                else:
+                    for item in body.get("items", []):
+                        idx_res = item.get("index", {})
+                        if idx_res.get("status") in (200, 201):
+                            indexed += 1
+        except Exception as exc:
+            errors.append(f"_bulk: {exc}")
+
+    return {
+        "es_endpoint": f"{es_base}/{ES_INDEX}/_doc",
+        "attempted": len(events),
+        "indexed": indexed,
+        "status": "INDEXED" if indexed > 0 else "ES_UNREACHABLE_OR_ERROR",
+        "errors": errors[:3],
+    }
+
+
+def correlate_anomalies(all_events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    by_sig: Dict[str, Dict[str, Any]] = {}
+    for ev in all_events:
+        sig = ev["signature"]
+        entry = by_sig.setdefault(
+            sig,
+            {
+                "signature": sig,
+                "category": ev["category"],
+                "severity": ev["severity"],
+                "count": 0,
+                "nodes": set(),
+                "sample_message": ev["message"],
+            },
+        )
+        entry["count"] += 1
+        entry["nodes"].add(ev["node_short"])
+    clusters = []
+    for sig, data in by_sig.items():
+        nodes_sorted = sorted(data["nodes"])
+        clusters.append(
+            {
+                "signature": sig,
+                "category": data["category"],
+                "severity": data["severity"],
+                "count": data["count"],
+                "node_count": len(nodes_sorted),
+                "nodes": nodes_sorted,
+                "cross_node": len(nodes_sorted) > 1,
+                "sample_message": data["sample_message"],
+            }
+        )
+    sev_rank = {"CRITICAL": 0, "HIGH": 1, "ERROR": 2}
+    clusters.sort(key=lambda c: (sev_rank.get(c["severity"], 9), -c["node_count"], -c["count"]))
+    return clusters
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="bd-log-correlator: 27-Node Elasticsearch Log Correlator for Boylenet"
+    )
+    parser.add_argument("--scan", action="store_true", help="Poll target nodes, correlate anomalies, and index to ES")
+    parser.add_argument("--json", action="store_true", help="Output structured JSON digest")
+    parser.add_argument("--no-es", action="store_true", help="Skip indexing into Elasticsearch")
+    parser.add_argument("--es-url", default=ES_BASE_URL, help=f"Elasticsearch base URL (default: {ES_BASE_URL})")
+    args = parser.parse_args()
+
+    scan_ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    node_results: List[Dict[str, Any]] = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(TARGET_NODES)) as pool:
+        fut_map = {pool.submit(probe_node, n, scan_ts): n for n in TARGET_NODES}
+        for fut in concurrent.futures.as_completed(fut_map):
+            node_results.append(fut.result())
+
+    order_map = {n[0]: idx for idx, n in enumerate(TARGET_NODES)}
+    node_results.sort(key=lambda r: order_map.get(r["node_short"], 99))
+
+    all_events: List[Dict[str, Any]] = []
+    for nr in node_results:
+        all_events.extend(nr["events"])
+
+    clusters = correlate_anomalies(all_events)
+    es_status = (
+        {"status": "SKIPPED", "indexed": 0}
+        if args.no_es
+        else index_events_elasticsearch(all_events, es_base=args.es_url)
+    )
+
+    by_category: Dict[str, int] = {"kernel": 0, "systemd": 0, "gpu_xid": 0, "docker_restart": 0}
+    for ev in all_events:
+        by_category[ev["category"]] = by_category.get(ev["category"], 0) + 1
+
+    digest = {
+        "status": "OK",
+        "scan_timestamp": scan_ts,
+        "nodes_polled": len(node_results),
+        "nodes_reachable": sum(1 for n in node_results if n["reachable"]),
+        "total_events": len(all_events),
+        "by_category": by_category,
+        "correlated_signatures": len(clusters),
+        "cross_node_correlations": sum(1 for c in clusters if c["cross_node"]),
+        "elasticsearch": es_status,
+        "nodes": [
+            {
+                "node": n["node_short"],
+                "ip": n["node_ip"],
+                "role": n["node_role"],
+                "reachable": n["reachable"],
+                "events": n["event_count"],
+                "error": n["error"],
+            }
+            for n in node_results
+        ],
+        "top_correlations": clusters[:15],
+    }
+
+    if args.json:
+        print(json.dumps(digest, indent=2))
+    else:
+        print(
+            f"[bd-log-correlator] ts={scan_ts} reachable={digest['nodes_reachable']}/{digest['nodes_polled']} "
+            f"events={digest['total_events']} (kernel={by_category['kernel']} systemd={by_category['systemd']} "
+            f"gpu_xid={by_category['gpu_xid']} docker={by_category['docker_restart']}) "
+            f"es_indexed={es_status.get('indexed', 0)}/{len(all_events)} ({es_status.get('status')})"
+        )
+        for n in digest["nodes"]:
+            state = "OK" if n["reachable"] else f"UNREACHABLE({n['error']})"
+            print(f"  node {n['node']:<5} ({n['ip']:<12} {n['role']:<11}): {state} events={n['events']}")
+        if clusters:
+            print("  --- Top Correlated Anomaly Signatures ---")
+            for c in clusters[:10]:
+                nodes_str = ",".join(c["nodes"])
+                xnode = " [CROSS-NODE]" if c["cross_node"] else ""
+                print(
+                    f"  [{c['severity']}] ({c['category']}) count={c['count']} nodes=[{nodes_str}]{xnode}: "
+                    f"{c['sample_message'][:110]}"
+                )
+        else:
+            print("  (0 anomaly signatures detected across polled nodes)")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

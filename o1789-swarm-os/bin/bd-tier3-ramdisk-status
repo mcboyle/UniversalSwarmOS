@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+NODES=(
+  "10.0.70.82:64G"
+  "10.0.70.95:24G"
+  "10.0.70.80:24G"
+  "10.0.70.194:16G"
+  "10.0.70.249:16G"
+  "10.0.70.84:16G"
+  "10.0.70.164:64G"
+)
+
+REMEDIATE="${1:-}"
+PASS=0
+TOTAL=${#NODES[@]}
+
+printf "%-14s %-6s %-18s %-24s %-12s %-8s\n" "NODE" "SIZE" "/mnt/ramdisk-ci" "/var/tmp/bd-ram-scratch" "FSTAB" "STATUS"
+printf "%s\n" "--------------------------------------------------------------------------------------------"
+
+for entry in "${NODES[@]}"; do
+  ip="${entry%%:*}"
+  sz="${entry##*:}"
+
+  check_cmd="
+    set -e
+    if [ '$REMEDIATE' = '--fix' ]; then
+      sudo mkdir -p /mnt/ramdisk-ci /var/tmp/bd-ram-scratch
+      if ! grep -q '/mnt/ramdisk-ci' /etc/fstab; then
+        echo 'tmpfs /mnt/ramdisk-ci tmpfs defaults,size=${sz},mode=1777,noatime 0 0' | sudo tee -a /etc/fstab >/dev/null
+      fi
+      if ! mountpoint -q /mnt/ramdisk-ci; then
+        sudo mount /mnt/ramdisk-ci || sudo mount -t tmpfs -o size=${sz},mode=1777,noatime tmpfs /mnt/ramdisk-ci
+      fi
+      sudo chmod 1777 /mnt/ramdisk-ci
+      if ! mountpoint -q /var/tmp/bd-ram-scratch && [ ! -L /var/tmp/bd-ram-scratch ]; then
+        if ! grep -q '/var/tmp/bd-ram-scratch' /etc/fstab; then
+          echo 'tmpfs /var/tmp/bd-ram-scratch tmpfs defaults,size=${sz},mode=1777,noatime 0 0' | sudo tee -a /etc/fstab >/dev/null
+        fi
+        sudo mount /var/tmp/bd-ram-scratch || sudo mount -t tmpfs -o size=${sz},mode=1777,noatime tmpfs /var/tmp/bd-ram-scratch
+      fi
+      sudo chmod 1777 /var/tmp/bd-ram-scratch 2>/dev/null || true
+    fi
+
+    fst1=\$(df -T /mnt/ramdisk-ci 2>/dev/null | awk 'NR==2 {print \$2\":\"\$3}')
+    fst2=\$(df -T /var/tmp/bd-ram-scratch 2>/dev/null | awk 'NR==2 {print \$2\":\"\$3}')
+    touch /mnt/ramdisk-ci/.probe_\$\$ && rm -f /mnt/ramdisk-ci/.probe_\$\$ && w1='RW' || w1='RO'
+    touch /var/tmp/bd-ram-scratch/.probe_\$\$ && rm -f /var/tmp/bd-ram-scratch/.probe_\$\$ && w2='RW' || w2='RO'
+    grep -q '/mnt/ramdisk-ci' /etc/fstab && fb='PERSISTED' || fb='MISSING'
+    echo \"\${fst1}:\${w1}|\${fst2}:\${w2}|\${fb}\"
+  "
+
+  if [ "$ip" = "10.0.70.164" ]; then
+    out=$(bash -c "$check_cmd" 2>/dev/null || echo "ERR|ERR|ERR")
+  else
+    out=$(ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no "$ip" "$check_cmd" 2>/dev/null || echo "ERR|ERR|ERR")
+  fi
+
+  IFS='|' read -r m1 m2 fb <<< "$out"
+  if [[ "$m1" == tmpfs:*:RW ]] && [[ "$m2" == tmpfs:*:RW ]] && [[ "$fb" == "PERSISTED" ]]; then
+    st="PASS"
+    PASS=$((PASS + 1))
+  else
+    st="FAIL"
+  fi
+  printf "%-14s %-6s %-18s %-24s %-12s %-8s\n" "$ip" "$sz" "$m1" "$m2" "$fb" "$st"
+done
+
+printf "%s\n" "--------------------------------------------------------------------------------------------"
+echo "SUMMARY: ${PASS}/${TOTAL} PASS (Total Allocated: 224 GiB DDR4 tmpfs)"
+[ "$PASS" -eq "$TOTAL" ]

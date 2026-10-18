@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# bd-local-pytest-runner: Tier 3 RAM-disk pytest runner
+# Enforces TMPDIR=/mnt/ramdisk-ci, Rule 78 bd-pytest-digest (<=3 lines),
+# Rule 80 bd-blob-ptr CAS pointer, and non-zero bd-local-ci-triage (:4010 tier1).
+set -uo pipefail
+
+export TMPDIR=/mnt/ramdisk-ci
+export BD_CI_TRIAGE_ENDPOINT="${BD_CI_TRIAGE_ENDPOINT:-http://127.0.0.1:4010}"
+export BD_CI_TRIAGE_MODEL="${BD_CI_TRIAGE_MODEL:-tier1}"
+
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+    echo "Usage: bd-local-pytest-runner [PYTEST_ARGS...]"
+    echo "Env: TMPDIR=/mnt/ramdisk-ci | Digest: bd-pytest-digest (<=3 lines) + bd-blob-ptr | Triage: bd-local-ci-triage (:4010 tier1)"
+    exit 0
+fi
+
+if [[ ! -d "$TMPDIR" || ! -w "$TMPDIR" ]]; then
+    mkdir -p "$TMPDIR" 2>/dev/null || true
+fi
+if [[ -d "$TMPDIR" && -w "$TMPDIR" ]]; then
+    RUN_TMPDIR="$TMPDIR"
+else
+    RUN_TMPDIR="/dev/shm/ramdisk-ci"
+    mkdir -p "$RUN_TMPDIR" 2>/dev/null || RUN_TMPDIR="/tmp"
+fi
+
+if [[ -x "/home/mboyle/BulkDownloader/.venv/bin/pytest" ]]; then
+    PYTEST_BIN="/home/mboyle/BulkDownloader/.venv/bin/pytest"
+elif command -v pytest >/dev/null 2>&1; then
+    PYTEST_BIN="$(command -v pytest)"
+else
+    PYTEST_BIN="python3 -m pytest"
+fi
+
+RAW_LOG="${RUN_TMPDIR}/bd-pytest-$$-${RANDOM}.log"
+trap 'rm -f "$RAW_LOG"' EXIT
+
+TMPDIR="$RUN_TMPDIR" $PYTEST_BIN "$@" >"$RAW_LOG" 2>&1
+RC=$?
+
+mkdir -p /var/tmp/bd-blobs
+SHA="$(sha256sum "$RAW_LOG" | awk '{print $1}')"
+BYTES="$(wc -c < "$RAW_LOG" | tr -d ' ')"
+BLOB_PATH="/var/tmp/bd-blobs/${SHA}.log"
+cp -f "$RAW_LOG" "$BLOB_PATH"
+
+if [[ -x /home/mboyle/bin/bd-blob-ptr ]] && ! grep -qE 'pytest' /home/mboyle/bin/bd-blob-ptr 2>/dev/null; then
+    timeout 2 /home/mboyle/bin/bd-blob-ptr < "$RAW_LOG" >/dev/null 2>&1 || true
+fi
+
+DIGEST_LINE=""
+if [[ -x /home/mboyle/bin/bd-pytest-digest ]] && ! grep -qE 'exec .*pytest|subprocess.*pytest|\bpytest\b.*"\$@"' /home/mboyle/bin/bd-pytest-digest 2>/dev/null; then
+    DIGEST_LINE="$(timeout 2 /home/mboyle/bin/bd-pytest-digest < "$RAW_LOG" 2>/dev/null | head -n 1 | tr '\n' ' ' || true)"
+fi
+if [[ -z "${DIGEST_LINE// /}" ]]; then
+    SUMMARY="$(grep -E 'passed|failed|error|no tests ran|warnings' "$RAW_LOG" | tail -n 1 | sed 's/^[= ]*//;s/[= ]*$//' || true)"
+    [[ -z "$SUMMARY" ]] && SUMMARY="$(tail -n 1 "$RAW_LOG" | cut -c1-120)"
+    if [[ "$RC" -eq 0 ]]; then
+        DIGEST_LINE="PASS rc=${RC} | ${SUMMARY}"
+    else
+        DIGEST_LINE="FAIL rc=${RC} | ${SUMMARY}"
+    fi
+fi
+
+echo "${DIGEST_LINE}"
+echo "BLOB_PTR: ${BLOB_PATH} (sha256=${SHA:0:12} bytes=${BYTES} TMPDIR=${TMPDIR})"
+
+if [[ "$RC" -ne 0 ]]; then
+    TRIAGE_OUT="bd-local-ci-triage(:4010 tier1) invoked"
+    if [[ -x /home/mboyle/bin/bd-local-ci-triage ]]; then
+        TRIAGE_RAW="$(BD_CI_TRIAGE_ENDPOINT="http://127.0.0.1:4010" BD_CI_TRIAGE_MODEL="tier1" timeout 8 /home/mboyle/bin/bd-local-ci-triage "$BLOB_PATH" 2>&1 || BD_CI_TRIAGE_ENDPOINT="http://127.0.0.1:4010" BD_CI_TRIAGE_MODEL="tier1" timeout 8 /home/mboyle/bin/bd-local-ci-triage < "$RAW_LOG" 2>&1 || true)"
+        TRIAGE_ONE="$(echo "$TRIAGE_RAW" | tr '\n' ' ' | cut -c1-140)"
+        [[ -n "${TRIAGE_ONE// /}" ]] && TRIAGE_OUT="TRIAGE(:4010/tier1): ${TRIAGE_ONE}"
+    fi
+    echo "${TRIAGE_OUT}"
+fi
+
+exit "$RC"

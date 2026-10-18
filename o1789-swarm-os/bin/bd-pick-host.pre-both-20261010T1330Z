@@ -1,0 +1,22 @@
+#!/bin/bash
+# bd-pick-host -- print the least-loaded ready test host (O2548, operator). Read-only: one ssh probe per host, 3 s timeout.
+#   bd-pick-host           -> one IP (lowest load/core among reachable hosts with the BulkDownloader venv)
+#   bd-pick-host -n 3      -> the 3 best IPs, one per line
+#   bd-pick-host --table   -> name ip load cores score, best first
+# Also excluded: any host where /home/mboyle/BulkDownloader is a network mount of the LIVE hub (Item B remediated).
+# Excluded: spare4 (G2 only), test5 (hub), spare2 (not enrolled), spare7 (AGY issue). Override the list with BD_PICK_HOSTS="name:ip ...".
+HOSTS=${BD_PICK_HOSTS:-"test1:10.0.70.194 test2:10.0.70.95 test3:10.0.70.80 test4:10.0.70.85 test6:10.0.70.249 test7:10.0.70.84
+ test3big:10.0.70.82 spare12:10.0.70.183 spare1:10.0.70.197 spare5:10.0.70.185 spare6:10.0.70.186 spare8:10.0.70.184
+ spare9:10.0.70.187 spare10:10.0.70.196 spare11:10.0.70.195"}
+N=1; MODE=ip
+case "${1:-}" in -n) N=${2:-1};; --table) MODE=table; N=99;; esac
+tmp=$(mktemp); trap 'rm -f "$tmp"' EXIT
+for h in $HOSTS; do
+  ( n=${h%%:*}; ip=${h#*:}
+    r=$(timeout 5 ssh -o BatchMode=yes -o ConnectTimeout=3 mboyle@"$ip" \
+        'case "$(stat -f -L -c %T /home/mboyle/BulkDownloader 2>/dev/null)" in nfs*|fuse*|cifs*|smb*) exit 0;; esac; [ -x /home/mboyle/BulkDownloader/venv/bin/python ] && echo "$(cut -d" " -f1 /proc/loadavg) $(nproc)"' 2>/dev/null)
+    [ -n "$r" ] && set -- $r && awk -v n="$n" -v ip="$ip" -v l="$1" -v c="$2" 'BEGIN{printf "%s %s %s %s %.3f\n", n, ip, l, c, l/c}' >> "$tmp"
+  ) &
+done; wait
+[ -s "$tmp" ] || { echo "bd-pick-host: COULD NOT LOOK (no host answered)" >&2; exit 2; }
+sort -k5,5g "$tmp" | head -n "$N" | if [ "$MODE" = table ]; then cat; else awk '{print $2}'; fi

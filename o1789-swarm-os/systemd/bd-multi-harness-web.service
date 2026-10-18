@@ -1,0 +1,16 @@
+[Unit]
+Description=Boylenet Multi-Harness AI Studio Web UI (:4098)
+After=network.target
+
+[Service]
+Type=simple
+User=mboyle
+WorkingDirectory=/home/mboyle
+Environment="HOME=/home/mboyle"
+Environment="BD_MULTI_HARNESS_PORT=4098"
+ExecStart=/usr/bin/python3 /home/mboyle/bin/bd-multi-harness-web.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

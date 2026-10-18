@@ -1,0 +1,827 @@
+#!/usr/bin/env python3
+"""
+bd-pytest-digest: Pytest Terminal & Test Output Interceptor and Compressor.
+
+Intercepts pytest execution output (direct or piped), parses failure blocks,
+isolates test name, failing file, line number, exception type, and root cause,
+and emits ultra-compact structured summaries:
+  On failure: <= 3 lines, < 25 tokens.
+  On pass: 1 line, < 15 tokens.
+Strictly propagates pytest exit codes (0=pass, 1=fail, 2=error/syntax, 5=empty).
+"""
+
+import json
+import os
+import re
+import shutil
+import signal
+import sqlite3
+import subprocess
+import sys
+import time
+from typing import Any
+
+
+def estimate_tokens(text: str) -> int:
+    """
+    Project-standard token heuristic matching chars / 3.6 and word/symbol count.
+    Conservative ceiling matching tests/test_pytest_digest.py.
+    """
+    if not text.strip():
+        return 0
+    char_estimate = int(len(text) / 3.6)
+    word_estimate = len(re.findall(r"\w+|[^\w\s]", text))
+    return max(char_estimate, word_estimate)
+
+
+def normalize_test_file(path_str: str) -> str:
+    """
+    Normalizes test file path into a concise, recognizable string.
+    Preserves relative path if short, otherwise strips to basename.
+    """
+    if not path_str:
+        return "test.py"
+    clean = path_str.strip()
+    clean = re.sub(r"^(\.\./)+", "", clean)
+    try:
+        rel = os.path.relpath(clean)
+        if not rel.startswith("..") and len(rel) <= 25:
+            return rel
+    except (ValueError, OSError):
+        pass
+    if len(clean) <= 25 and not clean.startswith("/"):
+        return clean
+    return os.path.basename(clean)
+
+
+DEFAULT_FLAKE_DB = os.environ.get(
+    "BD_FLAKE_DB", "/home/mboyle/bd-persist/flakes/ledger.sqlite"
+)
+DEFAULT_FLAKE_JSONL = os.environ.get(
+    "BD_FLAKE_JSONL", "/home/mboyle/bd-persist/flakes/ledger.jsonl"
+)
+
+
+def get_flake_db_connection(db_path: str | None = None) -> sqlite3.Connection | None:
+    """Connect to the deterministic SQLite flake telemetry database, creating schema if needed."""
+    path = db_path or DEFAULT_FLAKE_DB
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        conn = sqlite3.connect(path, timeout=5.0)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS flake_telemetry (
+                test_id TEXT PRIMARY KEY,
+                status TEXT NOT NULL DEFAULT 'flake',
+                failure_pattern TEXT DEFAULT '',
+                last_seen TEXT DEFAULT '',
+                retry_count INTEGER DEFAULT 0,
+                is_benign INTEGER DEFAULT 0,
+                notes TEXT DEFAULT ''
+            )
+        """)
+        conn.commit()
+        return conn
+    except (sqlite3.Error, OSError):
+        return None
+
+
+def check_flake_telemetry(
+    test_id: str,
+    err_msg: str = "",
+    err_type: str = "",
+    db_path: str | None = None,
+) -> dict[str, Any] | None:
+    """
+    Deterministic SQLite & JSONL telemetry lookup replacing LLM flakecourt role.
+    Queries ledger.sqlite (or telemetry.sqlite) and ledger.jsonl for known flaky tests and patterns.
+    Returns flake metadata dict if identified as a flake, else None.
+    """
+    base_id = test_id.split("/")[-1] if "/" in test_id else test_id
+
+    # 1. Check SQLite database candidates
+    env_db = os.environ.get("BD_FLAKE_DB")
+    db_candidates: list[str] = [db_path] if db_path else (
+        ([env_db] if env_db else [])
+        + [
+            "/home/mboyle/bd-persist/flakes/ledger.sqlite",
+            "/home/mboyle/bd-persist/flakes/telemetry.sqlite",
+        ]
+    )
+    for cand in db_candidates:
+        if not cand or not os.path.exists(cand):
+            continue
+        try:
+            conn = sqlite3.connect(cand, timeout=5.0)
+            try:
+                cur = conn.cursor()
+                cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                tables = [r[0] for r in cur.fetchall()]
+                for tbl in ("flake_telemetry", "flakes", "ledger"):
+                    if tbl not in tables:
+                        continue
+                    cur.execute(f"PRAGMA table_info({tbl})")
+                    cols = {c[1] for c in cur.fetchall()}
+                    pattern_col = "failure_pattern" if "failure_pattern" in cols else "''"
+                    status_col = "status" if "status" in cols else "'flake'"
+                    retry_col = "retry_count" if "retry_count" in cols else "0"
+                    benign_col = "is_benign" if "is_benign" in cols else "0"
+                    notes_col = "notes" if "notes" in cols else "''"
+
+                    query = (
+                        f"SELECT test_id, {status_col}, {pattern_col}, {retry_col}, {benign_col}, {notes_col} "
+                        f"FROM {tbl} WHERE test_id = ? OR test_id LIKE ? OR ? LIKE '%' || test_id"
+                    )
+                    cur.execute(query, (test_id, f"%{base_id}", test_id))
+                    row = cur.fetchone()
+                    if row:
+                        tid, status, pattern, retry_count, is_benign, notes = row
+                        if pattern and err_msg and str(pattern).lower() not in err_msg.lower():
+                            continue
+                        return {
+                            "test_id": tid,
+                            "status": status,
+                            "failure_pattern": pattern,
+                            "retry_count": retry_count,
+                            "is_benign": bool(is_benign),
+                            "notes": notes,
+                            "is_flake": status == "flake" or bool(is_benign) or bool(retry_count),
+                        }
+            finally:
+                conn.close()
+        except (sqlite3.Error, OSError):
+            continue
+
+    # 2. Check JSONL ledger candidates
+    env_jsonl = os.environ.get("BD_FLAKE_JSONL")
+    jsonl_candidates: list[str] = (
+        ([env_jsonl] if env_jsonl else [])
+        + ["/home/mboyle/bd-persist/flakes/ledger.jsonl"]
+    )
+    for cand in jsonl_candidates:
+        if not cand or not os.path.exists(cand):
+            continue
+        try:
+            with open(cand, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        record = json.loads(line)
+                        rec_id = str(record.get("test_id", ""))
+                        if not rec_id:
+                            continue
+                        if rec_id == test_id or base_id in rec_id or rec_id in test_id:
+                            status = record.get("status", "fail")
+                            is_benign = bool(record.get("is_benign", False))
+                            attempt = int(record.get("attempt", 1))
+                            return {
+                                "test_id": rec_id,
+                                "status": status,
+                                "failure_pattern": record.get("traceback", ""),
+                                "retry_count": attempt,
+                                "is_benign": is_benign or (attempt > 1),
+                                "notes": "matched ledger.jsonl",
+                                "is_flake": True,
+                            }
+                    except (json.JSONDecodeError, OSError, ValueError):
+                        continue
+        except (OSError, UnicodeDecodeError):
+            continue
+
+    return None
+
+
+def record_flake_telemetry(
+    test_id: str,
+    status: str = "flake",
+    failure_pattern: str = "",
+    is_benign: int = 0,
+    notes: str = "",
+    db_path: str | None = None,
+) -> bool:
+    """Record or update a test outcome in the deterministic telemetry database."""
+    conn = get_flake_db_connection(db_path)
+    if not conn:
+        return False
+    try:
+        now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        conn.execute("""
+            INSERT INTO flake_telemetry (test_id, status, failure_pattern, last_seen, retry_count, is_benign, notes)
+            VALUES (?, ?, ?, ?, 1, ?, ?)
+            ON CONFLICT(test_id) DO UPDATE SET
+                status = excluded.status,
+                failure_pattern = CASE WHEN excluded.failure_pattern != '' THEN excluded.failure_pattern ELSE flake_telemetry.failure_pattern END,
+                last_seen = excluded.last_seen,
+                retry_count = flake_telemetry.retry_count + 1,
+                is_benign = CASE WHEN excluded.is_benign != 0 THEN excluded.is_benign ELSE flake_telemetry.is_benign END,
+                notes = CASE WHEN excluded.notes != '' THEN excluded.notes ELSE flake_telemetry.notes END
+        """, (test_id, status, failure_pattern, now_iso, is_benign, notes))
+        conn.commit()
+        return True
+    except (sqlite3.Error, OSError):
+        return False
+    finally:
+        try:
+            conn.close()
+        except (sqlite3.Error, OSError):
+            pass
+
+
+CAUSE_LINE = re.compile(r"error|not found|Traceback|Killed|Terminated", re.IGNORECASE)
+
+
+def unparsed_digest(text: str, code: int) -> str:
+    """Digest for output with no parseable test failure: the exit status and
+    the last cause-looking raw lines (else the raw tail), never a placeholder
+    test name or exception."""
+    cause = f"exit {code}"
+    if code > 128:
+        try:
+            cause += f" ({signal.Signals(code - 128).name})"
+        except ValueError:
+            pass
+    hdr = f"FAIL: unparsed pytest output | {cause}"
+    while (estimate_tokens(hdr) > 23 or estimate_tokens(hdr + "\n") >= 25) and len(hdr) > 10:
+        hdr = hdr[:-1].rstrip()
+
+    lines = [line.strip()[:80] for line in text.splitlines() if line.strip()]
+    tail = ([line for line in lines if CAUSE_LINE.search(line)] or lines)[-2:]
+    if not tail:
+        return hdr
+
+    candidate = "\n".join([hdr, *tail])
+    if estimate_tokens(candidate) <= 23 and estimate_tokens(candidate + "\n") < 25:
+        return candidate
+
+    cand_lines = [line for line in tail if line]
+    while cand_lines and (
+        estimate_tokens("\n".join([hdr, *cand_lines])) > 23
+        or estimate_tokens("\n".join([hdr, *cand_lines]) + "\n") >= 25
+    ):
+        if len(cand_lines) == 2:
+            idx = 0 if estimate_tokens(cand_lines[0]) >= estimate_tokens(cand_lines[1]) else 1
+        else:
+            idx = 0
+        cand_lines[idx] = cand_lines[idx][:-1].rstrip()
+        if not cand_lines[idx]:
+            cand_lines.pop(idx)
+
+    return "\n".join([hdr, *cand_lines])
+
+
+def parse_pytest_output(
+    raw_text: str,
+    exit_code_override: int | None = None,
+) -> tuple[str, int, str]:
+    """
+    Parses raw pytest stdout/stderr.
+    Returns: (status, exit_code, digest_string)
+    status in {"PASS", "FAIL", "ERROR", "EMPTY"}
+    """
+    text = raw_text or ""
+
+    # Check for empty test suite (code 5)
+    has_no_tests = (
+        "no tests ran" in text
+        or bool(re.search(r"collected 0 items(?!\s*/\s*[1-9]\d*\s*error)", text))
+    )
+    if exit_code_override == 5 or (
+        exit_code_override is None
+        and has_no_tests
+        and "ERROR" not in text
+        and "ERRORS" not in text
+    ):
+        return "EMPTY", 5, "FAIL: no tests collected | exit 5"
+
+    # Extract summary counts from the trailing banner. The pattern is anchored
+    # on "={3,}\s*$" against stripped text, so it can only match text ending in
+    # "==="; skip it otherwise -- proving no match backtracks O(n^2) over every
+    # "===" run (>100 s CPU on an 86 KB band log with a trailer line).
+    stripped = text.strip()
+    summary_match = (
+        re.search(
+            r"={3,}\s*(.*?)\s*(?:in\s+([0-9\.]+)s)?\s*={3,}\s*$", stripped, re.DOTALL
+        )
+        if stripped.endswith("===")
+        else None
+    )
+    banner_text = summary_match.group(1) if summary_match else ""
+    duration = (
+        summary_match.group(2) if summary_match and summary_match.group(2) else ""
+    )
+
+    passed_match = re.search(r"(\d+)\s+passed", banner_text or text)
+    failed_match = re.search(r"(\d+)\s+failed", banner_text or text)
+    error_match = re.search(r"(\d+)\s+error", banner_text or text)
+
+    passed_cnt = int(passed_match.group(1)) if passed_match else 0
+    failed_cnt = int(failed_match.group(1)) if failed_match else 0
+    error_cnt = int(error_match.group(1)) if error_match else 0
+
+    # Determine status and exit code
+    is_collection_error = (
+        "error during collection" in text
+        or "ERROR collecting " in text
+    )
+
+    phase_error = re.search(r"^_+\s*ERROR at (setup|teardown) of\b", text, re.MULTILINE)
+    short_error = re.search(
+        r"^ERROR\s+\S+\.py::\S+\s*(?:-\s*([A-Za-z_][A-Za-z0-9_]*):)?",
+        text,
+        re.MULTILINE,
+    )
+    is_test_error = bool(phase_error or short_error) and not is_collection_error
+
+    if exit_code_override is not None:
+        code = exit_code_override
+        if code == 0:
+            status = "PASS"
+        elif code == 2 or (code == 1 and (is_collection_error or is_test_error)):
+            status = "ERROR"
+        elif code == 5:
+            return "EMPTY", 5, "FAIL: no tests collected | exit 5"
+        elif code == 1:
+            status = "FAIL"
+        else:
+            # 3 internal error, 4 usage/conftest error, 126+ not run or killed:
+            # no test failed, so name no test.
+            return "FAIL", code, unparsed_digest(text, code)
+    else:
+        if is_collection_error:
+            status = "ERROR"
+            code = 2
+        elif is_test_error:
+            status = "ERROR"
+            code = 1
+        elif failed_cnt > 0 or "FAILURES" in text or "FAILED " in text:
+            status = "FAIL"
+            code = 1
+        elif passed_cnt > 0 and failed_cnt == 0 and error_cnt == 0:
+            status = "PASS"
+            code = 0
+        elif has_no_tests:
+            return "EMPTY", 5, "FAIL: no tests collected | exit 5"
+        else:
+            status = "FAIL"
+            code = 1
+
+    # Format PASS
+    if status == "PASS":
+        if duration and passed_cnt > 0:
+            pass_line = f"PASS: {passed_cnt} passed in {duration}s"
+        elif passed_cnt > 0:
+            pass_line = f"PASS: {passed_cnt} passed"
+        else:
+            pass_line = "PASS: all tests passed"
+        if estimate_tokens(pass_line) >= 15:
+            pass_line = f"PASS: {passed_cnt} passed"
+        return "PASS", 0, pass_line
+
+    # Fixture/test errors are runtime errors, not collection or syntax errors.
+    if status == "ERROR" and is_test_error:
+        phase = phase_error.group(1) if phase_error else "test"
+        trace = text[phase_error.start():] if phase_error else text
+        exc = re.search(
+            r"^E\s+([A-Za-z_][A-Za-z0-9_]*(?:Error|Exception)|Failed)(?::\s*(.*))?$",
+            trace,
+            re.MULTILINE,
+        )
+        err_type = exc.group(1) if exc else (short_error.group(1) if short_error else None)
+        err_type = err_type or "Error"
+        count = error_cnt or 1
+        noun = "error" if count == 1 else "errors"
+        loc = re.search(r"^([^\s:]+\.py):(\d+):", trace, re.MULTILINE)
+        location = f"{normalize_test_file(loc.group(1))}:{loc.group(2)} | " if loc else ""
+        digest = f"FAIL: {phase} error | {location}{err_type}\nSUMMARY: {count} {noun}"
+        if estimate_tokens(digest + "\n") >= 25:
+            digest = f"FAIL: {phase} error | {location}{err_type}\n{count} {noun}"
+        if estimate_tokens(digest + "\n") >= 25:
+            if loc:
+                basename = os.path.basename(loc.group(1))
+                if len(basename) > 21:
+                    basename = basename[:18] + "..."
+                location = f"{basename}:{loc.group(2)} | "
+            digest = f"FAIL: {phase} error | {location}{err_type[:15]}"
+            if loc and estimate_tokens(digest + "\n") >= 25:
+                basename = os.path.basename(loc.group(1))
+                for width in range(min(18, len(basename)) - 1, -1, -1):
+                    location = f"{basename[:width]}...:{loc.group(2)} | "
+                    digest = f"FAIL: {phase} error | {location}{err_type[:15]}"
+                    if estimate_tokens(digest + "\n") < 25:
+                        break
+                else:
+                    digest = f"FAIL: {phase} error | {err_type[:15]}"
+        return "ERROR", code, digest
+
+    # Format COLLECTION ERROR
+    if status == "ERROR":
+        file_path = "tests"
+        line_num = "1"
+        err_type = "Error"
+        err_msg = ""
+
+        # Extract file from ERROR collecting ... or ERROR ...
+        m_col = re.search(r"ERROR(?: collecting)?\s+([^\s:]+\.py)", text)
+        if m_col:
+            file_path = m_col.group(1)
+
+        # Extract line from file.py:line:
+        m_line = re.search(r"([^\s:]+\.py):(\d+):", text)
+        if m_line:
+            if file_path == "tests":
+                file_path = m_line.group(1)
+            line_num = m_line.group(2)
+        else:
+            m_py_line = re.search(r'File "([^"]+\.py)", line (\d+)', text)
+            if m_py_line:
+                if file_path == "tests":
+                    file_path = m_py_line.group(1)
+                line_num = m_py_line.group(2)
+
+        # Extract error type and msg
+        m_exc = re.search(
+            r"^E\s+([A-Za-z_][A-Za-z0-9_]*(?:Error|Exception)|Failed)(?::\s*(.*))?$",
+            text,
+            re.MULTILINE,
+        )
+        if file_path == "tests" and not m_exc:
+            return "ERROR", code, unparsed_digest(text, code)
+        if m_exc:
+            err_type = m_exc.group(1)
+            err_msg = (m_exc.group(2) or "").strip()
+
+        digest = pick_best_digest(
+            file_path=file_path,
+            func_name="",
+            line_num=line_num,
+            err_type=err_type,
+            err_msg=err_msg,
+            source_line="",
+            failed_cnt=0,
+            passed_cnt=passed_cnt,
+            duration=duration,
+            is_collection=True,
+        )
+        return "ERROR", code, digest
+
+    # Format FAILURE
+    file_path = ""
+    func_name = ""
+    line_num = "1"
+    err_type = "AssertionError"
+    err_msg = ""
+    source_line = ""
+
+    # 1. Parse short test summary info if present
+    m_short = re.search(
+        r"^FAILED\s+([^\s:]+(?:\.py)?)(?:::([^\s\-]+))?\s*(?:-\s*([A-Za-z_][A-Za-z0-9_]*)(?::\s*(.*))?)?",
+        text,
+        re.MULTILINE,
+    )
+    if m_short:
+        file_path = m_short.group(1)
+        func_name = m_short.group(2) or ""
+        if m_short.group(3):
+            err_type = m_short.group(3)
+        if m_short.group(4):
+            err_msg = m_short.group(4).strip()
+
+    # 2. Extract from FAILURES section
+    m_fail_sect = re.search(
+        r"={3,}\s*FAILURES\s*={3,}(.*?)(?:={3,}\s*short test summary info|={3,}|$)",
+        text,
+        re.DOTALL,
+    )
+    fail_sect = m_fail_sect.group(1) if m_fail_sect else text
+
+    # Extract function name from header
+    if not func_name:
+        m_fn = re.search(r"_{3,}\s*(.+?)\s*_{3,}", fail_sect)
+        if m_fn:
+            func_name = m_fn.group(1).strip()
+
+    # Extract source line with >
+    m_src = re.search(r"^>\s+(.*)$", fail_sect, re.MULTILINE)
+    if m_src:
+        source_line = m_src.group(1).strip()
+
+    # Extract failing file and line number
+    loc_matches = re.findall(
+        r"^([a-zA-Z0-9_\-\./\\]+\.py):(\d+):", fail_sect, re.MULTILINE
+    )
+    if loc_matches:
+        matched_loc = None
+        if file_path:
+            for f_match, l_match in loc_matches:
+                if os.path.basename(f_match) == os.path.basename(file_path):
+                    matched_loc = (f_match, l_match)
+                    break
+        if not matched_loc:
+            for f_match, l_match in loc_matches:
+                if "test" in f_match:
+                    matched_loc = (f_match, l_match)
+                    break
+        if not matched_loc:
+            matched_loc = loc_matches[0]
+
+        if not file_path:
+            file_path = matched_loc[0]
+        line_num = matched_loc[1]
+
+    # Extract Exception line starting with E
+    m_err = re.search(
+        r"^E\s+([A-Za-z_][A-Za-z0-9_]*(?:Error|Exception|Warning|Timeout|Failed|[A-Z][a-zA-Z0-9_]*))(?::\s*(.*))?$",
+        fail_sect,
+        re.MULTILINE,
+    )
+    if m_err:
+        err_type = m_err.group(1)
+        if not err_msg and m_err.group(2):
+            err_msg = m_err.group(2).strip()
+
+    # Check for timeout signature
+    if "Timeout" in text or "timeout" in text:
+        m_to = re.search(r"(Timeout\s*>[0-9\.]+s|Failed:\s*Timeout\s*>[0-9\.]+s)", text)
+        if m_to:
+            err_type = "Timeout"
+            err_msg = m_to.group(1)
+
+    if not (m_short or m_fail_sect or loc_matches or m_err or err_type == "Timeout"):
+        return "FAIL", code, unparsed_digest(text, code)
+
+    if not file_path:
+        file_path = "test.py"
+
+    test_id = f"{file_path}::{func_name}" if func_name else file_path
+    flake_meta = check_flake_telemetry(test_id, err_msg=err_msg, err_type=err_type)
+    is_flake = bool(flake_meta and flake_meta.get("is_flake"))
+
+    digest = pick_best_digest(
+        file_path=file_path,
+        func_name=func_name,
+        line_num=line_num,
+        err_type=err_type,
+        err_msg=err_msg,
+        source_line=source_line,
+        failed_cnt=failed_cnt,
+        passed_cnt=passed_cnt,
+        duration=duration,
+        is_collection=False,
+        is_flake=is_flake,
+    )
+    return "FAIL", code, digest
+
+
+def pick_best_digest(
+    file_path: str,
+    func_name: str,
+    line_num: str,
+    err_type: str,
+    err_msg: str,
+    source_line: str,
+    failed_cnt: int,
+    passed_cnt: int,
+    duration: str,
+    is_collection: bool = False,
+    is_flake: bool = False,
+) -> str:
+    """
+    Generates candidate digest output lines, evaluates token and line constraints,
+    and returns the richest candidate strictly adhering to:
+      lines <= 3
+      estimate_tokens <= 23 (guaranteeing < 25 tokens with trailing newline)
+    """
+    file_norm = normalize_test_file(file_path)
+    base_name = os.path.basename(file_path)
+    if is_flake:
+        tag = " [KNOWN FLAKE]"
+    elif is_collection:
+        tag = " (collection)"
+    else:
+        tag = ""
+
+    # Candidate variations for Line 1
+    l1_opts: list[str] = []
+    clean_msg = err_msg.splitlines()[0][:25].strip() if err_msg else ""
+
+    if is_flake:
+        if func_name and not is_collection:
+            l1_opts.append(
+                f"FAIL [KNOWN FLAKE]: {file_norm}::{func_name} | line {line_num} | {err_type}"
+            )
+            if file_norm != base_name:
+                l1_opts.append(
+                    f"FAIL [KNOWN FLAKE]: {base_name}::{func_name} | line {line_num} | {err_type}"
+                )
+        l1_opts.append(f"FAIL [KNOWN FLAKE]: {file_norm} | line {line_num} | {err_type}")
+        if file_norm != base_name:
+            l1_opts.append(f"FAIL [KNOWN FLAKE]: {base_name} | line {line_num} | {err_type}")
+    else:
+        if func_name and not is_collection:
+            if clean_msg:
+                l1_opts.append(
+                    f"FAIL: {file_norm}::{func_name}{tag} | line {line_num} | {err_type}: {clean_msg}"
+                )
+            l1_opts.append(
+                f"FAIL: {file_norm}::{func_name}{tag} | line {line_num} | {err_type}"
+            )
+            if file_norm != base_name:
+                l1_opts.append(
+                    f"FAIL: {base_name}::{func_name}{tag} | line {line_num} | {err_type}"
+                )
+        if clean_msg:
+            l1_opts.append(
+                f"FAIL: {file_norm}{tag} | line {line_num} | {err_type}: {clean_msg}"
+            )
+        l1_opts.append(f"FAIL: {file_norm}{tag} | line {line_num} | {err_type}")
+        if file_norm != base_name:
+            l1_opts.append(f"FAIL: {base_name}{tag} | line {line_num} | {err_type}")
+
+    # Candidate variations for Line 2 (SOURCE)
+    l2_opts: list[str | None] = []
+    if source_line and source_line.strip() and not is_collection:
+        clean_src = source_line.strip().splitlines()[0][:25].strip()
+        l2_opts.append(f"SOURCE: {clean_src}")
+    l2_opts.append(None)
+
+    # Candidate variations for Line 3 (SUMMARY)
+    l3_opts: list[str | None] = []
+    if duration and passed_cnt:
+        l3_opts.append(
+            f"SUMMARY: {failed_cnt} failed, {passed_cnt} passed in {duration}s"
+        )
+    if passed_cnt:
+        l3_opts.append(f"SUMMARY: {failed_cnt} failed, {passed_cnt} passed")
+    if failed_cnt:
+        l3_opts.append(f"SUMMARY: {failed_cnt} failed")
+    elif is_collection:
+        l3_opts.append("SUMMARY: 1 error")
+    l3_opts.append(None)
+
+    # Search best candidate
+    candidates: list[tuple[int, int, int, str]] = []
+
+    for l1 in l1_opts:
+        for l2 in l2_opts:
+            for l3 in l3_opts:
+                lines = [l1]
+                if l2:
+                    lines.append(l2)
+                if l3:
+                    lines.append(l3)
+                out = "\n".join(lines)
+                toks = estimate_tokens(out)
+                raw_toks = estimate_tokens(out + "\n")
+                if toks <= 23 and raw_toks < 25 and len(lines) <= 3:
+                    score = 0
+                    if len(lines) == 3:
+                        score += 15
+                    if l3:
+                        score += 35
+                        if "passed" in l3:
+                            score += 5
+                    if l2:
+                        score += 20
+                    if func_name and f"::{func_name}" in l1:
+                        score += 15
+                    if clean_msg and clean_msg[:8] in l1:
+                        score += 10
+                    if is_flake and "[KNOWN FLAKE]" in out:
+                        score += 50
+                    elif is_flake and "FLAKE" in out:
+                        score += 40
+                    candidates.append((score, -toks, len(lines), out))
+
+    if candidates:
+        candidates.sort(reverse=True)
+        return candidates[0][3]
+
+    # Deterministic fallback guaranteed < 25 tokens
+    prefix = "FAIL [KNOWN FLAKE]: " if is_flake else "FAIL: "
+    fallback = f"{prefix}{file_norm}{tag} | line {line_num} | {err_type}"
+    if estimate_tokens(fallback) >= 23 or estimate_tokens(fallback + "\n") >= 25:
+        base_name = os.path.basename(file_path)
+        if len(base_name) > 21:
+            base_name = base_name[:18] + "..."
+        fallback = f"FAIL: {base_name}{tag} | line {line_num} | {err_type}"
+        if estimate_tokens(fallback) >= 23 or estimate_tokens(fallback + "\n") >= 25:
+            fallback = f"FAIL: {base_name} | {line_num} | {err_type}"
+        while (
+            estimate_tokens(fallback) >= 23
+            or estimate_tokens(fallback + "\n") >= 25
+        ) and len(base_name) > 7:
+            base_name = base_name[: max(4, len(base_name) - 5)] + "..."
+            fallback = f"FAIL: {base_name} | {line_num} | {err_type}"
+        if estimate_tokens(fallback) >= 23 or estimate_tokens(fallback + "\n") >= 25:
+            fallback = f"FAIL: {base_name[:10]}... | {line_num} | {err_type[:15]}"
+    return fallback
+
+
+def find_pytest_bin() -> list[str]:
+    """Resolves the pytest binary path."""
+    env_bin = os.environ.get("BD_PYTEST_BIN")
+    if env_bin:
+        return [env_bin]
+    bd_venv_pytest = "/home/mboyle/BulkDownloader/venv/bin/pytest"
+    if os.path.exists(bd_venv_pytest) and os.access(bd_venv_pytest, os.X_OK):
+        return [bd_venv_pytest]
+    which_pytest = shutil.which("pytest")
+    if which_pytest:
+        return [which_pytest]
+    return [sys.executable, "-m", "pytest"]
+
+
+def main() -> None:
+    args = list(sys.argv[1:])
+
+    # Check for deterministic flake query/record commands (replaces bd-flakecourt LLM role)
+    if "--check-flake" in args or "--flake-query" in args:
+        flag = "--check-flake" if "--check-flake" in args else "--flake-query"
+        idx = args.index(flag)
+        if idx + 1 < len(args):
+            query_id = args[idx + 1]
+            res = check_flake_telemetry(query_id)
+            if res:
+                print(json.dumps(res))
+                sys.exit(0)
+            else:
+                print(f"NOT_FLAKE: {query_id}")
+                sys.exit(1)
+        else:
+            print("ERROR: --flake-query requires <test_id>")
+            sys.exit(2)
+
+    if "--record-flake" in args:
+        idx = args.index("--record-flake")
+        if idx + 1 < len(args):
+            rec_id = args[idx + 1]
+            ok = record_flake_telemetry(rec_id, status="flake", is_benign=1)
+            print(f"RECORDED: {rec_id}" if ok else f"FAILED: {rec_id}")
+            sys.exit(0 if ok else 1)
+        else:
+            print("ERROR: --record-flake requires <test_id>")
+            sys.exit(2)
+
+    # Check for --pipe
+    is_pipe = False
+    if "--pipe" in args:
+        is_pipe = True
+        args.remove("--pipe")
+    elif len(args) == 0 and not sys.stdin.isatty():
+        is_pipe = True
+
+    # Check for optional explicit exit code
+    exit_code_arg = None
+    if "--exit-code" in args:
+        idx = args.index("--exit-code")
+        if idx + 1 < len(args):
+            exit_code_arg = int(args[idx + 1])
+            del args[idx : idx + 2]
+
+    if is_pipe:
+        raw_output = sys.stdin.read()
+        _, exit_code, digest = parse_pytest_output(
+            raw_output, exit_code_override=exit_code_arg
+        )
+        print(digest)
+        sys.exit(exit_code)
+
+    # Direct invocation mode
+    pytest_cmd = None
+    if args:
+        c0 = args[0]
+        if c0 == "pytest":
+            pytest_cmd = find_pytest_bin() + args[1:]
+        elif c0.endswith("/pytest") and os.path.exists(c0) and os.access(c0, os.X_OK):
+            pytest_cmd = [c0] + args[1:]
+        elif re.search(r"(^|/)python[0-9.]*$", c0) and len(args) >= 3 and args[1] == "-m" and args[2] == "pytest":
+            pytest_cmd = [c0, "-m", "pytest"] + args[3:]
+    if pytest_cmd is None:
+        pytest_cmd = find_pytest_bin() + args
+    env = dict(os.environ)
+    env.pop("BD_INSTALL_DIR", None)
+    try:
+        proc = subprocess.run(
+            pytest_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            check=False,
+            env=env,
+        )
+        _, exit_code, digest = parse_pytest_output(
+            proc.stdout, exit_code_override=proc.returncode
+        )
+        print(digest)
+        sys.exit(proc.returncode)
+    except FileNotFoundError:
+        print("FAIL: pytest binary not found | FileNotFoundError")
+        sys.exit(127)
+    except (OSError, subprocess.SubprocessError) as e:
+        print(f"FAIL: execution failed | {type(e).__name__}: {e}")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

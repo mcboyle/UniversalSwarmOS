@@ -1,0 +1,17 @@
+[Unit]
+Description=Boylenet Mobile & Tablet PWA Command Deck (:4086)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mboyle
+WorkingDirectory=/home/mboyle
+Environment="HOME=/home/mboyle"
+Environment="BD_MOBILE_PORT=4086"
+ExecStart=/usr/bin/python3 /home/mboyle/bin/bd-mobile-pwa.py --port 4086
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

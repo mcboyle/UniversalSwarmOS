@@ -1,0 +1,286 @@
+#!/usr/bin/env python3
+"""bd-local-bus-tail: Inspect Boylenet bd-bus SQLite WAL and /var/tmp/ bus events.
+
+Formats recent cross-pool and local GPU messages cleanly.
+"""
+from __future__ import annotations
+
+import argparse
+import glob
+import json
+import os
+import sqlite3
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+
+def discover_sources() -> tuple[list[Path], list[Path]]:
+    db_candidates: list[Path] = []
+    file_candidates: list[Path] = []
+
+    env_db = os.environ.get("BD_BUS_DB")
+    if env_db and os.path.exists(env_db):
+        db_candidates.append(Path(env_db))
+
+    patterns = [
+        "/var/tmp/*bus*.db",
+        "/var/tmp/*bus*.sqlite*",
+        "/var/tmp/bd-bus/*.db",
+        "/var/tmp/bd-bus/*.sqlite*",
+        "/var/tmp/bd_bus/*.db",
+        "/home/mboyle/bd-persist/*bus*.db",
+        "/home/mboyle/bd-persist/**/*bus*.db",
+    ]
+    for pat in patterns:
+        for match in sorted(glob.glob(pat, recursive=True)):
+            p = Path(match)
+            if p.is_file() and not p.name.endswith(("-wal", "-shm")) and p not in db_candidates:
+                db_candidates.append(p)
+
+    file_patterns = [
+        "/var/tmp/*bus*.jsonl",
+        "/var/tmp/*bus*.log",
+        "/var/tmp/*bus*.json",
+        "/var/tmp/bd-bus/*.jsonl",
+        "/var/tmp/bd-bus/*.log",
+        "/var/tmp/*gpu*.jsonl",
+        "/var/tmp/*gpu*.log",
+    ]
+    for pat in file_patterns:
+        for match in sorted(glob.glob(pat)):
+            p = Path(match)
+            if p.is_file() and p not in file_candidates and p not in db_candidates:
+                file_candidates.append(p)
+
+    return db_candidates, file_candidates
+
+
+def read_sqlite_events(db_path: Path, limit: int) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    meta: dict[str, Any] = {
+        "path": str(db_path),
+        "wal_present": Path(f"{db_path}-wal").exists(),
+        "wal_bytes": Path(f"{db_path}-wal").stat().st_size if Path(f"{db_path}-wal").exists() else 0,
+        "tables": [],
+    }
+    try:
+        uri = f"file:{db_path}?mode=ro"
+        conn = sqlite3.connect(uri, uri=True, timeout=2.0)
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+        tables = [
+            r[0]
+            for r in cur.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+            ).fetchall()
+        ]
+        meta["tables"] = tables
+        for tbl in tables:
+            cols = [c[1] for c in cur.execute(f"PRAGMA table_info('{tbl}')").fetchall()]
+            order_col = "rowid"
+            for candidate in ("id", "seq", "ts", "timestamp", "created_at"):
+                if candidate in cols:
+                    order_col = candidate
+                    break
+            rows = cur.execute(
+                f"SELECT * FROM '{tbl}' ORDER BY {order_col} DESC LIMIT ?", (limit,)
+            ).fetchall()
+            for r in rows:
+                d = dict(r)
+                records.append(
+                    {
+                        "source": f"{db_path.name}:{tbl}",
+                        "ts": str(
+                            d.get("timestamp")
+                            or d.get("created_at")
+                            or d.get("ts")
+                            or d.get("time")
+                            or "-"
+                        ),
+                        "sender": str(
+                            d.get("sender")
+                            or d.get("agent")
+                            or d.get("pool")
+                            or d.get("seat")
+                            or d.get("source")
+                            or "-"
+                        ),
+                        "channel": str(
+                            d.get("channel")
+                            or d.get("topic")
+                            or d.get("event_type")
+                            or d.get("type")
+                            or tbl
+                        ),
+                        "payload": str(
+                            d.get("message")
+                            or d.get("payload")
+                            or d.get("content")
+                            or d.get("claim")
+                            or d.get("data")
+                            or json.dumps(d, default=str)
+                        ),
+                        "raw": d,
+                    }
+                )
+        conn.close()
+    except Exception as exc:
+        meta["error"] = str(exc)
+    return records, meta
+
+
+def read_file_events(file_path: Path, limit: int) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    try:
+        with file_path.open("r", encoding="utf-8", errors="replace") as fh:
+            lines = [ln.strip() for ln in fh if ln.strip()]
+        for ln in lines[-limit:]:
+            if ln.startswith("{") and ln.endswith("}"):
+                try:
+                    d = json.loads(ln)
+                    records.append(
+                        {
+                            "source": file_path.name,
+                            "ts": str(
+                                d.get("timestamp")
+                                or d.get("created_at")
+                                or d.get("ts")
+                                or "-"
+                            ),
+                            "sender": str(
+                                d.get("sender")
+                                or d.get("pool")
+                                or d.get("seat")
+                                or d.get("agent")
+                                or "-"
+                            ),
+                            "channel": str(
+                                d.get("channel")
+                                or d.get("topic")
+                                or d.get("type")
+                                or "event"
+                            ),
+                            "payload": str(
+                                d.get("message")
+                                or d.get("payload")
+                                or d.get("content")
+                                or ln
+                            ),
+                            "raw": d,
+                        }
+                    )
+                    continue
+                except Exception:
+                    pass
+            records.append(
+                {
+                    "source": file_path.name,
+                    "ts": "-",
+                    "sender": "-",
+                    "channel": "raw",
+                    "payload": ln,
+                    "raw": {"line": ln},
+                }
+            )
+    except Exception:
+        pass
+    return records
+
+
+def classify_scope(rec: dict[str, Any]) -> str:
+    blob = f"{rec.get('sender','')} {rec.get('channel','')} {rec.get('payload','')}".lower()
+    is_gpu = any(k in blob for k in ("gpu", "2080", "vram", "cuda", "ollama", "litellm", "137", "228", "125"))
+    is_pool = any(k in blob for k in ("pool", "cross-pool", "agy", "codex", "claude", "bus", "quorum", "seat"))
+    if is_gpu and is_pool:
+        return "POOL+GPU"
+    if is_gpu:
+        return "LOCAL-GPU"
+    if is_pool:
+        return "CROSS-POOL"
+    return "GENERAL"
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Inspect Boylenet bd-bus SQLite WAL and /var/tmp/ bus events."
+    )
+    parser.add_argument("-n", "--limit", type=int, default=20, help="Max recent events to show")
+    parser.add_argument("--json", action="store_true", help="Emit JSON output")
+    parser.add_argument("--filter", type=str, default="", help="Substring filter on records")
+    args = parser.parse_args()
+
+    dbs, files = discover_sources()
+    all_records: list[dict[str, Any]] = []
+    db_metas: list[dict[str, Any]] = []
+
+    for db in dbs:
+        recs, meta = read_sqlite_events(db, args.limit)
+        db_metas.append(meta)
+        all_records.extend(recs)
+
+    for fp in files:
+        all_records.extend(read_file_events(fp, args.limit))
+
+    for r in all_records:
+        r["scope"] = classify_scope(r)
+
+    if args.filter:
+        q = args.filter.lower()
+        all_records = [
+            r for r in all_records if q in json.dumps(r.get("raw", r), default=str).lower()
+        ]
+
+    all_records = all_records[: args.limit]
+
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "written_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "databases": db_metas,
+                    "event_files": [str(f) for f in files],
+                    "count": len(all_records),
+                    "events": all_records,
+                },
+                indent=2,
+                default=str,
+            )
+        )
+        return 0
+
+    now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    print(f"=== BD-LOCAL-BUS-TAIL | {now_utc} ===")
+    print(
+        f"SOURCES: sqlite_dbs={len(dbs)} ({', '.join(str(d) for d in dbs) or 'NONE'}) | "
+        f"tmp_files={len(files)} ({', '.join(str(f) for f in files) or 'NONE'})"
+    )
+    for m in db_metas:
+        print(
+            f"WAL-STATE: db={m['path']} wal_present={m['wal_present']} "
+            f"wal_bytes={m['wal_bytes']} tables={','.join(m['tables']) or 'NONE'}"
+        )
+
+    if not all_records:
+        print("EVENTS: FOUND NONE")
+        return 0
+
+    print(f"EVENTS: FOUND {len(all_records)}")
+    print(f"{'TIMESTAMP':<22} {'SCOPE':<10} {'SOURCE':<24} {'SENDER':<16} {'CHANNEL':<14} PAYLOAD")
+    print("-" * 110)
+    for r in all_records:
+        ts = (r["ts"] or "-")[:21]
+        scope = r["scope"][:10]
+        src = r["source"][:23]
+        snd = r["sender"][:15]
+        chn = r["channel"][:13]
+        pay = " ".join(r["payload"].splitlines())
+        if len(pay) > 80:
+            pay = pay[:77] + "..."
+        print(f"{ts:<22} {scope:<10} {src:<24} {snd:<16} {chn:<14} {pay}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,320 @@
+#!/usr/bin/env python3
+"""
+bd-local-ast-agent — AST-first local coding tool (Rule 60 / Rule 80 / GEMINI.md AST Slicing Law).
+Extracts Python/TS AST symbol slices (def/class + exact line ranges) without full-file ingestion
+and dispatches only the bounded symbol slice to http://10.0.70.164:4010/v1/chat/completions (tier1).
+"""
+import argparse
+import ast
+import hashlib
+import json
+import os
+import re
+import sys
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+DEFAULT_ENDPOINT = os.environ.get(
+    "BD_LOCAL_AST_ENDPOINT", "http://10.0.70.164:4010/v1/chat/completions"
+)
+DEFAULT_MODEL = os.environ.get("BD_LOCAL_AST_MODEL", "tier1")
+BLOB_DIR = Path("/var/tmp/bd-blobs")
+
+
+def extract_python_symbols(source: str):
+    tree = ast.parse(source)
+    lines = source.splitlines()
+    symbols = []
+
+    class Visitor(ast.NodeVisitor):
+        def __init__(self):
+            self.scope = []
+
+        def _record(self, node, kind):
+            start = getattr(node, "lineno", 1)
+            if getattr(node, "decorator_list", None):
+                start = min(start, *(d.lineno for d in node.decorator_list))
+            end = getattr(node, "end_lineno", start)
+            qualname = ".".join(self.scope + [node.name])
+            symbols.append(
+                {
+                    "name": node.name,
+                    "qualname": qualname,
+                    "kind": kind,
+                    "start_line": start,
+                    "end_line": end,
+                    "line_count": end - start + 1,
+                }
+            )
+
+        def visit_ClassDef(self, node):
+            self._record(node, "class")
+            self.scope.append(node.name)
+            self.generic_visit(node)
+            self.scope.pop()
+
+        def visit_FunctionDef(self, node):
+            self._record(node, "def")
+            self.scope.append(node.name)
+            self.generic_visit(node)
+            self.scope.pop()
+
+        def visit_AsyncFunctionDef(self, node):
+            self._record(node, "async def")
+            self.scope.append(node.name)
+            self.generic_visit(node)
+            self.scope.pop()
+
+    Visitor().visit(tree)
+    return symbols, lines
+
+
+TS_PATTERNS = [
+    ("class", re.compile(r"^\s*(?:export\s+)?(?:abstract\s+)?class\s+([A-Za-z_$][\w$]*)")),
+    ("interface", re.compile(r"^\s*(?:export\s+)?interface\s+([A-Za-z_$][\w$]*)")),
+    ("type", re.compile(r"^\s*(?:export\s+)?type\s+([A-Za-z_$][\w$]*)\s*=")),
+    ("def", re.compile(r"^\s*(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)")),
+    (
+        "def",
+        re.compile(
+            r"^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>"
+        ),
+    ),
+]
+
+
+def extract_ts_symbols(source: str):
+    lines = source.splitlines()
+    symbols = []
+    n = len(lines)
+    for idx, line in enumerate(lines):
+        for kind, pat in TS_PATTERNS:
+            m = pat.match(line)
+            if m:
+                name = m.group(1)
+                start = idx + 1
+                depth = 0
+                opened = False
+                end = start
+                for j in range(idx, n):
+                    for ch in lines[j]:
+                        if ch == "{":
+                            depth += 1
+                            opened = True
+                        elif ch == "}":
+                            depth -= 1
+                    end = j + 1
+                    if opened and depth <= 0:
+                        break
+                    if not opened and lines[j].rstrip().endswith(";"):
+                        break
+                symbols.append(
+                    {
+                        "name": name,
+                        "qualname": name,
+                        "kind": kind,
+                        "start_line": start,
+                        "end_line": end,
+                        "line_count": end - start + 1,
+                    }
+                )
+                break
+    return symbols, lines
+
+
+def select_symbol(symbols, query):
+    if not symbols:
+        return None
+    if not query:
+        return symbols[0]
+    for s in symbols:
+        if s["qualname"] == query or s["name"] == query:
+            return s
+    for s in symbols:
+        if query.lower() in s["qualname"].lower():
+            return s
+    return symbols[0]
+
+
+def write_cas_blob(payload: str) -> tuple[str, Path]:
+    BLOB_DIR.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    path = BLOB_DIR / f"{digest}.log"
+    path.write_text(payload, encoding="utf-8")
+    return digest, path
+
+
+def call_local_llm(endpoint: str, model: str, slice_header: str, slice_code: str, prompt: str, timeout: float):
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are bd-local-ast-agent operating under Fleet Rule 80 and AST Slicing Law. "
+                "Analyze only the provided AST symbol slice and return a concise technical response (<=4 lines)."
+            ),
+        },
+        {
+            "role": "user",
+            "content": f"{slice_header}\n```python\n{slice_code}\n```\nTask: {prompt}",
+        },
+    ]
+    body = json.dumps(
+        {
+            "model": model,
+            "messages": messages,
+            "max_tokens": 160,
+            "temperature": 0.1,
+        }
+    ).encode("utf-8")
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {os.environ.get('LITELLM_API_KEY', 'sk-local-ast-agent')}",
+    }
+    t0 = time.monotonic()
+    req = urllib.request.Request(endpoint, data=body, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+            elapsed = max(time.monotonic() - t0, 1e-6)
+            data = json.loads(raw)
+            choice = (data.get("choices") or [{}])[0]
+            content = (choice.get("message") or {}).get("content") or choice.get("text") or ""
+            usage = data.get("usage") or {}
+            comp_tokens = usage.get("completion_tokens") or max(1, len(content.split()))
+            tok_s = round(comp_tokens / elapsed, 1)
+            return {
+                "ok": True,
+                "status": resp.status,
+                "model": data.get("model", model),
+                "elapsed_s": round(elapsed, 3),
+                "completion_tokens": comp_tokens,
+                "prompt_tokens": usage.get("prompt_tokens", 0),
+                "tok_per_s": tok_s,
+                "response": content.strip(),
+            }
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode("utf-8", errors="replace")
+        return {
+            "ok": False,
+            "status": e.code,
+            "model": model,
+            "elapsed_s": round(time.monotonic() - t0, 3),
+            "error": f"HTTP {e.code}: {err_body[:200]}",
+        }
+    except Exception as e:
+        return {
+            "ok": False,
+            "status": 0,
+            "model": model,
+            "elapsed_s": round(time.monotonic() - t0, 3),
+            "error": str(e),
+        }
+
+
+def main():
+    parser = argparse.ArgumentParser(description="AST-first local coding agent (tier1)")
+    parser.add_argument("file", help="Path to Python or TypeScript/JS source file")
+    parser.add_argument("symbol_pos", nargs="?", default=None, help="Optional target symbol name")
+    parser.add_argument("prompt_pos", nargs="?", default=None, help="Optional task prompt")
+    parser.add_argument("-s", "--symbol", default=None, help="Target def/class symbol name")
+    parser.add_argument(
+        "-p",
+        "--prompt",
+        default="Summarize symbol contract, inputs/outputs, and any failure modes in <=3 lines.",
+        help="Instruction for the local tier1 model",
+    )
+    parser.add_argument("--list", action="store_true", help="List AST symbol table and exit")
+    parser.add_argument("--no-llm", action="store_true", help="Extract slice only without calling LLM")
+    parser.add_argument("--endpoint", default=DEFAULT_ENDPOINT, help="Chat completions endpoint URL")
+    parser.add_argument("--model", default=DEFAULT_MODEL, help="Model name (default: tier1)")
+    parser.add_argument("--timeout", type=float, default=15.0, help="HTTP timeout in seconds")
+    parser.add_argument("--json", action="store_true", help="Emit JSON output")
+    args = parser.parse_args()
+
+    path = Path(args.file).resolve()
+    if not path.is_file():
+        print(f"ERROR: file not found: {path}", file=sys.stderr)
+        return 2
+
+    source = path.read_text(encoding="utf-8", errors="replace")
+    if path.suffix in (".ts", ".tsx", ".js", ".jsx"):
+        symbols, total_lines = extract_ts_symbols(source)
+    else:
+        symbols, total_lines = extract_python_symbols(source)
+
+    if args.list:
+        if args.json:
+            print(json.dumps({"file": str(path), "total_lines": len(total_lines), "symbols": symbols}, indent=2))
+        else:
+            print(f"FILE {path} ({len(total_lines)} lines, {len(symbols)} AST symbols)")
+            for s in symbols:
+                print(f"  {s['kind']} {s['qualname']} [L{s['start_line']}-L{s['end_line']}] ({s['line_count']} lines)")
+        return 0
+
+    target_name = args.symbol or args.symbol_pos
+    prompt = args.prompt_pos or args.prompt
+    target = select_symbol(symbols, target_name)
+    if target is None:
+        start_line, end_line = 1, min(len(total_lines), 40)
+        target = {
+            "name": "<module>",
+            "qualname": "<module>",
+            "kind": "module",
+            "start_line": start_line,
+            "end_line": end_line,
+            "line_count": end_line - start_line + 1,
+        }
+
+    slice_lines = total_lines[target["start_line"] - 1 : target["end_line"]]
+    slice_code = "\n".join(slice_lines)
+    slice_header = (
+        f"# FILE: {path.name} | SYMBOL: {target['kind']} {target['qualname']} "
+        f"| LINES: L{target['start_line']}-L{target['end_line']} ({target['line_count']}/{len(total_lines)} lines)"
+    )
+
+    llm_result = {"ok": True, "skipped": True}
+    if not args.no_llm:
+        llm_result = call_local_llm(
+            endpoint=args.endpoint,
+            model=args.model,
+            slice_header=slice_header,
+            slice_code=slice_code,
+            prompt=prompt,
+            timeout=args.timeout,
+        )
+
+    full_record = {
+        "file": str(path),
+        "total_file_lines": len(total_lines),
+        "symbol_count": len(symbols),
+        "selected_symbol": target,
+        "savings_pct": round((1.0 - (target["line_count"] / max(len(total_lines), 1))) * 100.0, 1),
+        "endpoint": args.endpoint,
+        "llm": llm_result,
+        "slice": slice_code,
+    }
+    blob_sha, blob_path = write_cas_blob(json.dumps(full_record, indent=2))
+
+    if args.json:
+        full_record["cas_blob"] = str(blob_path)
+        del full_record["slice"]
+        print(json.dumps(full_record, indent=2))
+        return 0
+
+    # Rule 80 compliant 4-line CAS pointer + summary output
+    print(f"AST-SLICE: {path.name}::{target['qualname']} L{target['start_line']}-L{target['end_line']} ({target['line_count']}/{len(total_lines)} lines, {full_record['savings_pct']}% reduction)")
+    print(f"SYMBOLS-INDEXED: {len(symbols)} ({', '.join(s['qualname'] for s in symbols[:6])}{'...' if len(symbols) > 6 else ''})")
+    if llm_result.get("ok") and not llm_result.get("skipped"):
+        one_line = " | ".join(line.strip() for line in llm_result.get("response", "").splitlines() if line.strip())[:220]
+        print(f"TIER1-LLM: status={llm_result['status']} model={llm_result['model']} latency={llm_result['elapsed_s']}s ({llm_result['tok_per_s']} tok/s) -> {one_line}")
+    else:
+        print(f"TIER1-LLM: fallback=ast-static reason={llm_result.get('error', 'no-llm')}")
+    print(f"CAS-PTR: {blob_path} (sha256={blob_sha[:16]})")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

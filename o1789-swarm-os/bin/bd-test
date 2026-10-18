@@ -1,0 +1,30 @@
+#!/bin/bash
+# pytest with a bd-pytest-digest summary; on failure the raw log is kept in the
+# bd-blob-ptr CAS dir. Exits with pytest's own status (signals as 128+N).
+unset BD_INSTALL_DIR
+export PYTHONUNBUFFERED=1
+here=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
+called_from=$(readlink -f "$(dirname "${BASH_SOURCE[0]}")")
+# The pytest beside this script (~/bin/pytest) digests its own output; take
+# the first pytest on PATH outside this script's directory (link or target)
+# so output is digested once.
+pytest_bin=$(IFS=:; for d in $PATH; do
+    d_real=$(readlink -f "${d:-.}")
+    [ "$d_real" = "$here" ] || [ "$d_real" = "$called_from" ] && continue
+    [ -x "${d:-.}/pytest" ] && { echo "${d:-.}/pytest"; break; }
+done)
+BLOB_DIR=/var/tmp/bd-blobs
+mkdir -p "$BLOB_DIR" || exit 1
+raw=$(mktemp "$BLOB_DIR/.bd-test.XXXXXX") || exit 1
+trap 'rm -f "$raw"' EXIT
+# A group signal (timeout, Ctrl-C, hangup) also reaches pytest: outlive it so
+# its status and output are still reported.
+trap : TERM INT HUP
+"${pytest_bin:-pytest}" -q --disable-warnings -W ignore --tb=short "$@" >"$raw" 2>&1
+rc=$?
+PYTHONIOENCODING=utf-8:replace "$here/bd-pytest-digest" --pipe --exit-code "$rc" <"$raw"
+if [ "$rc" -ne 0 ]; then
+    log="$BLOB_DIR/$(sha256sum "$raw" | cut -d' ' -f1).log"
+    chmod 664 "$raw" && mv -f "$raw" "$log" && echo "LOG: $log"
+fi
+exit "$rc"

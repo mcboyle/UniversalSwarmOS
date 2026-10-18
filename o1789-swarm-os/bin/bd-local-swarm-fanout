@@ -1,0 +1,243 @@
+#!/usr/bin/env python3
+"""
+bd-local-swarm-fanout: Parallel multi-agent fanout tool dispatching N prompts in parallel
+across http://10.0.70.164:4010/v1/chat/completions (tier1 Pool Alpha :8082 + 10.0.70.125:8081 Pool Beta)
+using concurrent.futures.ThreadPoolExecutor and returning structured JSON results + aggregate tok/s.
+"""
+import argparse
+import concurrent.futures
+import json
+import os
+import sys
+import time
+import urllib.error
+import urllib.request
+from typing import Any, Dict, List
+
+DEFAULT_ROUTER_URL = os.environ.get("BD_SWARM_ROUTER_URL", "http://10.0.70.164:4010/v1/chat/completions")
+POOL_ENDPOINTS = [
+    {"pool": "router-tier1", "url": DEFAULT_ROUTER_URL},
+    {"pool": "pool-alpha-8082", "url": "http://10.0.70.164:8082/v1/chat/completions"},
+    {"pool": "pool-beta-125-8081", "url": "http://10.0.70.125:8081/v1/chat/completions"},
+]
+
+
+def _estimate_tokens(text: str) -> int:
+    if not text:
+        return 0
+    return max(1, len(text.split()))
+
+
+def _post_chat(url: str, payload: Dict[str, Any], api_key: str, timeout: float) -> Dict[str, Any]:
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        body = resp.read().decode("utf-8", errors="replace")
+        return json.loads(body)
+
+
+def _dispatch_one(
+    idx: int,
+    prompt: str,
+    model: str,
+    system_prompt: str,
+    max_tokens: int,
+    temperature: float,
+    router_url: str,
+    api_key: str,
+    timeout: float,
+    direct_balance: bool,
+) -> Dict[str, Any]:
+    t0 = time.monotonic()
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
+
+    payload = {
+        "model": model,
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "stream": False,
+    }
+
+    # Candidate endpoints: primary router http://10.0.70.164:4010/v1/chat/completions
+    # (which balances tier1 Pool Alpha :8082 + 10.0.70.125:8081 Pool Beta),
+    # with automatic fallback to Pool Alpha (:8082) / Pool Beta (10.0.70.125:8081).
+    direct_pools = [
+        ("pool-alpha-8082", "http://10.0.70.164:8082/v1/chat/completions"),
+        ("pool-beta-125-8081", "http://10.0.70.125:8081/v1/chat/completions"),
+    ]
+    ordered_direct = [direct_pools[idx % 2], direct_pools[(idx + 1) % 2]]
+    if direct_balance:
+        candidates = ordered_direct + [("router-tier1", router_url)]
+    else:
+        candidates = [("router-tier1", router_url)] + ordered_direct
+
+    last_err = None
+    for pool_name, target_url in candidates:
+        try:
+            raw = _post_chat(target_url, payload, api_key=api_key, timeout=timeout)
+            elapsed = max(1e-6, time.monotonic() - t0)
+            choices = raw.get("choices") or [{}]
+            msg = choices[0].get("message") or {}
+            content = msg.get("content") or choices[0].get("text") or ""
+            usage = raw.get("usage") or {}
+            comp_tokens = int(usage.get("completion_tokens") or _estimate_tokens(content))
+            prompt_tokens = int(usage.get("prompt_tokens") or _estimate_tokens(prompt))
+            total_tokens = int(usage.get("total_tokens") or (prompt_tokens + comp_tokens))
+            return {
+                "index": idx,
+                "ok": True,
+                "pool": pool_name,
+                "endpoint": target_url,
+                "model": raw.get("model", model),
+                "prompt": prompt,
+                "response": content.strip(),
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": comp_tokens,
+                "total_tokens": total_tokens,
+                "latency_s": round(elapsed, 4),
+                "tok_per_s": round(comp_tokens / elapsed, 2),
+            }
+        except Exception as exc:
+            last_err = f"{pool_name} ({target_url}): {exc}"
+
+    elapsed = max(1e-6, time.monotonic() - t0)
+    return {
+        "index": idx,
+        "ok": False,
+        "pool": "failed",
+        "endpoint": router_url,
+        "model": model,
+        "prompt": prompt,
+        "response": "",
+        "error": last_err or "unknown error",
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "latency_s": round(elapsed, 4),
+        "tok_per_s": 0.0,
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Parallel multi-agent fanout across tier1 router (:4010 -> Pool Alpha :8082 + Pool Beta 10.0.70.125:8081)."
+    )
+    parser.add_argument("prompts", nargs="*", help="Prompts to dispatch in parallel")
+    parser.add_argument("-p", "--prompt", action="append", default=[], help="Add a prompt (repeatable)")
+    parser.add_argument("--prompts-json", help="JSON array of prompt strings")
+    parser.add_argument("--model", default=os.environ.get("BD_SWARM_MODEL", "tier1"), help="Model name (default: tier1)")
+    parser.add_argument("--system", default="Reply concisely.", help="System prompt")
+    parser.add_argument("--url", default=DEFAULT_ROUTER_URL, help="Primary chat completions endpoint URL")
+    parser.add_argument("--api-key", default=os.environ.get("LITELLM_API_KEY", "sk-local-swarm"), help="Bearer API key")
+    parser.add_argument("--max-tokens", type=int, default=64, help="Max completion tokens per worker")
+    parser.add_argument("--temperature", type=float, default=0.1, help="Sampling temperature")
+    parser.add_argument("--max-workers", type=int, default=0, help="ThreadPoolExecutor max_workers (default: N prompts)")
+    parser.add_argument("--timeout", type=float, default=45.0, help="HTTP timeout in seconds")
+    parser.add_argument("--direct-balance", action="store_true", help="Balance directly across :8082 and 10.0.70.125:8081 first")
+    parser.add_argument("--self-test", action="store_true", help="Run 4 parallel test prompts")
+    args = parser.parse_args()
+
+    prompt_list: List[str] = []
+    if args.prompts_json:
+        loaded = json.loads(args.prompts_json)
+        if not isinstance(loaded, list):
+            raise SystemExit("--prompts-json must decode to a JSON list")
+        prompt_list.extend(str(x) for x in loaded)
+    if args.prompt:
+        prompt_list.extend(args.prompt)
+    if args.prompts:
+        prompt_list.extend(args.prompts)
+    if not prompt_list and not sys.stdin.isatty() and not args.self_test:
+        raw_stdin = sys.stdin.read().strip()
+        if raw_stdin:
+            try:
+                parsed = json.loads(raw_stdin)
+                if isinstance(parsed, list):
+                    prompt_list.extend(str(x) for x in parsed)
+                else:
+                    prompt_list.append(raw_stdin)
+            except Exception:
+                prompt_list.extend(line.strip() for line in raw_stdin.splitlines() if line.strip())
+
+    if args.self_test or not prompt_list:
+        prompt_list = [
+            "Agent-1: State the HTTP status code for OK in one token.",
+            "Agent-2: State the port number 8082 in one token.",
+            "Agent-3: State the IP octet 125 in one token.",
+            "Agent-4: State the word PASS in one token.",
+        ]
+
+    n_prompts = len(prompt_list)
+    workers = args.max_workers if args.max_workers > 0 else n_prompts
+
+    wall_t0 = time.monotonic()
+    results: List[Dict[str, Any]] = [None] * n_prompts  # type: ignore
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+        future_map = {
+            executor.submit(
+                _dispatch_one,
+                i,
+                p,
+                args.model,
+                args.system,
+                args.max_tokens,
+                args.temperature,
+                args.url,
+                args.api_key,
+                args.timeout,
+                args.direct_balance,
+            ): i
+            for i, p in enumerate(prompt_list)
+        }
+        for fut in concurrent.futures.as_completed(future_map):
+            idx = future_map[fut]
+            results[idx] = fut.result()
+
+    wall_elapsed = max(1e-6, time.monotonic() - wall_t0)
+    ok_count = sum(1 for r in results if r and r.get("ok"))
+    total_comp_tokens = sum(int(r.get("completion_tokens", 0)) for r in results if r)
+    total_prompt_tokens = sum(int(r.get("prompt_tokens", 0)) for r in results if r)
+    total_tokens = sum(int(r.get("total_tokens", 0)) for r in results if r)
+    sum_worker_tok_s = round(sum(float(r.get("tok_per_s", 0.0)) for r in results if r), 2)
+    aggregate_tok_s = round(total_comp_tokens / wall_elapsed, 2)
+    aggregate_total_tok_s = round(total_tokens / wall_elapsed, 2)
+
+    summary = {
+        "ok": ok_count == n_prompts,
+        "dispatched": n_prompts,
+        "succeeded": ok_count,
+        "failed": n_prompts - ok_count,
+        "router_url": args.url,
+        "pools_configured": [
+            "http://10.0.70.164:4010/v1/chat/completions",
+            "http://10.0.70.164:8082/v1/chat/completions",
+            "http://10.0.70.125:8081/v1/chat/completions",
+        ],
+        "model": args.model,
+        "wall_time_s": round(wall_elapsed, 4),
+        "prompt_tokens": total_prompt_tokens,
+        "completion_tokens": total_comp_tokens,
+        "total_tokens": total_tokens,
+        "aggregate_tok_per_s": aggregate_tok_s,
+        "aggregate_total_tok_per_s": aggregate_total_tok_s,
+        "sum_worker_tok_per_s": sum_worker_tok_s,
+        "results": results,
+    }
+    print(json.dumps(summary, indent=2))
+    return 0 if ok_count == n_prompts else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

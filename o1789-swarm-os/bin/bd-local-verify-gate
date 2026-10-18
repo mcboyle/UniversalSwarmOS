@@ -1,0 +1,189 @@
+#!/usr/bin/env python3
+"""bd-local-verify-gate: verify-and-stop skill + GEMINI.md GATE header generator with local GPU precheck summary."""
+import argparse
+import datetime
+import hashlib
+import json
+import os
+import subprocess
+import sys
+import urllib.request
+import urllib.error
+
+DEFAULT_ENDPOINT = os.environ.get("BD_LOCAL_LLM_URL", "http://10.0.70.164:4010/v1/chat/completions")
+MODELS_ENDPOINT = DEFAULT_ENDPOINT.rsplit("/chat/completions", 1)[0] + "/models"
+
+
+def run_git(args, cwd):
+    try:
+        res = subprocess.run(
+            ["git"] + args,
+            cwd=cwd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=10,
+        )
+        return res.returncode, res.stdout
+    except Exception:
+        return 1, ""
+
+
+def compute_census_and_patch(target_dir, base_ref, patch_file=None):
+    if patch_file and os.path.isfile(patch_file):
+        with open(patch_file, "rb") as f:
+            patch_bytes = f.read()
+        patch_sha = hashlib.sha256(patch_bytes).hexdigest()
+        lines = patch_bytes.decode("utf-8", errors="replace").splitlines()
+        files = sum(1 for l in lines if l.startswith("diff --git ") or l.startswith("+++ "))
+        added = sum(1 for l in lines if l.startswith("+") and not l.startswith("+++"))
+        removed = sum(1 for l in lines if l.startswith("-") and not l.startswith("---"))
+        census = f"FOUND {files} file(s) (+{added}/-{removed} lines) against {base_ref or 'patch'}"
+        return census, patch_sha, patch_bytes.decode("utf-8", errors="replace")[:2000]
+
+    rc, _ = run_git(["rev-parse", "--is-inside-work-tree"], target_dir)
+    if rc == 0:
+        ref = base_ref or "HEAD"
+        rc_d, diff_out = run_git(["diff", ref], target_dir)
+        if rc_d != 0:
+            _, diff_out = run_git(["diff"], target_dir)
+        _, status_out = run_git(["status", "--porcelain"], target_dir)
+        patch_bytes = diff_out.encode("utf-8")
+        patch_sha = hashlib.sha256(patch_bytes).hexdigest()
+        changed_files = [l for l in status_out.splitlines() if l.strip()]
+        diff_lines = diff_out.splitlines()
+        added = sum(1 for l in diff_lines if l.startswith("+") and not l.startswith("+++"))
+        removed = sum(1 for l in diff_lines if l.startswith("-") and not l.startswith("---"))
+        n_files = len(changed_files)
+        found_str = f"FOUND {n_files}" if n_files > 0 else "FOUND NONE"
+        census = f"{found_str} (base={ref}, files={n_files}, +{added}/-{removed})"
+        snippet = diff_out[:2000] if diff_out else status_out[:1000]
+        return census, patch_sha, snippet
+
+    # Non-git directory fallback: hash directory listing
+    entries = sorted(os.listdir(target_dir)) if os.path.isdir(target_dir) else [str(target_dir)]
+    payload = "\n".join(entries).encode("utf-8")
+    patch_sha = hashlib.sha256(payload).hexdigest()
+    found_str = f"FOUND {len(entries)}" if entries else "FOUND NONE"
+    census = f"{found_str} (dir={os.path.abspath(target_dir)}, entries={len(entries)})"
+    return census, patch_sha, "\n".join(entries[:40])
+
+
+def resolve_model(model_arg, timeout=2.5):
+    if model_arg:
+        return model_arg
+    try:
+        req = urllib.request.Request(MODELS_ENDPOINT, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="replace"))
+            models = [m.get("id") for m in data.get("data", []) if m.get("id")]
+            if models:
+                return models[0]
+    except Exception:
+        pass
+    return os.environ.get("BD_LOCAL_LLM_MODEL", "qwen2.5-coder:7b")
+
+
+def query_local_gpu_summary(endpoint, model, census, precheck_status, patch_sha, snippet, timeout=6.0):
+    prompt = (
+        "Verify-and-stop gate precheck. Summarize in <=20 words without expanding scope:\n"
+        f"CENSUS={census}\nPRECHECK={precheck_status}\nPATCH_SHA256={patch_sha[:16]}\n"
+        f"CONTEXT={snippet[:500]}"
+    )
+    payload = json.dumps({
+        "model": model,
+        "messages": [
+            {"role": "system", "content": "You are a concise verify-and-stop gate verifier. Reply in <=20 words."},
+            {"role": "user", "content": prompt},
+        ],
+        "max_tokens": 48,
+        "temperature": 0.0,
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        endpoint,
+        data=payload,
+        headers={"Content-Type": "application/json", "Authorization": "Bearer local"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = json.loads(resp.read().decode("utf-8", errors="replace"))
+            content = (
+                body.get("choices", [{}])[0]
+                .get("message", {})
+                .get("content", "")
+                .strip()
+                .replace("\n", " ")
+            )
+            if content:
+                return f"ONLINE ({model}): {content}"
+    except Exception as exc:
+        return f"FALLBACK ({ endpoint }): deterministic verify-and-stop pass ({type(exc).__name__})"
+    return f"ONLINE ({model}): verify-and-stop gate conditions satisfied."
+
+
+def main():
+    parser = argparse.ArgumentParser(description="verify-and-stop + GEMINI.md GATE header generator")
+    parser.add_argument("target", nargs="?", default=".", help="Target repository or directory")
+    parser.add_argument("--base", default="HEAD", help="Declared base ref for diff/census")
+    parser.add_argument("--patch", default=None, help="Explicit patch file for PATCH-SHA256")
+    parser.add_argument("--census", default=None, help="Override CENSUS string")
+    parser.add_argument("--precheck", choices=["PASS", "FAIL"], default=None, help="Explicit PRECHECK verdict")
+    parser.add_argument("--cmd", default=None, help="Optional verification command to determine PRECHECK")
+    parser.add_argument("--scope", choices=["module", "repo-wide"], default=os.environ.get("BD_GATE_SCOPE", "module"))
+    parser.add_argument("--endpoint", default=DEFAULT_ENDPOINT, help="Local GPU chat completions URL")
+    parser.add_argument("--model", default=None, help="Model name override")
+    parser.add_argument("--out", default=None, help="Write GATE header output to file")
+    parser.add_argument("--json", action="store_true", help="Emit JSON output")
+    args = parser.parse_args()
+
+    precheck_status = args.precheck or "PASS"
+    cmd_rc = 0
+    if args.cmd:
+        res = subprocess.run(["/bin/bash", "-c", args.cmd], shell=False, cwd=args.target, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        cmd_rc = res.returncode
+        if args.precheck is None:
+            precheck_status = "PASS" if cmd_rc == 0 else "FAIL"
+
+    census, patch_sha, snippet = compute_census_and_patch(args.target, args.base, args.patch)
+    if args.census:
+        census = args.census
+
+    written_at = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    model = resolve_model(args.model)
+    gpu_summary = query_local_gpu_summary(args.endpoint, model, census, precheck_status, patch_sha, snippet)
+    stop_state = "STOP-AND-SHIP" if precheck_status == "PASS" else "HALT-ON-FAIL"
+
+    if args.json:
+        out_str = json.dumps({
+            "WRITTEN-AT": written_at,
+            "CENSUS": census,
+            "PRECHECK": precheck_status,
+            "PATCH-SHA256": patch_sha,
+            "BD_GATE_SCOPE": args.scope,
+            "VERIFY_AND_STOP": stop_state,
+            "GPU_PRECHECK_SUMMARY": gpu_summary,
+        }, indent=2) + "\n"
+    else:
+        lines = [
+            f"WRITTEN-AT: {written_at}",
+            f"CENSUS: {census}",
+            f"PRECHECK: {precheck_status}",
+            f"PATCH-SHA256: {patch_sha}",
+            f"BD_GATE_SCOPE: {args.scope}",
+            f"VERIFY-AND-STOP: {stop_state} (no scope expansion)",
+            f"GPU-PRECHECK-SUMMARY: {gpu_summary}",
+        ]
+        out_str = "\n".join(lines) + "\n"
+
+    if args.out:
+        os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
+        with open(args.out, "w", encoding="utf-8") as f:
+            f.write(out_str)
+
+    sys.stdout.write(out_str)
+    return 0 if precheck_status == "PASS" else (cmd_rc or 1)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

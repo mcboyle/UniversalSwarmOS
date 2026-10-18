@@ -1,0 +1,16 @@
+[Unit]
+Description=Boylenet Hybrid Cloud + Local Burst Orchestrator Web UI (:4090)
+After=network.target
+
+[Service]
+Type=simple
+User=mboyle
+WorkingDirectory=/home/mboyle
+Environment="HOME=/home/mboyle"
+Environment="BD_CLOUD_BURST_PORT=4090"
+ExecStart=/usr/bin/python3 /home/mboyle/bin/bd-cloud-burst-web.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

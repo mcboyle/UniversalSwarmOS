@@ -1,0 +1,18 @@
+[Unit]
+Description=Boylenet Physical Rack, HPE iLO4/iLO5, vSphere vc04, vSAN & 4x T4 Telemetry Autopilot (:4091)
+After=network.target
+
+[Service]
+Type=simple
+User=mboyle
+WorkingDirectory=/home/mboyle
+Environment="HOME=/home/mboyle"
+Environment="PATH=/home/mboyle/.local/bin:/home/mboyle/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="BD_HARDWARE_TELEMETRY_PORT=4091"
+Environment="BD_HARDWARE_POLL_INTERVAL=60"
+ExecStart=/usr/bin/python3 /home/mboyle/bin/bd-hardware-telemetry.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

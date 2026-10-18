@@ -1,0 +1,3 @@
+#!/bin/sh
+# bd-recall "<question>" -- wrapper: the store path is fixed here so seats never pass it (install: ~/bin/bd-recall).
+BD_TMEM_STORE=${BD_TMEM_STORE:-/home/mboyle/.local/share/bd-tmem/tmem.sqlite} exec /usr/bin/python3 /home/mboyle/bd-persist/harness/bd-recall.py "$@"

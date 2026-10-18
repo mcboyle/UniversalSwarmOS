@@ -1,0 +1,345 @@
+#!/usr/bin/env python3
+"""bd-local-resume-state: Rule 77 (BD_MAX_TURNS=20 -> RESUME_STATE.md)
+Checkpoint writer and resumption reader for headless local GPU worker seats.
+"""
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import hashlib
+import json
+import os
+import socket
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+
+DEFAULT_MAX_TURNS = 20
+
+
+def utc_now_rfc3339() -> str:
+    return dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def git_probe(cwd: str) -> Dict[str, str]:
+    info = {"git_head": "NONE", "git_branch": "NONE", "git_dirty": "0"}
+    try:
+        head = subprocess.run(
+            ["git", "-C", cwd, "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        if head.returncode == 0 and head.stdout.strip():
+            info["git_head"] = head.stdout.strip()
+        branch = subprocess.run(
+            ["git", "-C", cwd, "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        if branch.returncode == 0 and branch.stdout.strip():
+            info["git_branch"] = branch.stdout.strip()
+        status = subprocess.run(
+            ["git", "-C", cwd, "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        if status.returncode == 0:
+            lines = [ln for ln in status.stdout.splitlines() if ln.strip()]
+            info["git_dirty"] = str(len(lines))
+    except Exception:
+        pass
+    return info
+
+
+def build_state(
+    *,
+    seat: str,
+    task_id: str,
+    turn: int,
+    max_turns: int,
+    cwd: str,
+    model: str,
+    endpoint: str,
+    status: str,
+    summary: str,
+    next_action: str,
+    artifacts: list[str],
+) -> Dict[str, Any]:
+    g = git_probe(cwd)
+    return {
+        "schema": "bd-local-resume-state/v1",
+        "rule": "Rule 77",
+        "written_at": utc_now_rfc3339(),
+        "host": socket.gethostname(),
+        "seat": seat,
+        "task_id": task_id,
+        "turn": int(turn),
+        "max_turns": int(max_turns),
+        "limit_reached": int(turn) >= int(max_turns),
+        "cwd": cwd,
+        "model": model,
+        "endpoint": endpoint,
+        "git_head": g["git_head"],
+        "git_branch": g["git_branch"],
+        "git_dirty_count": int(g["git_dirty"]),
+        "status": status,
+        "summary": summary,
+        "next_action": next_action,
+        "artifacts": artifacts,
+    }
+
+
+def render_markdown(state: Dict[str, Any]) -> str:
+    payload_json = json.dumps(state, sort_keys=True, separators=(",", ":"))
+    digest = hashlib.sha256(payload_json.encode("utf-8")).hexdigest()
+    artifacts_md = "\n".join(f"- `{a}`" for a in state.get("artifacts", [])) or "- `NONE`"
+    lines = [
+        "# RESUME_STATE",
+        "",
+        f"- WRITTEN-AT: {state['written_at']}",
+        f"- RULE: Rule 77 (BD_MAX_TURNS={state['max_turns']})",
+        f"- SEAT: {state['seat']}",
+        f"- HOST: {state['host']}",
+        f"- TASK-ID: {state['task_id']}",
+        f"- TURN: {state['turn']}/{state['max_turns']}",
+        f"- LIMIT-REACHED: {'YES' if state['limit_reached'] else 'NO'}",
+        f"- MODEL: {state['model']}",
+        f"- ENDPOINT: {state['endpoint']}",
+        f"- CWD: {state['cwd']}",
+        f"- GIT-HEAD: {state['git_head']} ({state['git_branch']}, dirty={state['git_dirty_count']})",
+        f"- STATUS: {state['status']}",
+        f"- STATE-SHA256: {digest}",
+        "",
+        "## Summary",
+        state["summary"],
+        "",
+        "## Next Action",
+        state["next_action"],
+        "",
+        "## Artifacts",
+        artifacts_md,
+        "",
+        "## Machine State (JSON)",
+        "```json",
+        json.dumps(state, indent=2, sort_keys=True),
+        "```",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def parse_markdown(path: Path) -> Dict[str, Any]:
+    text = path.read_text(encoding="utf-8")
+    in_json = False
+    json_lines: list[str] = []
+    kv: Dict[str, str] = {}
+    for line in text.splitlines():
+        if line.strip() == "```json":
+            in_json = True
+            continue
+        if in_json:
+            if line.strip() == "```":
+                in_json = False
+                break
+            json_lines.append(line)
+            continue
+        if line.startswith("- ") and ":" in line:
+            k, v = line[2:].split(":", 1)
+            kv[k.strip()] = v.strip()
+
+    if json_lines:
+        data = json.loads("\n".join(json_lines))
+        if isinstance(data, dict):
+            data["_source_file"] = str(path)
+            if "STATE-SHA256" in kv:
+                data["state_sha256"] = kv["STATE-SHA256"]
+            return data
+
+    if not kv:
+        raise ValueError(f"No valid RESUME_STATE payload found in {path}")
+    return {
+        "schema": "bd-local-resume-state/v1-kv",
+        "_source_file": str(path),
+        "written_at": kv.get("WRITTEN-AT", ""),
+        "seat": kv.get("SEAT", "unknown"),
+        "task_id": kv.get("TASK-ID", "unknown"),
+        "turn_raw": kv.get("TURN", "20/20"),
+        "status": kv.get("STATUS", "CHECKPOINTED"),
+        "state_sha256": kv.get("STATE-SHA256", ""),
+    }
+
+
+def resolve_target_path(
+    arg_val: Any,
+    file_opt: Optional[str],
+    pos_path: Optional[str],
+    default_name: str = "RESUME_STATE.md",
+) -> Path:
+    if isinstance(arg_val, str) and arg_val.strip():
+        return Path(arg_val).expanduser().resolve()
+    if file_opt:
+        return Path(file_opt).expanduser().resolve()
+    if pos_path:
+        return Path(pos_path).expanduser().resolve()
+    env_file = os.environ.get("BD_RESUME_STATE_FILE")
+    if env_file:
+        return Path(env_file).expanduser().resolve()
+    return (Path.cwd() / default_name).resolve()
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="bd-local-resume-state",
+        description="Rule 77 (BD_MAX_TURNS=20 -> RESUME_STATE.md) checkpoint writer and resumption reader for headless local GPU worker seats.",
+    )
+    parser.add_argument(
+        "--write-test",
+        nargs="?",
+        const=True,
+        default=None,
+        metavar="FILE",
+        help="Write a synthetic Rule 77 turn-20 checkpoint to FILE (or default RESUME_STATE.md) and verify it.",
+    )
+    parser.add_argument(
+        "--write",
+        nargs="?",
+        const=True,
+        default=None,
+        metavar="FILE",
+        help="Write a Rule 77 checkpoint to FILE (or default RESUME_STATE.md).",
+    )
+    parser.add_argument(
+        "--read",
+        nargs="?",
+        const=True,
+        default=None,
+        metavar="FILE",
+        help="Read and validate a RESUME_STATE.md file for worker seat resumption.",
+    )
+    parser.add_argument(
+        "--check-turn",
+        type=int,
+        default=None,
+        metavar="TURN",
+        help="Check whether TURN >= BD_MAX_TURNS; if reached, write RESUME_STATE.md and exit 77 (or 0 with --no-exit-77).",
+    )
+    parser.add_argument("-f", "--file", default=None, help="Explicit path to RESUME_STATE.md.")
+    parser.add_argument("--seat", default=os.environ.get("BD_SEAT", "local-gpu-worker-01"))
+    parser.add_argument("--task-id", default=os.environ.get("BD_TASK_ID", "O1789-local-worker"))
+    parser.add_argument("--turn", type=int, default=int(os.environ.get("BD_TURN", "20")))
+    parser.add_argument(
+        "--max-turns",
+        type=int,
+        default=int(os.environ.get("BD_MAX_TURNS", str(DEFAULT_MAX_TURNS))),
+    )
+    parser.add_argument("--cwd", default=os.getcwd())
+    parser.add_argument(
+        "--model",
+        default=os.environ.get("BD_LOCAL_MODEL", "qwen2.5-coder-14b-instruct"),
+    )
+    parser.add_argument(
+        "--endpoint",
+        default=os.environ.get("BD_LOCAL_ENDPOINT", "http://10.0.10.137:4000/v1"),
+    )
+    parser.add_argument("--status", default="TURN_CAP_CHECKPOINT")
+    parser.add_argument(
+        "--summary",
+        default="Headless local GPU worker reached BD_MAX_TURNS=20; checkpoint persisted per Rule 77.",
+    )
+    parser.add_argument(
+        "--next-action",
+        default="Resume headless worker from RESUME_STATE.md without repeating completed turns.",
+    )
+    parser.add_argument(
+        "--artifact",
+        action="append",
+        default=[],
+        help="Artifact path to record in checkpoint (repeatable).",
+    )
+    parser.add_argument("--json", action="store_true", help="Emit JSON output on stdout.")
+    parser.add_argument(
+        "--prompt",
+        action="store_true",
+        help="Emit compact resumption prompt block when reading.",
+    )
+    parser.add_argument("path", nargs="?", default=None, help="Optional target path.")
+
+    args = parser.parse_args(argv)
+
+    if args.write_test is None and args.write is None and args.read is None and args.check_turn is None:
+        parser.print_help()
+        return 0
+
+    if args.check_turn is not None:
+        args.turn = args.check_turn
+        if args.turn >= args.max_turns:
+            args.write = True
+        else:
+            if args.json:
+                print(json.dumps({"turn": args.turn, "max_turns": args.max_turns, "limit_reached": False}))
+            else:
+                print(f"OK turn={args.turn}/{args.max_turns} (< BD_MAX_TURNS)")
+            return 0
+
+    if args.write_test is not None or args.write is not None:
+        raw_target = args.write_test if args.write_test is not None else args.write
+        target = resolve_target_path(raw_target, args.file, args.path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        turn_val = args.max_turns if args.write_test is not None else args.turn
+        state = build_state(
+            seat=args.seat,
+            task_id=args.task_id,
+            turn=turn_val,
+            max_turns=args.max_turns,
+            cwd=args.cwd,
+            model=args.model,
+            endpoint=args.endpoint,
+            status=args.status,
+            summary=args.summary,
+            next_action=args.next_action,
+            artifacts=args.artifact or [str(target)],
+        )
+        md = render_markdown(state)
+        target.write_text(md, encoding="utf-8")
+        if args.read is None:
+            if args.json:
+                print(json.dumps({"action": "write", "file": str(target), "turn": state["turn"], "max_turns": state["max_turns"], "rc": 0}))
+            else:
+                print(f"WROTE {target} (turn={state['turn']}/{state['max_turns']})")
+
+    if args.read is not None:
+        raw_target = args.read
+        if raw_target is True and isinstance(args.write_test, str):
+            raw_target = args.write_test
+        elif raw_target is True and isinstance(args.write, str):
+            raw_target = args.write
+        target = resolve_target_path(raw_target, args.file, args.path)
+        if not target.is_file():
+            print(f"ERROR: RESUME_STATE file not found: {target}", file=sys.stderr)
+            return 1
+        data = parse_markdown(target)
+        if args.prompt:
+            print(
+                f"RESUME SEAT={data.get('seat')} TASK={data.get('task_id')} "
+                f"TURN={data.get('turn')}/{data.get('max_turns')} "
+                f"HEAD={data.get('git_head')} NEXT={data.get('next_action')}"
+            )
+        elif args.json:
+            print(json.dumps(data, sort_keys=True))
+        else:
+            print(
+                f"READ {target} seat={data.get('seat')} task={data.get('task_id')} "
+                f"turn={data.get('turn')}/{data.get('max_turns')} status={data.get('status')} "
+                f"next=\"{data.get('next_action')}\""
+            )
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

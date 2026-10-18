@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+"""bd-local-rpc-ping: Measure TCP connect latency (ms) to 25GbE RoCEv2 llama-rpc & local service ports."""
+from __future__ import annotations
+
+import argparse
+import concurrent.futures
+import json
+import socket
+import sys
+import time
+from datetime import datetime, timezone
+
+ENDPOINTS = [
+    ("llama-rpc-11", [("10.0.75.11", 50052)]),
+    ("llama-rpc-12", [("10.0.75.12", 50052)]),
+    ("llama-rpc-13", [("10.0.75.13", 50052)]),
+    ("llama-rpc-14", [("10.0.75.14", 50052)]),
+    ("port-8081", [("127.0.0.1", 8081), ("10.0.75.11", 8081), ("10.0.70.125", 8081)]),
+    ("port-8082", [("127.0.0.1", 8082), ("10.0.75.11", 8082), ("10.0.70.125", 8082)]),
+    ("port-4010", [("127.0.0.1", 4010), ("10.0.75.11", 4010), ("10.0.75.13", 4010)]),
+    ("port-4000", [("127.0.0.1", 4000), ("10.0.75.13", 4000), ("10.0.70.228", 4000)]),
+]
+
+
+def probe_target(label: str, candidates: list[tuple[str, int]], timeout: float, samples: int) -> dict:
+    best_result = None
+    for host, port in candidates:
+        rtts: list[float] = []
+        err_msg = None
+        ok = False
+        for _ in range(samples):
+            t0 = time.perf_counter()
+            try:
+                with socket.create_connection((host, port), timeout=timeout):
+                    elapsed_ms = (time.perf_counter() - t0) * 1000.0
+                    rtts.append(elapsed_ms)
+                    ok = True
+            except Exception as exc:
+                elapsed_ms = (time.perf_counter() - t0) * 1000.0
+                err_msg = type(exc).__name__
+                if not rtts:
+                    rtts.append(elapsed_ms)
+                break
+        avg_ms = round(sum(rtts) / len(rtts), 3) if rtts else -1.0
+        min_ms = round(min(rtts), 3) if rtts else -1.0
+        res = {
+            "label": label,
+            "endpoint": f"{host}:{port}",
+            "port": port,
+            "status": "OK" if ok else f"DOWN({err_msg})",
+            "ok": ok,
+            "latency_ms": min_ms if ok else avg_ms,
+            "avg_ms": avg_ms,
+        }
+        if ok:
+            return res
+        if best_result is None:
+            best_result = res
+    assert best_result is not None
+    return best_result
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Measure TCP connect latency (ms) to RoCEv2 llama-rpc and service ports.")
+    parser.add_argument("--json", action="store_true", help="Emit JSON output")
+    parser.add_argument("--timeout", type=float, default=1.0, help="Socket timeout in seconds (default: 1.0)")
+    parser.add_argument("--samples", type=int, default=3, help="TCP connect samples per endpoint (default: 3)")
+    parser.add_argument("--strict", action="store_true", help="Exit non-zero if any endpoint is unreachable")
+    args = parser.parse_args()
+
+    results_map: dict[str, dict] = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(ENDPOINTS)) as pool:
+        futs = {
+            pool.submit(probe_target, label, cands, args.timeout, args.samples): label
+            for label, cands in ENDPOINTS
+        }
+        for fut in concurrent.futures.as_completed(futs):
+            label = futs[fut]
+            results_map[label] = fut.result()
+
+    ordered = [results_map[label] for label, _ in ENDPOINTS]
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    if args.json:
+        print(json.dumps({"written_at": ts, "endpoints": ordered}, indent=2))
+    else:
+        print(f"# bd-local-rpc-ping ({ts})")
+        print(f"{'LABEL':<14} {'ENDPOINT':<20} {'STATUS':<18} {'MIN_MS':>10} {'AVG_MS':>10}")
+        print("-" * 76)
+        for r in ordered:
+            print(
+                f"{r['label']:<14} {r['endpoint']:<20} {r['status']:<18} "
+                f"{r['latency_ms']:>9.3f}ms {r['avg_ms']:>9.3f}ms"
+            )
+
+    if args.strict and not all(r["ok"] for r in ordered):
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

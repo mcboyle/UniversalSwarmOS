@@ -1,0 +1,17 @@
+[Unit]
+Description=Boylenet Browser Multi-Node Terminal, Live Agent TV Wall & Receipt Explorer (:4083 / http://terminal.boylenet.themfboyles.com)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mboyle
+WorkingDirectory=/home/mboyle
+Environment="HOME=/home/mboyle"
+Environment="BD_TERMINAL_PORT=4083"
+ExecStart=/usr/bin/python3 /home/mboyle/bin/bd-web-terminal-drawer.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

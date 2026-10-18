@@ -1,0 +1,244 @@
+#!/usr/bin/env python3
+"""
+bd-local-lens-correctness — Boylenet specialized review-correctness lens runner.
+Queries http://10.0.70.164:4010/v1/chat/completions enforcing:
+  - Rule 76 JSON Consensus: {"round":"<id>","seat":"<seat>","verdict":"BOARD|REFUTE","findings":[...]}
+  - Rule 86 Behavioral Defect vs. Mutation Coverage Severance (Protocol F):
+    Surviving synthetic test mutants on sound candidate code are classified as
+    BOARD-WITH-ADVISORY (verdict="BOARD" in Rule 76 strict schema, with advisory metadata)
+    and NEVER trigger REFUTE. Only demonstrable behavioral defects, regressions against
+    baseline, or explicit fleet law violations may trigger REFUTE.
+  - Argon-4 Anti-Sycophancy: Zero deference to author claims, comments, or confidence;
+    verify actual control flow, data invariants, and runtime semantics.
+"""
+import argparse
+import json
+import os
+import re
+import sys
+import urllib.request
+import urllib.error
+
+DEFAULT_ENDPOINT = os.environ.get(
+    "BD_LOCAL_LENS_ENDPOINT", "http://10.0.70.164:4010/v1/chat/completions"
+)
+DEFAULT_MODELS_ENDPOINT = DEFAULT_ENDPOINT.rsplit("/chat/completions", 1)[0] + "/models"
+API_KEY = os.environ.get("LITELLM_API_KEY", os.environ.get("OPENAI_API_KEY", "sk-local-fleet"))
+
+SYSTEM_PROMPT = """You are a Boylenet `review-correctness` lens executing under strict Argon-4 Anti-Sycophancy, Rule 76 (JSON Consensus), and Rule 86 (Behavioral Defect vs. Mutation Coverage Severance / Protocol F).
+
+### OPERATING LAWS
+1. **Argon-4 Anti-Sycophancy**:
+   - Do NOT trust author comments, commit messages, PR descriptions, or self-certified claims of correctness.
+   - Trace the exact execution paths, state transitions, edge cases, return values, and error handling in the candidate code/diff.
+   - Never praise code or add conversational filler.
+
+2. **Rule 86 — Behavioral Defect vs. Mutation Coverage Severance (Protocol F)**:
+   - You may ONLY issue `"verdict": "REFUTE"` for:
+     (a) Demonstrable behavioral defects in candidate runtime code (e.g., wrong calculation, unhandled exception, state corruption, inverted condition, resource leak, off-by-one, data loss),
+     (b) Regression against baseline behavior, or
+     (c) Explicit Fleet Law violations.
+   - Surviving synthetic test mutants, missing mutation test kills, or coverage gaps on otherwise sound candidate code MUST be classified as `BOARD-WITH-ADVISORY` (`"verdict": "BOARD"`, `"classification": "BOARD-WITH-ADVISORY"`, `"findings": []`, with non-blocking coverage notes in `"advisories"`).
+   - Surviving test mutants NEVER block train integration and NEVER produce `"verdict": "REFUTE"`.
+   - Review Estoppel: never invent novel mutation coverage demands on untouched code.
+
+3. **Rule 76 — Strict JSON Consensus Output (Protocol B)**:
+   - Output ONLY a single valid JSON object (no markdown fences, no prose before or after) matching this schema:
+     {
+       "round": "<round_id>",
+       "seat": "<seat_id>",
+       "verdict": "BOARD" | "REFUTE",
+       "classification": "BOARD" | "BOARD-WITH-ADVISORY" | "REFUTE",
+       "findings": [
+         {
+           "file": "<path_or_symbol>",
+           "line": <int_or_range>,
+           "severity": "DEFECT",
+           "defect": "<concise machine description of demonstrable behavioral defect>"
+         }
+       ],
+       "advisories": [
+         "<non-blocking mutation coverage or advisory note if BOARD-WITH-ADVISORY>"
+       ]
+     }
+   - Invariant: If `"verdict"` is `"BOARD"`, `"findings"` MUST be `[]`.
+   - Invariant: If `"verdict"` is `"REFUTE"`, `"findings"` MUST be non-empty with concrete machine coordinates and defect proof.
+"""
+
+
+def resolve_model(requested_model: str | None) -> str:
+    if requested_model:
+        return requested_model
+    env_model = os.environ.get("BD_LOCAL_LENS_MODEL")
+    if env_model:
+        return env_model
+    try:
+        req = urllib.request.Request(
+            DEFAULT_MODELS_ENDPOINT,
+            headers={"Authorization": f"Bearer {API_KEY}"},
+        )
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            models = [m.get("id") for m in data.get("data", []) if m.get("id")]
+            for pref in ("coder", "qwen", "deepseek", "llama", "default"):
+                for m in models:
+                    if pref in m.lower():
+                        return m
+            if models:
+                return models[0]
+    except Exception:
+        pass
+    return "qwen2.5-coder:7b"
+
+
+def extract_json(raw_text: str) -> dict:
+    text = raw_text.strip()
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end >= start:
+        return json.loads(text[start : end + 1])
+    return json.loads(text)
+
+
+def normalize_verdict(payload: dict, round_id: str, seat_id: str) -> dict:
+    verdict = str(payload.get("verdict", "")).upper().strip()
+    classification = str(payload.get("classification", verdict)).upper().strip()
+    findings = payload.get("findings") or []
+    advisories = payload.get("advisories") or []
+
+    # Enforce Rule 86 severance post-guard: filter out any finding that is purely about
+    # surviving synthetic test mutants / mutation score / test coverage without a behavioral bug.
+    behavioral_findings = []
+    mutation_only_pat = re.compile(
+        r"\b(surviving\s+mutant|synthetic\s+mutant|mutation\s+coverage|mutation\s+score|mutant\s+survived)\b",
+        re.IGNORECASE,
+    )
+    defect_pat = re.compile(
+        r"\b(bug|defect|wrong|incorrect|exception|crash|corrupt|off-by-one|division by zero|null|none|mismatch|invert|leak|broken|regression)\b",
+        re.IGNORECASE,
+    )
+    for f in findings:
+        desc = json.dumps(f) if isinstance(f, dict) else str(f)
+        if mutation_only_pat.search(desc) and not defect_pat.search(desc):
+            advisories.append(
+                f"Rule 86 severed non-blocking mutation coverage note: {desc}"
+            )
+        else:
+            behavioral_findings.append(f)
+
+    if verdict == "BOARD-WITH-ADVISORY" or classification == "BOARD-WITH-ADVISORY":
+        if not behavioral_findings:
+            verdict = "BOARD"
+            classification = "BOARD-WITH-ADVISORY"
+
+    if verdict == "REFUTE" and not behavioral_findings:
+        verdict = "BOARD"
+        classification = "BOARD-WITH-ADVISORY" if advisories else "BOARD"
+
+    if verdict not in ("BOARD", "REFUTE"):
+        verdict = "REFUTE" if behavioral_findings else "BOARD"
+
+    if verdict == "BOARD":
+        behavioral_findings = []
+        if advisories and classification != "BOARD-WITH-ADVISORY":
+            classification = "BOARD-WITH-ADVISORY"
+        elif not advisories:
+            classification = "BOARD"
+    else:
+        classification = "REFUTE"
+
+    return {
+        "round": str(payload.get("round") or round_id),
+        "seat": str(payload.get("seat") or seat_id),
+        "verdict": verdict,
+        "classification": classification,
+        "findings": behavioral_findings,
+        "advisories": advisories,
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Boylenet review-correctness local lens runner (Rule 76 + Rule 86 + Argon-4)."
+    )
+    parser.add_argument("--round", default="R1", help="Review round ID (default: R1)")
+    parser.add_argument(
+        "--seat", default="review-correctness", help="Lens seat identifier"
+    )
+    parser.add_argument("--model", default=None, help="Override model ID")
+    parser.add_argument("--endpoint", default=DEFAULT_ENDPOINT, help="Chat completions URL")
+    parser.add_argument("--diff-file", default=None, help="Path to diff or code file")
+    parser.add_argument("--input", default=None, help="Inline diff/code/context string")
+    parser.add_argument("--timeout", type=float, default=45.0, help="HTTP timeout in seconds")
+    args = parser.parse_args()
+
+    if args.diff_file:
+        with open(args.diff_file, "r", encoding="utf-8") as fh:
+            candidate_input = fh.read()
+    elif args.input is not None:
+        candidate_input = args.input
+    elif not sys.stdin.isatty():
+        candidate_input = sys.stdin.read()
+    else:
+        parser.error("Provide candidate code/diff via --diff-file, --input, or stdin.")
+
+    model = resolve_model(args.model)
+    user_prompt = (
+        f"ROUND: {args.round}\n"
+        f"SEAT: {args.seat}\n\n"
+        "Evaluate the following candidate diff / code submission under Argon-4 Anti-Sycophancy, "
+        "Rule 76 (JSON Consensus BOARD|REFUTE), and Rule 86 (Behavioral Defect vs. Mutation Coverage Severance).\n\n"
+        "CANDIDATE SUBMISSION:\n"
+        f"{candidate_input}\n"
+    )
+
+    req_body = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": 0.0,
+        "max_tokens": 512,
+    }
+
+    req = urllib.request.Request(
+        args.endpoint,
+        data=json.dumps(req_body).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {API_KEY}",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=args.timeout) as resp:
+            raw_resp = json.loads(resp.read().decode("utf-8"))
+        content = raw_resp["choices"][0]["message"]["content"]
+        parsed = extract_json(content)
+        result = normalize_verdict(parsed, args.round, args.seat)
+    except Exception as exc:
+        print(
+            json.dumps(
+                {
+                    "round": args.round,
+                    "seat": args.seat,
+                    "verdict": "ERROR",
+                    "error": str(exc),
+                }
+            ),
+            file=sys.stderr,
+        )
+        return 2
+
+    print(json.dumps(result))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,69 @@
+#!/bin/bash
+# bd-pick-host -- print the least-loaded ready test host (O2548, operator). Read-only: one ssh probe per host, 3 s timeout.
+#   bd-pick-host           -> one IP (lowest load/core among reachable hosts with the BulkDownloader venv)
+#   bd-pick-host -n 3      -> the 3 best IPs, one per line
+#   bd-pick-host --table   -> name ip load cores score, best first
+#   bd-pick-host --seat [-n N|--table] -> SEAT hosts (O1789 launch-verified-host r1, ANSWER-dispatch-build-B-0051Z), the
+#     predicate bd-launch-role.sh --host gates on: (a) nfs-share.log (BD_NFS_LOG) latest apply=1 MOUNT for the IP rc=0
+#     and the latest VERIFY after it RESULT=PASS; (b) live rw probe: touch+rm a temp file in every BD_SEAT_RW_DIRS dir.
+#     A seat host is MEANT to be on writable NFS, so the writable-NFS exclusion and the venv check do not apply here.
+#     Every skipped host is printed on stderr with the reason. Default (test-host) mode is unchanged.
+# Also excluded: any host where /home/mboyle/bd-persist OR /home/mboyle/BulkDownloader is a WRITABLE network mount (operator 2026-10-10: check both; read-only NFS re-admitted after Item B).
+# Post-G6 embargo lift (PM bd-pm-A3-A): G5/G6.2 C+ hosts restored to the list (pre-G5 set) + the operator's released hosts.
+# Operator order (03:46Z, ledgered as O2899; the edit cited O2895 in error): Operator reservations rescinded. All ready hosts admitted.
+HOSTS=${BD_PICK_HOSTS:-"test1:10.0.70.194 test2:10.0.70.95 test3:10.0.70.80 test4:10.0.70.85 test6:10.0.70.249 test7:10.0.70.84
+ test3big:10.0.70.82 spare12:10.0.70.183 spare1:10.0.70.197 spare5:10.0.70.185 spare6:10.0.70.186 spare8:10.0.70.184
+ spare9:10.0.70.187 spare10:10.0.70.196 spare11:10.0.70.195 test:10.0.70.149 spare7:10.0.70.120 spare4:10.0.70.81"}
+SEAT=""; [ "${1:-}" = --seat ] && { SEAT=1; shift; }
+BD_NFS_LOG=${BD_NFS_LOG:-/home/mboyle/bd-persist/logs/nfs-share.log}
+BD_SEAT_RW_DIRS=${BD_SEAT_RW_DIRS:-/mnt/bd/bd-persist /mnt/bd/bd-local-wt /mnt/bd/bd-review-wt /mnt/bd/bd-cuts}
+# r2 (ROUTE-lensrouter-A-launch-verified-host-r1-REFUTE-HIGH-0257Z): a blank dir list probes nothing, so it is refused,
+# never passed; the dirs reach the remote shell as quoted argv (bd_q from lib_remote_seat.sh), never interpolated.
+# r3 (ROUTE-lensrouter-A-launch-verified-host-r2-REFUTE-0424Z F1): split on IFS (newlines too) exactly as the launcher
+# does, then refuse on the split count -- `read -a` stopped at the first newline, so $'\n<dir>' probed nothing and passed.
+if [ -n "$SEAT" ]; then
+  set -f
+  # shellcheck disable=SC2206  # the split IS the point: the same words the launcher probes
+  seat_dirs=($BD_SEAT_RW_DIRS); set +f
+  [ "${#seat_dirs[@]}" -gt 0 ] || { echo "bd-pick-host: RW-PROBE-REFUSED: BD_SEAT_RW_DIRS blank, no dir to probe" >&2; exit 3; }
+  BD_REMOTE_SEAT_LIB=${BD_REMOTE_SEAT_LIB:-/home/mboyle/bd-persist/harness/lib_remote_seat.sh}
+  . "$BD_REMOTE_SEAT_LIB" && declare -F bd_q > /dev/null || { echo "bd-pick-host: COULD NOT LOOK (no bd_q in $BD_REMOTE_SEAT_LIB)" >&2; exit 2; }
+fi
+seat_logged(){ # <ip>: same rule as bd-launch-role.sh bd_seat_host_logged
+  [ -r "$BD_NFS_LOG" ] || { echo "NO-NFS-LOG: $BD_NFS_LOG unreadable"; return 1; }
+  awk -F'\t' -v h="$1" '
+    { n = split($3, w, " "); if (n < 3 || (w[2] != h && w[3] != h)) next }
+    w[1] == "MOUNT" { ap = ""; rc = ""
+      for (i = 4; i <= n; i++) { if (w[i] ~ /^apply=/) ap = substr(w[i], 7); if (w[i] ~ /^rc=/) rc = substr(w[i], 4) }
+      if (ap == "1") { m = $1; mrc = rc; v = ""; vts = "" }
+      next }
+    w[1] == "VERIFY" && m != "" { v = "none"; for (i = 4; i <= n; i++) if (w[i] ~ /^RESULT=/) v = substr(w[i], 8); vts = $1 }
+    END { if (m == "")    { print "NO-MOUNT-ROW"; exit 1 }
+          if (mrc != "0") { print "MOUNT-RC=" mrc " (MOUNT " m ")"; exit 1 }
+          if (vts == "")  { print "NO-VERIFY-AFTER-MOUNT (MOUNT " m ")"; exit 1 }
+          if (v != "PASS") { print "VERIFY=" v " (" vts ")"; exit 1 } }' "$BD_NFS_LOG"; }
+N=1; MODE=ip
+case "${1:-}" in -n) N=${2:-1};; --table) MODE=table; N=99;; esac
+tmp=$(mktemp); trap 'rm -f "$tmp"' EXIT
+# H436 POOL-DRAIN (one IP per line, shared with bd-band-remote.sh) is honoured here too: a drained host is never picked
+# (RULING-pm-A3-A-81-disk-bands-1940Z.md: .81 out of rotation until it has space). BD_POOL_DRAIN: test override only
+# (r2 deviation, landing/ANSWER-build-D-0400Z.md item 3); the live default is unchanged.
+_drain=" $(grep -oE '^[0-9.]+' "${BD_POOL_DRAIN:-/home/mboyle/bd-persist/POOL-DRAIN}" 2>/dev/null | tr '\n' ' ') "
+for h in $HOSTS; do case "$_drain" in *" ${h#*:} "*) continue;; esac
+  ( n=${h%%:*}; ip=${h#*:}
+    if [ -n "$SEAT" ]; then
+      why=$(seat_logged "$ip") || { echo "bd-pick-host: SKIP $n $ip: $why" >&2; exit 0; }
+      r=$(timeout 5 ssh -o BatchMode=yes -o ConnectTimeout=3 mboyle@"$ip" \
+          "$(bd_q sh -c 'for d in "$@"; do f="$d/.bd-rw-probe.$0.$$"; touch "$f" 2>&1 || { echo "RW-PROBE-FAIL $d"; exit 1; }; rm -f "$f" 2>&1 || exit 1; done; echo "RW-PROBE-OK $(cut -d" " -f1 /proc/loadavg) $(nproc)"' pick-host "${seat_dirs[@]}")" 2>/dev/null); rc=$?
+      case "$r" in *RW-PROBE-OK*) r=${r##*RW-PROBE-OK } ;;
+        *) echo "bd-pick-host: SKIP $n $ip: RW-PROBE rc=$rc: $(printf '%s' "${r:-no answer}" | tr '\n' ' ' | cut -c1-200)" >&2; exit 0 ;; esac
+      set -- $r && awk -v n="$n" -v ip="$ip" -v l="$1" -v c="$2" 'BEGIN{printf "%s %s %s %s %.3f\n", n, ip, l, c, l/c}' >> "$tmp"
+      exit 0
+    fi
+    r=$(timeout 5 ssh -o BatchMode=yes -o ConnectTimeout=3 mboyle@"$ip" \
+        'for d in /home/mboyle/bd-persist /home/mboyle/BulkDownloader; do case "$(stat -f -L -c %T $d 2>/dev/null)" in nfs*|fuse*|cifs*|smb*) case ",$(findmnt -n -o OPTIONS -T $d 2>/dev/null)," in *,ro,*) ;; *) exit 0;; esac;; esac; done; [ -x /home/mboyle/BulkDownloader/venv/bin/python ] && echo "$(cut -d" " -f1 /proc/loadavg) $(nproc)"' 2>/dev/null)
+    [ -n "$r" ] && set -- $r && awk -v n="$n" -v ip="$ip" -v l="$1" -v c="$2" 'BEGIN{printf "%s %s %s %s %.3f\n", n, ip, l, c, l/c}' >> "$tmp"
+  ) &
+done; wait
+[ -s "$tmp" ] || { echo "bd-pick-host: COULD NOT LOOK (no host answered)" >&2; exit 2; }
+sort -k5,5g "$tmp" | head -n "$N" | if [ "$MODE" = table ]; then cat; else awk '{print $2}'; fi

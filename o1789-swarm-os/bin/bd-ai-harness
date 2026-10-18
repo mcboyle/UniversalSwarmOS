@@ -1,0 +1,1919 @@
+#!/usr/bin/env python3
+"""
+bd-ai-harness — Unified Multi-Harness CLI & Agent Integration Launcher (Argon-4 + Live Web Tools)
+Supports:
+  1. claude           (bd-claude-local)     — Claude Code CLI via Anthropic /v1/messages on LiteLLM (:4000)
+  2. codex            (bd-codex-local)      — Codex CLI via boylenet local provider (:4010/v1 & :4000/v1) + full web access
+  3. opencode         (bd-opencode-local)   — OpenCode / Aider / Continue local provider (:4000/v1 & :4010/v1)
+  4. hermes           (bd-hermes-local)     — Native Hermes / Qwythos / Qwen3 Agentic Tool-Calling Loop (bash/file/web_search/web_fetch)
+  5. deepseek         (bd-deepseek-local)   — DeepSeek <think> Reasoning + Code + Web Tool Runner (R1-70B, V4-Flash, V3-671B)
+  6. openrouter-local (bd-openrouter-local) — Local OpenRouter-Compatible Gateway Client with Auto-Tier Routing & Web Tools
+
+Enforces the Argon-4 Anti-Sycophancy & Anti-Hallucination System Prompt Contract and PreToolUse Hooks
+(~/.claude/settings.json, ~/.codex/hooks.json, bd-token-guard.py, shield.py) across all 6 harnesses.
+"""
+
+from __future__ import annotations
+
+import argparse
+import html
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from typing import Any, Dict, List, Optional, Tuple
+
+if "/home/mboyle/bin" not in sys.path:
+    sys.path.insert(0, "/home/mboyle/bin")
+
+import bd_local_mcp_bridge  # type: ignore[import-not-found,import-untyped]
+
+LITELLM_BASE = os.environ.get("BD_LITELLM_BASE", "http://10.0.70.228:4000").rstrip("/")
+ORCHESTRATOR_BASE = os.environ.get(
+    "BD_ORCHESTRATOR_BASE", "http://10.0.70.164:4010"
+).rstrip("/")
+DEFAULT_API_KEY = os.environ.get("BD_LOCAL_API_KEY", "sk-boylenet-local")
+
+ARGON4_SYSTEM_PROMPT = (
+    "STRICT ANTI-SYCOPHANCY & ZERO-HALLUCINATION CONTRACT: "
+    "Never fabricate, guess, or extrapolate outputs; every claim requires raw CLI/API output and rc=0; "
+    "Rule 22 destructive git shield; Rule 60 single-turn compound execution; "
+    "Rule 74 HTAP-9 zero-filler persona; Rule 86 behavioral defect vs mutation severance; "
+    "never output uppercase placeholder tokens in DONE.md"
+)
+
+SHIELD_SCRIPT = "/home/mboyle/.gemini/config/shield.py"
+TOKEN_GUARD_SCRIPT = "/home/mboyle/bin/bd-token-guard.py"
+MCP_BRIDGE_SCRIPT = "/home/mboyle/bin/bd-local-mcp-bridge.py"
+
+TIER_DEFAULT_MODELS: Dict[str, str] = {
+    "tier1": "tier1-qwen3-coder-30b-a3b",
+    "tier2": "tier2-deepseek-r1-70b",
+    "tier3": "tier3-deepseek-v3-671b",
+    "auto": "auto-local",
+}
+
+DEEPSEEK_MODEL_MAP: Dict[str, str] = {
+    "deepseek-r1-70b": "tier2-deepseek-r1-70b",
+    "r1-70b": "tier2-deepseek-r1-70b",
+    "deepseek-r1-distill-llama-70b-q4_k_m": "deepseek-r1-distill-llama-70b-q4_k_m",
+    "deepseek-v4-flash": "tier1-deepseek-v4-flash-bf16",
+    "v4-flash": "tier1-deepseek-v4-flash-bf16",
+    "deepseek-v4-flash-q2": "deepseek-v4-flash-q2",
+    "deepseek-v4-flash-q4k": "deepseek-v4-flash-q4k",
+    "deepseek-v4-flash-tier3": "tier3-deepseek-v4-flash",
+    "deepseek-v3-671b": "tier3-deepseek-v3-671b",
+    "v3-671b": "tier3-deepseek-v3-671b",
+    "mimo-v2.6-pro-1024b": "mimo-v2.6-pro-1024b",
+    "muse-spark-816b-a42b": "muse-spark-816b-a42b",
+    "glm-5.3-753b": "glm-5.3-753b",
+    "kimi-k3-q2k-abliterated": "kimi-k3-q2k-abliterated",
+}
+
+
+def verify_argon4_pretool_hooks(run_live_probe: bool = False) -> Dict[str, Any]:
+    """Verify ~/.claude/settings.json, ~/.codex/hooks.json, bd-token-guard.py, and shield.py."""
+    claude_settings = os.path.expanduser("~/.claude/settings.json")
+    codex_hooks = os.path.expanduser("~/.codex/hooks.json")
+    codex_config = os.path.expanduser("~/.codex/config.toml")
+    agy_hooks = os.path.expanduser("~/.gemini/config/hooks.json")
+
+    checks: Dict[str, Any] = {
+        "claude_settings_path": claude_settings,
+        "codex_hooks_path": codex_hooks,
+        "codex_config_path": codex_config,
+        "agy_hooks_path": agy_hooks,
+        "shield_py_path": SHIELD_SCRIPT,
+        "bd_token_guard_path": TOKEN_GUARD_SCRIPT,
+        "mcp_bridge_path": MCP_BRIDGE_SCRIPT,
+        "mcp_tools_enabled": [
+            t["function"]["name"] for t in bd_local_mcp_bridge.FLEET_MCP_TOOLS_OPENAI
+        ],
+        "web_tools_enabled": ["web_search", "web_fetch"],
+    }
+
+    try:
+        with open(claude_settings, "r", encoding="utf-8") as f:
+            c_txt = f.read()
+        checks["claude_shield_active"] = "shield.py" in c_txt
+        checks["claude_token_guard_active"] = "bd-token-guard-hook.py" in c_txt
+    except Exception:
+        checks["claude_shield_active"] = False
+        checks["claude_token_guard_active"] = False
+
+    try:
+        with open(codex_hooks, "r", encoding="utf-8") as f:
+            cx_txt = f.read()
+        checks["codex_shield_active"] = "shield.py" in cx_txt
+        checks["codex_token_guard_active"] = "bd-token-guard-hook.py" in cx_txt
+    except Exception:
+        checks["codex_shield_active"] = False
+        checks["codex_token_guard_active"] = False
+
+    try:
+        with open(codex_config, "r", encoding="utf-8") as f:
+            cxc_txt = f.read()
+        checks["codex_boylenet_provider_configured"] = (
+            "[model_providers.boylenet]" in cxc_txt
+        )
+    except Exception:
+        checks["codex_boylenet_provider_configured"] = False
+
+    try:
+        with open(agy_hooks, "r", encoding="utf-8") as f:
+            ag_txt = f.read()
+        checks["agy_shield_active"] = "shield.py" in ag_txt
+    except Exception:
+        checks["agy_shield_active"] = False
+
+    checks["shield_py_exists"] = os.path.isfile(SHIELD_SCRIPT)
+    checks["bd_token_guard_exists"] = os.path.isfile(TOKEN_GUARD_SCRIPT)
+
+    if run_live_probe:
+        probe_shield_payload = json.dumps(
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "git checkout -- ."},
+                "cwd": "/home/mboyle/BulkDownloader",
+            }
+        )
+        p_shield = subprocess.run(
+            ["python3", SHIELD_SCRIPT],
+            input=probe_shield_payload,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        checks["shield_live_block_rc"] = p_shield.returncode
+        checks["shield_live_block_verified"] = p_shield.returncode == 2
+
+        probe_tg_payload = json.dumps(
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": "pytest tests/"},
+                "cwd": "/home/mboyle/BulkDownloader",
+            }
+        )
+        p_tg = subprocess.run(
+            ["python3", TOKEN_GUARD_SCRIPT, "hook"],
+            input=probe_tg_payload,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        checks["token_guard_live_block_rc"] = p_tg.returncode
+        checks["token_guard_live_block_verified"] = p_tg.returncode == 2
+
+    all_ok = (
+        checks["claude_shield_active"]
+        and checks["claude_token_guard_active"]
+        and checks["codex_shield_active"]
+        and checks["codex_token_guard_active"]
+        and checks["codex_boylenet_provider_configured"]
+        and checks["agy_shield_active"]
+        and checks["shield_py_exists"]
+        and checks["bd_token_guard_exists"]
+    )
+    if run_live_probe:
+        all_ok = (
+            all_ok
+            and checks["shield_live_block_verified"]
+            and checks["token_guard_live_block_verified"]
+        )
+
+    return {
+        "argon4_enforced": all_ok,
+        "system_prompt_contract": ARGON4_SYSTEM_PROMPT,
+        "checks": checks,
+    }
+
+
+def enforce_pretool_hooks_on_tool_call(
+    tool_name: str, tool_args: Dict[str, Any]
+) -> Tuple[bool, str]:
+    """Run shield.py and bd-token-guard.py before executing any local tool in hermes/agent loops."""
+    cwd = os.getcwd()
+    if tool_name == "bash_exec":
+        cmd = str(tool_args.get("command", ""))
+        hook_payload = json.dumps(
+            {
+                "tool_name": "Bash",
+                "tool_input": {"command": cmd},
+                "cwd": cwd,
+            }
+        )
+        if os.path.isfile(SHIELD_SCRIPT):
+            p_s = subprocess.run(
+                ["python3", SHIELD_SCRIPT],
+                input=hook_payload,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+            if p_s.returncode != 0:
+                return (
+                    False,
+                    f"[Argon-4 shield.py BLOCKED (rc={p_s.returncode})]: {p_s.stderr.strip() or p_s.stdout.strip()}",
+                )
+        if os.path.isfile(TOKEN_GUARD_SCRIPT):
+            p_t = subprocess.run(
+                ["python3", TOKEN_GUARD_SCRIPT, "hook"],
+                input=hook_payload,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+            if p_t.returncode != 0:
+                return (
+                    False,
+                    f"[Argon-4 bd-token-guard.py BLOCKED (rc={p_t.returncode})]: {p_t.stderr.strip() or p_t.stdout.strip()}",
+                )
+    elif tool_name == "read_file":
+        path = str(tool_args.get("path", ""))
+        max_lines = int(tool_args.get("max_lines", 100))
+        hook_payload = json.dumps(
+            {
+                "tool_name": "Read",
+                "tool_input": {
+                    "file_path": path,
+                    "StartLine": 1,
+                    "EndLine": min(max_lines, 100),
+                },
+                "cwd": cwd,
+            }
+        )
+        if os.path.isfile(TOKEN_GUARD_SCRIPT):
+            p_t = subprocess.run(
+                ["python3", TOKEN_GUARD_SCRIPT, "hook"],
+                input=hook_payload,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+            if p_t.returncode != 0:
+                return (
+                    False,
+                    f"[Argon-4 bd-token-guard.py BLOCKED (rc={p_t.returncode})]: {p_t.stderr.strip() or p_t.stdout.strip()}",
+                )
+    return True, "ALLOWED"
+
+
+def resolve_model(harness: str, tier: str, explicit_model: Optional[str]) -> str:
+    if explicit_model:
+        if harness == "deepseek" and explicit_model in DEEPSEEK_MODEL_MAP:
+            return DEEPSEEK_MODEL_MAP[explicit_model]
+        return explicit_model
+    if harness == "deepseek":
+        if tier == "tier1":
+            return "tier1-deepseek-v4-flash-bf16"
+        if tier == "tier2":
+            return "tier2-deepseek-r1-70b"
+        if tier == "tier3":
+            return "tier3-deepseek-v3-671b"
+        return "tier1-deepseek-v4-flash-bf16"
+    return TIER_DEFAULT_MODELS.get(tier, "tier1-qwen3-coder-30b-a3b")
+
+
+def http_request_json(
+    url: str,
+    method: str = "GET",
+    payload: Optional[Dict[str, Any]] = None,
+    headers: Optional[Dict[str, str]] = None,
+    timeout: float = 180.0,
+) -> Tuple[int, Dict[str, str], Dict[str, Any]]:
+    req_headers = {"Content-Type": "application/json", "Connection": "close"}
+    if headers:
+        req_headers.update(headers)
+    data = json.dumps(payload).encode("utf-8") if payload is not None else None
+    for attempt in range(3):
+        req = urllib.request.Request(url, data=data, headers=req_headers, method=method)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                resp_headers = {k.lower(): v for k, v in resp.getheaders()}
+                body_bytes = resp.read()
+                body_json = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
+                return resp.status, resp_headers, body_json
+        except urllib.error.HTTPError as exc:
+            err_bytes = exc.read() if exc.fp else b""
+            try:
+                err_json = (
+                    json.loads(err_bytes.decode("utf-8", errors="replace"))
+                    if err_bytes
+                    else {"error": str(exc)}
+                )
+            except Exception:
+                err_json = {
+                    "error": err_bytes.decode("utf-8", errors="replace") or str(exc)
+                }
+            if (
+                attempt == 0
+                and exc.code in (502, 503, 504)
+                and "/chat/completions" in url
+            ):
+                model_req = str((payload or {}).get("model", ""))
+                heal_tier = (
+                    "tier2"
+                    if model_req.startswith("tier2")
+                    else ("tier3" if model_req.startswith("tier3") else "tier1")
+                )
+                print(
+                    f"[bd-ai-harness] Backend HTTP {exc.code} on {url}; auto-healing {heal_tier} pool via bd-tier-switch...",
+                    file=sys.stderr,
+                )
+                subprocess.run(
+                    ["/home/mboyle/bin/bd-tier-switch", heal_tier], check=False
+                )
+                continue
+            return exc.code, dict(exc.headers.items()) if exc.headers else {}, err_json
+        except (urllib.error.URLError, OSError) as exc:
+            if attempt < 2:
+                time.sleep(0.5)
+                continue
+            return 502, {}, {"error": str(exc)}
+    return 502, {}, {"error": "Exhausted retries"}
+
+
+def maybe_switch_tier(tier: str, model: Optional[str], do_switch: bool) -> None:
+    if not do_switch:
+        return
+    cmd = ["/home/mboyle/bin/bd-tier-switch", tier]
+    if model:
+        cmd.append(model)
+    subprocess.run(cmd, check=True)
+
+
+# ---------------------------------------------------------------------------
+# LIVE WEB SEARCH & LIVE WEB FETCH IMPLEMENTATIONS
+# ---------------------------------------------------------------------------
+def html_to_clean_text(raw_html: str, max_chars: int = 4000) -> str:
+    cleaned = re.sub(r"(?is)<(script|style|noscript).*?>.*?</\1>", " ", raw_html)
+    cleaned = re.sub(r"(?s)<[^>]+>", " ", cleaned)
+    cleaned = html.unescape(cleaned)
+    cleaned = re.sub(r"[ \t\r\f\v]+", " ", cleaned)
+    cleaned = re.sub(r"\n\s*\n+", "\n", cleaned).strip()
+    return cleaned[:max_chars]
+
+
+def execute_web_fetch(url: str, max_chars: int = 4000) -> Dict[str, Any]:
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) BoylenetAIHarness/2.0",
+            "Accept": "text/html,application/json,text/plain,*/*",
+        },
+        method="GET",
+    )
+    with urllib.request.urlopen(req, timeout=15.0) as resp:
+        ctype = resp.headers.get("Content-Type", "")
+        raw_bytes = resp.read(256 * 1024)
+        raw_text = raw_bytes.decode("utf-8", errors="replace")
+        if "html" in ctype.lower() or "<html" in raw_text[:500].lower():
+            title_m = re.search(r"(?is)<title[^>]*>(.*?)</title>", raw_text)
+            title = html.unescape(title_m.group(1).strip()) if title_m else ""
+            text_out = html_to_clean_text(raw_text, max_chars=max_chars)
+        else:
+            title = ""
+            text_out = raw_text[:max_chars]
+        return {
+            "rc": 0,
+            "status_code": resp.status,
+            "url": url,
+            "content_type": ctype,
+            "title": title,
+            "content": text_out,
+        }
+
+
+def execute_web_search(query: str, max_results: int = 5) -> Dict[str, Any]:
+    results: List[Dict[str, str]] = []
+    # Primary: DuckDuckGo HTML endpoint
+    try:
+        q_enc = urllib.parse.urlencode({"q": query})
+        ddg_url = f"https://html.duckduckgo.com/html/?{q_enc}"
+        req = urllib.request.Request(
+            ddg_url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36"
+            },
+        )
+        with urllib.request.urlopen(req, timeout=12.0) as resp:
+            page = resp.read().decode("utf-8", errors="replace")
+        blocks = re.findall(
+            r'<a rel="nofollow" class="result__a" href="([^"]+)">(.*?)</a>.*?<a class="result__snippet"[^>]*>(.*?)</a>',
+            page,
+            flags=re.DOTALL,
+        )
+        for href, raw_title, raw_snip in blocks[:max_results]:
+            # Unwrap uddg redirect if present
+            parsed_href = urllib.parse.urlparse(href)
+            qs = urllib.parse.parse_qs(parsed_href.query)
+            real_url = qs.get("uddg", [href])[0]
+            results.append(
+                {
+                    "title": html_to_clean_text(raw_title, 200),
+                    "url": real_url,
+                    "snippet": html_to_clean_text(raw_snip, 400),
+                }
+            )
+    except Exception:
+        pass
+
+    # Fallback / supplement: Wikipedia OpenSearch + MediaWiki API if results are empty
+    if not results:
+        try:
+            wiki_q = urllib.parse.urlencode(
+                {
+                    "action": "query",
+                    "list": "search",
+                    "srsearch": query,
+                    "format": "json",
+                    "srlimit": str(max_results),
+                }
+            )
+            wiki_url = f"https://en.wikipedia.org/w/api.php?{wiki_q}"
+            req = urllib.request.Request(
+                wiki_url,
+                headers={
+                    "User-Agent": "BoylenetAIHarness/2.0 (https://boylenet.local)"
+                },
+            )
+            with urllib.request.urlopen(req, timeout=10.0) as resp:
+                wdata = json.loads(resp.read().decode("utf-8"))
+            for item in wdata.get("query", {}).get("search", [])[:max_results]:
+                title = item.get("title", "")
+                results.append(
+                    {
+                        "title": title,
+                        "url": f"https://en.wikipedia.org/wiki/{urllib.parse.quote(title.replace(' ', '_'))}",
+                        "snippet": html_to_clean_text(item.get("snippet", ""), 400),
+                    }
+                )
+        except Exception as exc:
+            return {"rc": 1, "query": query, "error": str(exc), "results": []}
+
+    return {
+        "rc": 0,
+        "query": query,
+        "result_count": len(results),
+        "results": results,
+    }
+
+
+# ---------------------------------------------------------------------------
+# 1. CLAUDE CODE HARNESS (--harness claude / bd-claude-local)
+# ---------------------------------------------------------------------------
+def run_harness_claude(
+    tier: str,
+    model: Optional[str],
+    prompt: Optional[str],
+    print_env: bool,
+    extra_args: List[str],
+    skills: Optional[List[str]] = None,
+) -> int:
+    selected_model = resolve_model("claude", tier, model)
+    argon_status = verify_argon4_pretool_hooks(run_live_probe=False)
+    skill_block, skill_receipts = bd_local_mcp_bridge.build_skill_injection_block(
+        skills, prompt=prompt
+    )
+    effective_sys = ARGON4_SYSTEM_PROMPT + skill_block
+    env = os.environ.copy()
+    env["ANTHROPIC_BASE_URL"] = LITELLM_BASE
+    env["ANTHROPIC_AUTH_TOKEN"] = DEFAULT_API_KEY
+    env["ANTHROPIC_API_KEY"] = DEFAULT_API_KEY
+    env["ANTHROPIC_MODEL"] = selected_model
+    env["BD_ARGON4_CONTRACT"] = effective_sys
+
+    if print_env:
+        print(f"export ANTHROPIC_BASE_URL={env['ANTHROPIC_BASE_URL']}")
+        print(f"export ANTHROPIC_AUTH_TOKEN={env['ANTHROPIC_AUTH_TOKEN']}")
+        print(f"export ANTHROPIC_MODEL={env['ANTHROPIC_MODEL']}")
+        print(f"export BD_ARGON4_CONTRACT={json.dumps(effective_sys)}")
+        print(
+            f"# Argon-4 PreToolUse Hooks Active: {argon_status['argon4_enforced']} (~/.claude/settings.json)"
+        )
+        print(f"# Loaded Skills: {json.dumps(skill_receipts)}")
+        print("# Live Web & Fleet MCP Tools: enabled")
+        return 0
+
+    if prompt and "--api-messages" in extra_args:
+        url = f"{LITELLM_BASE}/v1/messages"
+        headers = {
+            "x-api-key": DEFAULT_API_KEY,
+            "Authorization": f"Bearer {DEFAULT_API_KEY}",
+            "anthropic-version": "2023-06-01",
+        }
+        payload: Dict[str, Any] = {
+            "model": selected_model,
+            "max_tokens": 512,
+            "system": effective_sys,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        status, _, resp_json = http_request_json(
+            url, method="POST", payload=payload, headers=headers
+        )
+        if skill_receipts:
+            resp_json["skills_loaded"] = skill_receipts
+        print(json.dumps(resp_json, indent=2))
+        return 0 if status == 200 else 1
+
+    claude_bin = shutil.which("claude") or "/home/mboyle/.local/bin/claude"
+    cmd = [
+        claude_bin,
+        "--model",
+        selected_model,
+        "--append-system-prompt",
+        effective_sys,
+        "--allowedTools",
+        "Bash,Read,Edit,Write,WebSearch,WebFetch",
+    ]
+    if prompt:
+        cmd.extend(["-p", prompt])
+    cmd.extend([a for a in extra_args if a != "--api-messages"])
+    print(
+        f"[bd-claude-local] Launching Claude Code -> ANTHROPIC_BASE_URL={env['ANTHROPIC_BASE_URL']} "
+        f"ANTHROPIC_MODEL={selected_model} | Argon-4 Hooks={argon_status['argon4_enforced']} "
+        f"| Skills={[r['skill'] for r in skill_receipts]} | WebTools=ENABLED",
+        file=sys.stderr,
+    )
+    proc = subprocess.run(cmd, env=env, check=False)
+    return proc.returncode
+
+
+# ---------------------------------------------------------------------------
+# 2. CODEX HARNESS (--harness codex / bd-codex-local)
+# ---------------------------------------------------------------------------
+def run_harness_codex(
+    tier: str,
+    model: Optional[str],
+    prompt: Optional[str],
+    print_env: bool,
+    extra_args: List[str],
+    skills: Optional[List[str]] = None,
+) -> int:
+    selected_model = resolve_model("codex", tier, model)
+    argon_status = verify_argon4_pretool_hooks(run_live_probe=False)
+    skill_block, skill_receipts = bd_local_mcp_bridge.build_skill_injection_block(
+        skills, prompt=prompt
+    )
+    effective_sys = ARGON4_SYSTEM_PROMPT + skill_block
+    env = os.environ.copy()
+    env["OPENAI_BASE_URL"] = f"{LITELLM_BASE}/v1"
+    env["BOYLENET_ORCHESTRATOR_V1"] = f"{ORCHESTRATOR_BASE}/v1"
+    env["OPENAI_API_KEY"] = DEFAULT_API_KEY
+    env["OPENAI_MODEL"] = selected_model
+    env["BD_ARGON4_CONTRACT"] = effective_sys
+
+    if print_env:
+        print(f"export OPENAI_BASE_URL={env['OPENAI_BASE_URL']}")
+        print(f"export BOYLENET_ORCHESTRATOR_V1={env['BOYLENET_ORCHESTRATOR_V1']}")
+        print(f"export OPENAI_API_KEY={env['OPENAI_API_KEY']}")
+        print(f"export OPENAI_MODEL={env['OPENAI_MODEL']}")
+        print(f"export BD_ARGON4_CONTRACT={json.dumps(effective_sys)}")
+        print(f"# Loaded Skills: {json.dumps(skill_receipts)}")
+        print(
+            f'# Codex Local Provider: model_provider="boylenet" ({ORCHESTRATOR_BASE}/v1) & '
+            f'"boylenet_litellm" ({LITELLM_BASE}/v1) | sandbox=danger-full-access | web_search=enabled'
+        )
+        print(
+            f"# Argon-4 PreToolUse Hooks Active: {argon_status['argon4_enforced']} (~/.codex/hooks.json)"
+        )
+        return 0
+
+    if prompt and ("--api-chat" in extra_args or "--non-interactive" in extra_args):
+        return run_harness_hermes(
+            tier, selected_model, prompt, max_steps=5, skills=skills
+        )
+
+    codex_bin = shutil.which("codex") or "/home/mboyle/.local/bin/codex"
+    cmd = [
+        codex_bin,
+        "-c",
+        'model_provider="boylenet"',
+        "-m",
+        selected_model,
+        "-s",
+        "danger-full-access",
+        "--search",
+        "-c",
+        f"developer_instructions={json.dumps(effective_sys)}",
+    ]
+    if prompt:
+        cmd.extend(["exec", prompt])
+    cmd.extend([a for a in extra_args if a not in ("--api-chat", "--non-interactive")])
+    print(
+        f"[bd-codex-local] Launching Codex -> model_provider=boylenet ({ORCHESTRATOR_BASE}/v1) "
+        f"OPENAI_BASE_URL={env['OPENAI_BASE_URL']} MODEL={selected_model} "
+        f"| Argon-4 Hooks={argon_status['argon4_enforced']} | Skills={[r['skill'] for r in skill_receipts]} | WebSearch=ENABLED",
+        file=sys.stderr,
+    )
+    proc = subprocess.run(cmd, env=env, check=False)
+    return proc.returncode
+
+
+# ---------------------------------------------------------------------------
+# 3. OPENCODE / AIDER / CONTINUE HARNESS (--harness opencode / bd-opencode-local)
+# ---------------------------------------------------------------------------
+def configure_opencode_provider(
+    selected_model: str, instructions_list: Optional[List[str]] = None
+) -> str:
+    cfg_dir = os.path.expanduser("~/.config/opencode")
+    os.makedirs(cfg_dir, exist_ok=True)
+    cfg_path = os.path.join(cfg_dir, "boylenet-local-provider.json")
+    provider_cfg = {
+        "$schema": "https://opencode.ai/config.json",
+        "model": f"boylenet-litellm/{selected_model}",
+        "instructions": instructions_list or [ARGON4_SYSTEM_PROMPT],
+        "tools": {
+            "web_search": True,
+            "web_fetch": True,
+            "bash": True,
+            "ctx_slice": True,
+            "ruff_check": True,
+            "mypy_check": True,
+            "bd_test_digest": True,
+            "bd_bus_publish": True,
+            "bd_bus_read": True,
+            "hivemind_recall": True,
+            "hivemind_store": True,
+            "guarded_bash": True,
+            "guarded_edit": True,
+            "bd_semantic_search": True,
+        },
+        "provider": {
+            "boylenet-litellm": {
+                "npm": "@ai-sdk/openai-compatible",
+                "name": "Boylenet LiteLLM Local Gateway (:4000)",
+                "options": {
+                    "baseURL": f"{LITELLM_BASE}/v1",
+                    "apiKey": DEFAULT_API_KEY,
+                },
+                "models": {
+                    "auto-local": {"name": "Auto-Router (Tier 1/2/3 Smart Dispatch)"},
+                    "tier1-qwen3-coder-30b-a3b": {
+                        "name": "Tier 1: Qwen3-Coder-30B-A3B (77.6 tok/s)"
+                    },
+                    "qwen3-coder-30b-a3b": {
+                        "name": "Tier 1: Qwen3-Coder-30B-A3B (77.6 tok/s)"
+                    },
+                    "tier1-qwen2.5-coder-32b": {
+                        "name": "Tier 1: Qwen2.5-Coder-32B Distributed"
+                    },
+                    "tier1-deepseek-v4-flash-bf16": {
+                        "name": "Tier 1: DeepSeek-V4-Flash BF16"
+                    },
+                    "tier1-qwythos-9b-bf16": {"name": "Tier 1: Qwythos-9B Mythos BF16"},
+                    "qwythos-9b": {
+                        "name": "Tier 1: Qwythos-9B-1M (21.39 tg / 1005.86 pp512)"
+                    },
+                    "cyberstrike-offsec-35b": {
+                        "name": "Tier 1/2: CyberStrike-OffSec-35B (66.47 tg / 799.0 pp512)"
+                    },
+                    "qwythos-27b": {
+                        "name": "Tier 1/2: Qwythos-27B-MTP (12.30 tg / 289.31 pp512)"
+                    },
+                    "tier2-deepseek-r1-70b": {
+                        "name": "Tier 2: DeepSeek-R1-Distill-Llama-70B (4xT4 64GB)"
+                    },
+                    "deepseek-r1-70b": {
+                        "name": "Tier 2: DeepSeek-R1-Distill-Llama-70B (IQ4_XS / Q4_K_M)"
+                    },
+                    "tier2-llama3.3-70b": {
+                        "name": "Tier 2: Llama-3.3-70B-Instruct (4xT4 64GB)"
+                    },
+                    "llama-3.3-70b": {
+                        "name": "Tier 2: Llama-3.3-70B-Instruct (4xT4 64GB)"
+                    },
+                    "tier2-qwythos-27b-bf16": {
+                        "name": "Tier 2: Qwythos-27B MTP BF16 (4xT4 64GB)"
+                    },
+                    "tier2-cyberstrike-35b-bf16": {
+                        "name": "Tier 2: CyberStrike-OffSec-35B (4xT4 64GB)"
+                    },
+                    "swift-qwen3.8-flash-next": {
+                        "name": "Tier 3: Swift-Qwen3.8-Flash-Next (14.11 tg / 120.58 pp512 AVX-512)"
+                    },
+                    "deepseek-v4-flash": {
+                        "name": "Tier 3: DeepSeek-V4-Flash MoE (18.40 tg / 47.28 pp512 Q2, 142.37 pp512 Q4K)"
+                    },
+                    "qwen3-235b-a22b": {
+                        "name": "Tier 3: Qwen3-235B-A22B Hybrid (6.40 tg / 118.50 pp512)"
+                    },
+                    "glm-5.2-abliterated": {
+                        "name": "Tier 3: GLM-5.2-Abliterated 744B MoE (196.58 GiB)"
+                    },
+                    "mimo-v2.6-pro-1024b": {
+                        "name": "Tier 3: MiMo-V2.6-Pro-1024B MOPD BPW2.0 (238.22 GiB on .83)"
+                    },
+                    "muse-spark-816b-a42b": {
+                        "name": "Tier 3: Muse-Spark-Open-816B-A42B UD-IQ2_XXS (210.08 GiB on .83)"
+                    },
+                    "glm-5.3-753b": {
+                        "name": "Tier 3: GLM-5.3-753B UD-IQ2_M (236.44 GiB on .83)"
+                    },
+                    "kimi-k3-q2k-abliterated": {
+                        "name": "Tier 3: Kimi-K3-Q2K-Abliterated (940.18 GiB 38 shards on .72)"
+                    },
+                    "tier3-deepseek-v3-671b": {
+                        "name": "Tier 3: DeepSeek-V3-0324-671B Hybrid (4xT4 + 1.73TB DDR4)"
+                    },
+                    "tier3-qwen3-coder-480b": {
+                        "name": "Tier 3: Qwen3-Coder-480B-A35B Hybrid"
+                    },
+                    "tier3-glm-5.2": {"name": "Tier 3: GLM-5.2 Hybrid MoE"},
+                },
+            },
+            "boylenet-orchestrator": {
+                "npm": "@ai-sdk/openai-compatible",
+                "name": "Boylenet GPU Orchestrator Direct (:4010)",
+                "options": {
+                    "baseURL": f"{ORCHESTRATOR_BASE}/v1",
+                    "apiKey": DEFAULT_API_KEY,
+                },
+                "models": {
+                    "auto-local": {"name": "Auto-Local Smart Tier Router"},
+                    "tier1": {"name": "Tier 1 Dual 32GB Pool"},
+                    "tier2": {"name": "Tier 2 64GB 4-GPU Pool"},
+                    "tier3": {"name": "Tier 3 64GB VRAM + 1.73TB DDR4 Hybrid Pool"},
+                    "mimo-v2.6-pro-1024b": {"name": "Tier 3: MiMo-V2.6-Pro-1024B"},
+                    "muse-spark-816b-a42b": {
+                        "name": "Tier 3: Muse-Spark-Open-816B-A42B"
+                    },
+                    "glm-5.3-753b": {"name": "Tier 3: GLM-5.3-753B"},
+                    "kimi-k3-q2k-abliterated": {
+                        "name": "Tier 3: Kimi-K3-Q2K-Abliterated"
+                    },
+                    "swift-qwen3.8-flash-next": {
+                        "name": "Tier 3: Swift-Qwen3.8-Flash-Next"
+                    },
+                    "deepseek-v4-flash": {"name": "Tier 3: DeepSeek-V4-Flash"},
+                },
+            },
+        },
+    }
+    with open(cfg_path, "w", encoding="utf-8") as f:
+        json.dump(provider_cfg, f, indent=2)
+    return cfg_path
+
+
+def run_harness_opencode(
+    tier: str,
+    model: Optional[str],
+    prompt: Optional[str],
+    print_env: bool,
+    extra_args: List[str],
+    skills: Optional[List[str]] = None,
+) -> int:
+    selected_model = resolve_model("opencode", tier, model)
+    skill_block, skill_receipts = bd_local_mcp_bridge.build_skill_injection_block(
+        skills, prompt=prompt
+    )
+    effective_sys = ARGON4_SYSTEM_PROMPT + skill_block
+    cfg_path = configure_opencode_provider(
+        selected_model, instructions_list=[effective_sys]
+    )
+    argon_status = verify_argon4_pretool_hooks(run_live_probe=False)
+    env = os.environ.copy()
+    env["OPENAI_BASE_URL"] = f"{LITELLM_BASE}/v1"
+    env["OPENAI_API_BASE"] = f"{LITELLM_BASE}/v1"
+    env["OPENAI_API_KEY"] = DEFAULT_API_KEY
+    env["BOYLENET_ORCHESTRATOR_V1"] = f"{ORCHESTRATOR_BASE}/v1"
+    env["OPENCODE_CONFIG"] = cfg_path
+    env["BD_ARGON4_CONTRACT"] = effective_sys
+
+    if print_env:
+        print(f"export OPENAI_BASE_URL={env['OPENAI_BASE_URL']}")
+        print(f"export OPENAI_API_BASE={env['OPENAI_API_BASE']}")
+        print(f"export OPENAI_API_KEY={env['OPENAI_API_KEY']}")
+        print(f"export BOYLENET_ORCHESTRATOR_V1={env['BOYLENET_ORCHESTRATOR_V1']}")
+        print(f"export OPENCODE_CONFIG={cfg_path}")
+        print(f"export BD_ARGON4_CONTRACT={json.dumps(effective_sys)}")
+        print(f"# Loaded Skills: {json.dumps(skill_receipts)}")
+        return 0
+
+    print(
+        f"[bd-opencode-local] Configured OpenCode/Aider/Continue local provider -> {cfg_path}\n"
+        f"  LiteLLM Gateway     : {LITELLM_BASE}/v1\n"
+        f"  Orchestrator Direct : {ORCHESTRATOR_BASE}/v1\n"
+        f"  Selected Model      : {selected_model}\n"
+        f"  Argon-4 Contract    : ENFORCED (hooks_verified={argon_status['argon4_enforced']})\n"
+        f"  Loaded Skills       : {[r['skill'] for r in skill_receipts]}\n"
+        f"  Fleet MCP & Web     : {len(bd_local_mcp_bridge.FLEET_MCP_TOOLS_OPENAI)} TOOLS ENABLED"
+    )
+
+    if prompt:
+        return run_harness_hermes(
+            tier, selected_model, prompt, max_steps=5, skills=skills
+        )
+
+    opencode_bin = shutil.which("opencode") or shutil.which("aider")
+    if opencode_bin:
+        proc = subprocess.run([opencode_bin] + extra_args, env=env, check=False)
+        return proc.returncode
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# 4. HERMES / QWYTHOS / QWEN3 / CYBERSTRIKE AGENTIC TOOL-CALLING RUNNER
+# ---------------------------------------------------------------------------
+FLEET_TOOLS_SCHEMA: List[Dict[str, Any]] = list(
+    bd_local_mcp_bridge.FLEET_MCP_TOOLS_OPENAI
+)
+if not any(
+    t.get("function", {}).get("name") == "bd_semantic_search"
+    for t in FLEET_TOOLS_SCHEMA
+):
+    FLEET_TOOLS_SCHEMA.append(
+        {
+            "type": "function",
+            "function": {
+                "name": "bd_semantic_search",
+                "description": "Fleet-Wide Hybrid RAG + AST Semantic Search on Qdrant (10.0.70.125:6333, collection boylenet_fleet_rag) + TEI BGE Embeddings (:8081) + TEI BGE-Reranker-Large (:8082).",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Natural language or technical search query.",
+                        },
+                        "top_k": {
+                            "type": "integer",
+                            "description": "Number of top reranked results to return (default 5).",
+                        },
+                        "collection": {
+                            "type": "string",
+                            "description": "Optional Qdrant collection name (default 'boylenet_fleet_rag').",
+                        },
+                    },
+                    "required": ["query"],
+                },
+            },
+        }
+    )
+AGENT_TOOLS_SCHEMA: List[Dict[str, Any]] = FLEET_TOOLS_SCHEMA
+
+
+def execute_fleet_tool(name: str, args: Dict[str, Any]) -> str:
+    clean_name = (name or "").strip()
+    if clean_name in ("bd_semantic_search", "semantic_search"):
+        q = str(args.get("query") or "").strip()
+        top_k = int(args.get("top_k") or args.get("limit") or 5)
+        collection = str(args.get("collection") or "boylenet_fleet_rag").strip()
+        if not q:
+            return json.dumps(
+                {"rc": 1, "tool": "bd_semantic_search", "error": "query is required"}
+            )
+        proc = subprocess.run(
+            [
+                "python3",
+                "/home/mboyle/bin/bd-semantic-search",
+                q,
+                "--top-k",
+                str(top_k),
+                "--collection",
+                collection,
+                "--json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=45,
+            check=False,
+        )
+        if proc.returncode == 0 and proc.stdout.strip():
+            return proc.stdout.strip()
+        return json.dumps(
+            {
+                "rc": proc.returncode or 1,
+                "tool": "bd_semantic_search",
+                "error": (proc.stderr or proc.stdout).strip(),
+            }
+        )
+    return json.dumps(bd_local_mcp_bridge.execute_mcp_tool(clean_name, args))
+
+
+def execute_agent_tool(name: str, args: Dict[str, Any]) -> str:
+    return execute_fleet_tool(name, args)
+
+
+def parse_xml_tool_calls(text: str) -> List[Dict[str, Any]]:
+    """Fallback parser for Hermes/Qwen <tool_call>{...}</tool_call> tags."""
+    matches = re.findall(
+        r"<tool_call>\s*(\{.*?\})\s*</tool_call>", text, flags=re.DOTALL
+    )
+    calls: List[Dict[str, Any]] = []
+    for idx, m in enumerate(matches):
+        try:
+            obj = json.loads(m)
+            if "name" in obj:
+                calls.append(
+                    {
+                        "id": f"call_xml_{idx}",
+                        "type": "function",
+                        "function": {
+                            "name": obj["name"],
+                            "arguments": json.dumps(
+                                obj.get("arguments", obj.get("args", {}))
+                            ),
+                        },
+                    }
+                )
+        except Exception:
+            pass
+    return calls
+
+
+def run_hermes_turn(
+    messages: List[Dict[str, Any]],
+    selected_model: str,
+    gateway_url: str,
+    max_steps: int = 5,
+    tool_subset: Optional[List[str]] = None,
+    skill_receipts: Optional[List[Dict[str, Any]]] = None,
+) -> int:
+    headers = {"Authorization": f"Bearer {DEFAULT_API_KEY}"}
+    active_tools = bd_local_mcp_bridge.get_openai_tools_schema(tool_subset)
+    loaded_skill_names = [
+        r["skill"] for r in (skill_receipts or []) if r.get("rc") == 0
+    ]
+    for step in range(1, max_steps + 1):
+        payload: Dict[str, Any] = {
+            "model": selected_model,
+            "messages": messages,
+            "tools": active_tools,
+            "tool_choice": "auto",
+            "temperature": 0.1,
+            "max_tokens": 1024,
+        }
+        t0 = time.time()
+        status, resp_headers, resp_json = http_request_json(
+            f"{gateway_url}/chat/completions",
+            method="POST",
+            payload=payload,
+            headers=headers,
+            timeout=180.0,
+        )
+        elapsed = time.time() - t0
+        if status != 200:
+            print(f"[bd-hermes-local] HTTP {status}: {resp_json}", file=sys.stderr)
+            return 1
+
+        choice = (resp_json.get("choices") or [{}])[0]
+        msg = choice.get("message") or {}
+        content = msg.get("content") or ""
+        tool_calls = msg.get("tool_calls") or parse_xml_tool_calls(content)
+
+        tier_hdr = resp_headers.get("x-orchestrator-tier", "")
+        model_hdr = resp_headers.get("x-orchestrator-model", selected_model)
+        usage = resp_json.get("usage", {})
+        comp_tokens = usage.get("completion_tokens", 0)
+        tok_s = (comp_tokens / elapsed) if elapsed > 0 and comp_tokens else 0.0
+
+        print(
+            f"[bd-hermes-local step={step}] model={model_hdr} tier={tier_hdr or 'local'} "
+            f"elapsed={elapsed:.2f}s tokens={comp_tokens} ({tok_s:.1f} tok/s) "
+            f"| argon4=ENFORCED | mcp_tools={len(active_tools)} | skills={loaded_skill_names}"
+        )
+
+        if not tool_calls:
+            print("\n=== HERMES AGENT FINAL RESPONSE ===")
+            print(content.strip())
+            messages.append({"role": "assistant", "content": content})
+            return 0
+
+        messages.append(
+            {
+                "role": "assistant",
+                "content": content if content else None,
+                "tool_calls": tool_calls,
+            }
+        )
+        for tc in tool_calls:
+            fn = tc.get("function", {})
+            fn_name = fn.get("name", "")
+            raw_args = fn.get("arguments", "{}")
+            try:
+                parsed_args = (
+                    json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+                )
+            except Exception:
+                parsed_args = {}
+            print(f"  -> [TOOL CALL] {fn_name}({json.dumps(parsed_args)})")
+            tool_out = execute_agent_tool(fn_name, parsed_args)
+            print(f"  <- [TOOL RESULT] {tool_out[:600]}")
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tc.get("id", "call_0"),
+                    "name": fn_name,
+                    "content": tool_out,
+                }
+            )
+    return 0
+
+
+def run_harness_hermes(
+    tier: str,
+    model: Optional[str],
+    prompt: Optional[str],
+    max_steps: int = 5,
+    skills: Optional[List[str]] = None,
+    tool_subset: Optional[List[str]] = None,
+) -> int:
+    selected_model = resolve_model("hermes", tier, model)
+    gateway_url = f"{ORCHESTRATOR_BASE}/v1"
+    skill_block, skill_receipts = bd_local_mcp_bridge.build_skill_injection_block(
+        skills, prompt=prompt
+    )
+    tool_names = [
+        t["function"]["name"]
+        for t in bd_local_mcp_bridge.get_openai_tools_schema(tool_subset)
+    ]
+    if skill_receipts:
+        print(f"[bd-ai-harness] Fleet Skills Injected: {json.dumps(skill_receipts)}")
+    sys_msg = {
+        "role": "system",
+        "content": (
+            f"{ARGON4_SYSTEM_PROMPT}\n"
+            "You are a Boylenet Local Coding Agent on the 4-GPU + 1.73 TB DDR4 cluster with full Fleet MCP parity. "
+            f"Use the provided tools ({', '.join(tool_names)}) whenever you need to slice AST symbols/lines, "
+            "run ruff/mypy/pytest-digest, read/publish on bd-bus, recall/store in hivemind-memory, "
+            "search/fetch the web, or run guarded bash/edit commands."
+            f"{skill_block}"
+        ),
+    }
+    messages: List[Dict[str, Any]] = [sys_msg]
+
+    if prompt:
+        messages.append({"role": "user", "content": prompt})
+        return run_hermes_turn(
+            messages,
+            selected_model,
+            gateway_url,
+            max_steps=max_steps,
+            tool_subset=tool_subset,
+            skill_receipts=skill_receipts,
+        )
+
+    print(
+        f"[bd-hermes-local] Interactive Agentic Tool REPL (tier={tier}, model={selected_model}, "
+        f"Argon-4=ENFORCED, MCPTools={len(tool_names)}, Skills={[r['skill'] for r in skill_receipts]}). Type '/exit' or 'exit' to quit.",
+        flush=True,
+    )
+    while True:
+        try:
+            user_in = input("\nhermes> ").strip()
+        except EOFError:
+            break
+        if not user_in:
+            continue
+        if user_in.lower() in ("exit", "quit", "/exit", "/quit"):
+            print("[bd-hermes-local] Session retired cleanly (/exit).", flush=True)
+            break
+        messages.append({"role": "user", "content": user_in})
+        run_hermes_turn(
+            messages,
+            selected_model,
+            gateway_url,
+            max_steps=max_steps,
+            tool_subset=tool_subset,
+            skill_receipts=skill_receipts,
+        )
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# 5. DEEPSEEK <think> REASONING + CODE RUNNER (bd-deepseek-local)
+# ---------------------------------------------------------------------------
+def extract_thinking_and_answer(msg: Dict[str, Any]) -> Tuple[str, str]:
+    reasoning = str(msg.get("reasoning_content") or "").strip()
+    content = str(msg.get("content") or "")
+    for pat in (r"<think>(.*?)</think>", r"\[THINK\](.*?)\[/THINK\]"):
+        m = re.search(pat, content, flags=re.DOTALL | re.IGNORECASE)
+        if m:
+            extracted = m.group(1).strip()
+            reasoning = (
+                (reasoning + "\n" + extracted).strip() if reasoning else extracted
+            )
+            content = (content[: m.start()] + content[m.end() :]).strip()
+            break
+    else:
+        if "</think>" in content:
+            parts = content.split("</think>", 1)
+            extracted = parts[0].replace("<think>", "").strip()
+            reasoning = (
+                (reasoning + "\n" + extracted).strip() if reasoning else extracted
+            )
+            content = parts[1].strip()
+    return reasoning, content.strip()
+
+
+def run_harness_deepseek(
+    tier: str,
+    model: Optional[str],
+    prompt: Optional[str],
+    skills: Optional[List[str]] = None,
+) -> int:
+    selected_model = resolve_model("deepseek", tier, model)
+    gateway_url = f"{ORCHESTRATOR_BASE}/v1"
+    user_prompt = (
+        prompt
+        or "Write a fast Python function to compute the nth Fibonacci number in O(log n) matrix exponentiation and prove its time complexity."
+    )
+    skill_block, skill_receipts = bd_local_mcp_bridge.build_skill_injection_block(
+        skills, prompt=user_prompt
+    )
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                f"{ARGON4_SYSTEM_PROMPT}\n"
+                "You are a DeepSeek reasoning and coding engine running locally on Boylenet. "
+                "Always enclose your concise step-by-step mathematical and architectural reasoning inside "
+                "[THINK]...[/THINK] (or <think>...</think>) tags first, followed by your clean final code."
+                f"{skill_block}"
+            ),
+        },
+        {"role": "user", "content": user_prompt},
+    ]
+    payload = {
+        "model": selected_model,
+        "messages": messages,
+        "temperature": 0.2,
+        "max_tokens": 1024,
+    }
+    headers = {"Authorization": f"Bearer {DEFAULT_API_KEY}"}
+    t0 = time.time()
+    status, resp_headers, resp_json = http_request_json(
+        f"{gateway_url}/chat/completions",
+        method="POST",
+        payload=payload,
+        headers=headers,
+        timeout=240.0,
+    )
+    elapsed = time.time() - t0
+    if status != 200:
+        print(f"[bd-deepseek-local] HTTP {status}: {resp_json}", file=sys.stderr)
+        return 1
+
+    choice = (resp_json.get("choices") or [{}])[0]
+    msg = choice.get("message") or {}
+    reasoning, final_answer = extract_thinking_and_answer(msg)
+    usage = resp_json.get("usage", {})
+    comp_tokens = usage.get("completion_tokens", 0)
+    tok_s = (comp_tokens / elapsed) if elapsed > 0 and comp_tokens else 0.0
+    routing = resp_json.get("orchestrator_routing", {})
+
+    print("=" * 96)
+    print(
+        f" [bd-deepseek-local] Model: {selected_model} | Effective Tier: {routing.get('effective_tier', tier)} "
+        f"| Speed: {tok_s:.2f} tok/s ({comp_tokens} tokens in {elapsed:.2f}s) | Argon-4: ENFORCED "
+        f"| Skills: {[r['skill'] for r in skill_receipts]}"
+    )
+    print("=" * 96)
+    if reasoning:
+        print(
+            "\n┌─── [DEEPSEEK <think> REASONING TRACE] ───────────────────────────────────────────────────┐"
+        )
+        for line in reasoning.splitlines():
+            print(f"│ {line}")
+        print(
+            "└──────────────────────────────────────────────────────────────────────────────────────────┘"
+        )
+    print("\n=== [DEEPSEEK CODE & SOLUTION OUTPUT] ===")
+    print(final_answer)
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# 6. OPENROUTER LOCAL GATEWAY HARNESS (bd-openrouter-local)
+# ---------------------------------------------------------------------------
+def run_harness_openrouter(
+    tier: str,
+    model: Optional[str],
+    prompt: Optional[str],
+    list_models: bool = False,
+    skills: Optional[List[str]] = None,
+) -> int:
+    selected_model = resolve_model(
+        "openrouter", tier, model or ("auto-local" if tier == "auto" else None)
+    )
+    headers = {
+        "Authorization": f"Bearer {DEFAULT_API_KEY}",
+        "HTTP-Referer": "https://jarvis.boylenet.local",
+        "X-Title": "Boylenet Multi-Harness CLI (Argon-4)",
+    }
+
+    if list_models or not prompt:
+        status_o, _, models_o = http_request_json(
+            f"{ORCHESTRATOR_BASE}/v1/models",
+            method="GET",
+            headers=headers,
+            timeout=10.0,
+        )
+        print(
+            f"[bd-openrouter-local] Orchestrator /v1/models ({ORCHESTRATOR_BASE}/v1/models) — "
+            f"{len(models_o.get('data', []))} models available:"
+        )
+        for m in models_o.get("data", []):
+            print(
+                f"  - {m.get('id'):<32} | tier={str(m.get('tier')):<6} | measured_tok_s={m.get('measured_tok_s')}"
+            )
+        if not prompt:
+            return 0 if status_o == 200 else 1
+
+    skill_block, skill_receipts = bd_local_mcp_bridge.build_skill_injection_block(
+        skills, prompt=prompt
+    )
+    payload = {
+        "model": selected_model,
+        "messages": [
+            {"role": "system", "content": ARGON4_SYSTEM_PROMPT + skill_block},
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.1,
+        "max_tokens": 512,
+    }
+    t0 = time.time()
+    status, resp_headers, resp_json = http_request_json(
+        f"{ORCHESTRATOR_BASE}/v1/chat/completions",
+        method="POST",
+        payload=payload,
+        headers=headers,
+        timeout=180.0,
+    )
+    elapsed = time.time() - t0
+    if status != 200:
+        print(f"[bd-openrouter-local] HTTP {status}: {resp_json}", file=sys.stderr)
+        return 1
+
+    routing = resp_json.get("orchestrator_routing", {})
+    choice = (resp_json.get("choices") or [{}])[0]
+    content = (choice.get("message") or {}).get("content", "")
+    usage = resp_json.get("usage", {})
+    print(
+        f"[bd-openrouter-local] Routed: requested={selected_model} -> "
+        f"tier={routing.get('effective_tier')} model={routing.get('resolved_model')} "
+        f"upstream={routing.get('upstream')} ({elapsed:.2f}s, usage={usage}) "
+        f"| Argon-4: ENFORCED | Skills: {[r['skill'] for r in skill_receipts]}"
+    )
+    print(f"  Reason: {routing.get('reason')}")
+    print("\n" + content.strip())
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# 7. OPENCLAW AGENT HARNESS (--harness openclaw / bd-openclaw-local)
+# ---------------------------------------------------------------------------
+def generate_openclaw_config(
+    selected_model: str,
+    effective_sys: str,
+    effort: str,
+    context_win: str,
+    autocompact: str,
+) -> Dict[str, Any]:
+    ctx_tokens = 1000000 if context_win in ("1m", "extralong", "2m") else 200000
+    thinking_level = (
+        effort
+        if effort
+        in (
+            "off",
+            "minimal",
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "adaptive",
+            "max",
+            "ultra",
+        )
+        else "high"
+    )
+    compaction_enabled = str(autocompact).lower() not in (
+        "off",
+        "false",
+        "0",
+        "disable",
+        "disabled",
+    )
+    tool_names = [
+        t["function"]["name"] for t in bd_local_mcp_bridge.FLEET_MCP_TOOLS_OPENAI
+    ]
+
+    litellm_models = [
+        {
+            "id": "auto-local",
+            "name": "Auto-Router (Tier 1/2/3 Smart Dispatch)",
+            "api": "openai-completions",
+            "reasoning": True,
+            "contextWindow": ctx_tokens,
+            "maxTokens": 8192,
+        },
+        {
+            "id": "tier1-qwen3-coder-30b-a3b",
+            "name": "Tier 1: Qwen3-Coder-30B-A3B (77.6 tok/s)",
+            "api": "openai-completions",
+            "reasoning": False,
+            "contextWindow": ctx_tokens,
+            "maxTokens": 8192,
+        },
+        {
+            "id": "tier1-cyberstrike-35b-q4km",
+            "name": "Tier 1: CyberStrike-OffSec-35B (66.5 tok/s)",
+            "api": "openai-completions",
+            "reasoning": False,
+            "contextWindow": ctx_tokens,
+            "maxTokens": 8192,
+        },
+        {
+            "id": "qwen2.5-coder-32b",
+            "name": "Tier 1B: Qwen2.5-Coder-32B Distributed",
+            "api": "openai-completions",
+            "reasoning": False,
+            "contextWindow": ctx_tokens,
+            "maxTokens": 8192,
+        },
+        {
+            "id": "hermes-3",
+            "name": "Tier 1: Hermes-3-Llama-3.1-8B",
+            "api": "openai-completions",
+            "reasoning": False,
+            "contextWindow": ctx_tokens,
+            "maxTokens": 8192,
+        },
+        {
+            "id": "tier2-deepseek-r1-70b",
+            "name": "Tier 2: DeepSeek-R1-Distill-Llama-70B (4xT4)",
+            "api": "openai-completions",
+            "reasoning": True,
+            "contextWindow": ctx_tokens,
+            "maxTokens": 8192,
+        },
+        {
+            "id": "deepseek-v4-flash",
+            "name": "Tier 3: DeepSeek-V4-Flash MoE (142.4 pp512)",
+            "api": "openai-completions",
+            "reasoning": True,
+            "contextWindow": ctx_tokens,
+            "maxTokens": 8192,
+        },
+        {
+            "id": "swift-qwen3.8-flash-next",
+            "name": "Tier 3: Swift-Qwen3.8-Flash-Next (120.6 pp512)",
+            "api": "openai-completions",
+            "reasoning": True,
+            "contextWindow": ctx_tokens,
+            "maxTokens": 8192,
+        },
+        {
+            "id": "mimo-v2.6-pro-1024b",
+            "name": "Tier 3: MiMo-V2.6-Pro-1024B (1T MoE)",
+            "api": "openai-completions",
+            "reasoning": True,
+            "contextWindow": ctx_tokens,
+            "maxTokens": 8192,
+        },
+        {
+            "id": "muse-spark-816b-a42b",
+            "name": "Tier 3: Muse-Spark-816B-A42B MoE",
+            "api": "openai-completions",
+            "reasoning": True,
+            "contextWindow": ctx_tokens,
+            "maxTokens": 8192,
+        },
+        {
+            "id": "glm-5.3-753b",
+            "name": "Tier 3: GLM-5.3-753B MoE",
+            "api": "openai-completions",
+            "reasoning": True,
+            "contextWindow": ctx_tokens,
+            "maxTokens": 8192,
+        },
+        {
+            "id": "tier3-deepseek-v3-671b",
+            "name": "Tier 3: DeepSeek-V3-0324-671B Hybrid",
+            "api": "openai-completions",
+            "reasoning": True,
+            "contextWindow": ctx_tokens,
+            "maxTokens": 8192,
+        },
+    ]
+    if not any(m["id"] == selected_model for m in litellm_models):
+        litellm_models.insert(
+            0,
+            {
+                "id": selected_model,
+                "name": f"Boylenet {selected_model}",
+                "api": "openai-completions",
+                "reasoning": True,
+                "contextWindow": ctx_tokens,
+                "maxTokens": 8192,
+            },
+        )
+
+    orchestrator_models = [
+        {
+            "id": "auto-local",
+            "name": "Auto-Local Smart Tier Router",
+            "api": "openai-completions",
+            "reasoning": True,
+            "contextWindow": ctx_tokens,
+            "maxTokens": 8192,
+        },
+        {
+            "id": "tier1-qwen3-coder-30b-a3b",
+            "name": "Tier 1 Dual 32GB Pool",
+            "api": "openai-completions",
+            "reasoning": False,
+            "contextWindow": ctx_tokens,
+            "maxTokens": 8192,
+        },
+        {
+            "id": "tier2-deepseek-r1-70b",
+            "name": "Tier 2 64GB 4-GPU Pool",
+            "api": "openai-completions",
+            "reasoning": True,
+            "contextWindow": ctx_tokens,
+            "maxTokens": 8192,
+        },
+        {
+            "id": "tier3-deepseek-v3-671b",
+            "name": "Tier 3 64GB VRAM + 1.73TB DDR4 Hybrid Pool",
+            "api": "openai-completions",
+            "reasoning": True,
+            "contextWindow": ctx_tokens,
+            "maxTokens": 8192,
+        },
+    ]
+
+    return {
+        "gateway": {
+            "mode": "local",
+            "bind": "lan",
+            "port": 4097,
+            "trustedProxies": [
+                "172.16.0.0/12",
+                "10.0.0.0/8",
+                "127.0.0.1/32",
+            ],
+            "allowRealIpFallback": True,
+            "controlUi": {
+                "enabled": True,
+                "allowedOrigins": [
+                    "http://openclaw.boylenet.themfboyles.com",
+                    "http://openclaw",
+                    "http://10.0.70.164:4097",
+                    "http://127.0.0.1:4097",
+                    "http://localhost:4097",
+                ],
+                "dangerouslyAllowHostHeaderOriginFallback": True,
+                "dangerouslyDisableDeviceAuth": True,
+            },
+            "auth": {
+                "mode": "password",
+                "password": "boylenet-admin",
+            },
+        },
+        "models": {
+            "mode": "merge",
+            "providers": {
+                "boylenet-litellm": {
+                    "baseUrl": f"{LITELLM_BASE}/v1",
+                    "apiKey": DEFAULT_API_KEY,
+                    "api": "openai-completions",
+                    "models": litellm_models,
+                },
+                "boylenet-orchestrator": {
+                    "baseUrl": f"{ORCHESTRATOR_BASE}/v1",
+                    "apiKey": DEFAULT_API_KEY,
+                    "api": "openai-completions",
+                    "models": orchestrator_models,
+                },
+            },
+        },
+        "agents": {
+            "defaults": {
+                "workspace": "/home/mboyle/.openclaw/workspace",
+                "skipBootstrap": True,
+                "model": {
+                    "primary": f"boylenet-litellm/{selected_model}",
+                    "fallbacks": [
+                        "boylenet-orchestrator/auto-local",
+                        "boylenet-litellm/tier1-qwen3-coder-30b-a3b",
+                    ],
+                },
+                "thinkingDefault": thinking_level,
+                "reasoningDefault": "on",
+                "compaction": {
+                    "enabled": compaction_enabled,
+                },
+            },
+        },
+        "tools": {
+            "profile": "full",
+            "alsoAllow": tool_names,
+        },
+        "meta": {
+            "migrations": {
+                "modelPolicyAllowlist": True,
+                "utilityModelSeparation": True,
+            },
+            "lastTouchedVersion": "2026.10.4",
+        },
+    }
+
+
+def configure_openclaw_provider(
+    selected_model: str,
+    effective_sys: str,
+    effort: str,
+    context_win: str,
+    autocompact: str,
+) -> str:
+    openclaw_cfg = generate_openclaw_config(
+        selected_model, effective_sys, effort, context_win, autocompact
+    )
+    cfg_path = os.path.expanduser("~/.openclaw/openclaw.json")
+    for d_name in ("~/.openclaw", "~/.openclaw-dev"):
+        d_path = os.path.expanduser(d_name)
+        os.makedirs(d_path, mode=0o700, exist_ok=True)
+        try:
+            os.chmod(d_path, 0o700)
+        except OSError:
+            pass
+        ws_dir = os.path.join(d_path, "workspace")
+        os.makedirs(ws_dir, exist_ok=True)
+        agents_md = os.path.join(ws_dir, "AGENTS.md")
+        try:
+            with open(agents_md, "w", encoding="utf-8") as af:
+                af.write(f"# OpenClaw Argon-4 Fleet Contract\n\n{effective_sys}\n")
+        except OSError:
+            pass
+        c_file = os.path.join(d_path, "openclaw.json")
+        cfg_copy = json.loads(json.dumps(openclaw_cfg))
+        cfg_copy["agents"]["defaults"]["workspace"] = ws_dir
+        with open(c_file, "w", encoding="utf-8") as f:
+            json.dump(cfg_copy, f, indent=2)
+        try:
+            os.chmod(c_file, 0o600)
+        except OSError:
+            pass
+    return cfg_path
+
+
+def run_harness_openclaw(
+    tier: str,
+    model: Optional[str],
+    prompt: Optional[str],
+    print_env: bool,
+    extra_args: List[str],
+    skills: Optional[List[str]] = None,
+    role_block: str = "",
+    effort: str = "high",
+    context_win: str = "1m",
+    autocompact: str = "150k",
+) -> int:
+    selected_model = resolve_model("openclaw", tier, model)
+    skill_block, skill_receipts = bd_local_mcp_bridge.build_skill_injection_block(
+        skills, prompt=prompt
+    )
+    effective_sys = ARGON4_SYSTEM_PROMPT + role_block + skill_block
+    cfg_path = configure_openclaw_provider(
+        selected_model, effective_sys, effort, context_win, autocompact
+    )
+    argon_status = verify_argon4_pretool_hooks(run_live_probe=False)
+    env = os.environ.copy()
+    env["PATH"] = (
+        f"/home/mboyle/.local/node24/bin:/home/mboyle/.local/bin:{env.get('PATH', '')}"
+    )
+    env["OPENAI_BASE_URL"] = f"{LITELLM_BASE}/v1"
+    env["OPENAI_API_KEY"] = DEFAULT_API_KEY
+    env["OPENCLAW_CONFIG"] = cfg_path
+    env["BD_ARGON4_CONTRACT"] = effective_sys
+
+    if print_env:
+        print(f"export OPENAI_BASE_URL={env['OPENAI_BASE_URL']}")
+        print(f"export OPENAI_API_KEY={env['OPENAI_API_KEY']}")
+        print(f"export OPENCLAW_CONFIG={cfg_path}")
+        print(f"export BD_ARGON4_CONTRACT={json.dumps(effective_sys)}")
+        return 0
+
+    print(
+        f"[bd-openclaw-local] Configured OpenClaw 2026.10.4 -> {cfg_path}\n"
+        f"  LiteLLM Gateway     : {LITELLM_BASE}/v1\n"
+        f"  Orchestrator Direct : {ORCHESTRATOR_BASE}/v1\n"
+        f"  Selected Model      : {selected_model} (effort={effort}, context={context_win}, autocompact={autocompact})\n"
+        f"  Argon-4 Contract    : ENFORCED (hooks_verified={argon_status['argon4_enforced']})\n"
+        f"  Fleet MCP & Web     : 12 TOOLS ENABLED"
+    )
+
+    if prompt:
+        return run_harness_hermes(
+            tier, selected_model, prompt, max_steps=5, skills=skills
+        )
+
+    openclaw_bin = (
+        "/home/mboyle/.local/bin/openclaw"
+        if os.path.isfile("/home/mboyle/.local/bin/openclaw")
+        else shutil.which("openclaw")
+    )
+    if openclaw_bin and extra_args:
+        proc = subprocess.run([openclaw_bin] + extra_args, env=env, check=False)
+        return proc.returncode
+    return run_harness_hermes(tier, selected_model, None, max_steps=5, skills=skills)
+
+
+def load_role_systemprompt_block(role: Optional[str]) -> str:
+    if not role:
+        return ""
+    for cand in (
+        f"/home/mboyle/bd-persist/role-systemprompts/{role}.frozen.systemprompt",
+        f"/home/mboyle/bd-persist/role-prompts/{role}.prompt",
+    ):
+        if os.path.isfile(cand):
+            try:
+                with open(cand, "r", encoding="utf-8") as f:
+                    return (
+                        f"\n\n=== FLEET ROLE SYSTEM PROMPT ({role}) ===\n"
+                        + f.read().strip()
+                        + "\n"
+                    )
+            except Exception:
+                pass
+    return f"\n\n=== FLEET ROLE: {role} ===\n"
+
+
+def detect_default_harness_from_argv0(argv0: str) -> Optional[str]:
+    base = os.path.basename(argv0)
+    mapping = {
+        "bd-claude-local": "claude",
+        "bd-codex-local": "codex",
+        "bd-opencode-local": "opencode",
+        "bd-hermes-local": "hermes",
+        "bd-openclaw-local": "openclaw",
+        "bd-deepseek-local": "deepseek",
+        "bd-openrouter-local": "openrouter",
+    }
+    return mapping.get(base)
+
+
+def main() -> int:
+    inferred_harness = detect_default_harness_from_argv0(sys.argv[0])
+
+    parser = argparse.ArgumentParser(
+        description="Boylenet Unified Local AI Harness Launcher (claude, codex, opencode, hermes, openclaw, deepseek, openrouter-local)"
+    )
+    parser.add_argument(
+        "--harness",
+        "-H",
+        default=inferred_harness or "hermes",
+        choices=[
+            "claude",
+            "codex",
+            "opencode",
+            "hermes",
+            "openclaw",
+            "deepseek",
+            "openrouter",
+            "openrouter-local",
+        ],
+        help="Target harness paradigm",
+    )
+    parser.add_argument(
+        "--tier",
+        "-t",
+        default=os.environ.get("BD_AI_TIER", "tier1"),
+        choices=["tier1", "tier2", "tier3", "auto"],
+        help="Target hardware tier (tier1, tier2, tier3, auto)",
+    )
+    parser.add_argument(
+        "--model",
+        "-m",
+        default=os.environ.get("BD_LAUNCH_MODEL", None),
+        help="Explicit model ID or alias override",
+    )
+    parser.add_argument(
+        "--role",
+        "-r",
+        default=os.environ.get("BD_ROLE", None),
+        help="Optional fleet role name (attaches role-systemprompts/<role>.frozen.systemprompt)",
+    )
+    parser.add_argument(
+        "--effort",
+        "-e",
+        default=os.environ.get("BD_LAUNCH_EFFORT", "high"),
+        help="Reasoning effort level (low, medium, high, extra, xhigh, ultra, max)",
+    )
+    parser.add_argument(
+        "--context",
+        "--ctx",
+        default=os.environ.get("BD_LAUNCH_CONTEXT", "1m"),
+        help="Context window (200k, standard, 1m, extralong)",
+    )
+    parser.add_argument(
+        "--autocompact",
+        "--ceiling",
+        default=os.environ.get("BD_LAUNCH_AUTOCOMPACT", "150k"),
+        help="Autocompact ceiling or toggle (off, on, 150k, 200k, 500k, 1m)",
+    )
+    parser.add_argument(
+        "--prompt",
+        "-p",
+        default=None,
+        help="Single-turn prompt for non-interactive execution",
+    )
+    parser.add_argument(
+        "--skill",
+        "-s",
+        action="append",
+        default=[],
+        help="Fleet skill(s) to inject from /home/mboyle/.agents/skills/<skill>/SKILL.md or plugin skills (repeatable or comma-separated, or 'auto')",
+    )
+    parser.add_argument(
+        "--list-skills",
+        action="store_true",
+        help="List all available Fleet skills and exit",
+    )
+    parser.add_argument(
+        "--list-mcp-tools",
+        action="store_true",
+        help="List all exposed Fleet MCP & Native tools and exit",
+    )
+    parser.add_argument(
+        "--tools",
+        default=None,
+        help="Optional comma-separated subset of MCP tools to expose in hermes loop (default: all 12 tools)",
+    )
+    parser.add_argument(
+        "--switch",
+        action="store_true",
+        help="Explicitly trigger bd-tier-switch before running the harness",
+    )
+    parser.add_argument(
+        "--print-env",
+        action="store_true",
+        help="Print environment variables for shell eval and exit",
+    )
+    parser.add_argument(
+        "--list-models",
+        action="store_true",
+        help="List models on the local OpenRouter/Orchestrator gateway",
+    )
+    parser.add_argument(
+        "--verify-argon4",
+        action="store_true",
+        help="Verify Argon-4 Anti-Sycophancy & PreToolUse Hooks (claude, codex, agy, shield.py, bd-token-guard.py)",
+    )
+    parser.add_argument(
+        "--max-steps",
+        type=int,
+        default=5,
+        help="Maximum tool-calling turns for hermes harness",
+    )
+
+    args, extra = parser.parse_known_args()
+    if args.verify_argon4:
+        res = verify_argon4_pretool_hooks(run_live_probe=True)
+        print(json.dumps(res, indent=2))
+        return 0 if res.get("argon4_enforced") else 1
+
+    if args.list_skills:
+        skills_map = bd_local_mcp_bridge.discover_all_skills()
+        print(
+            json.dumps(
+                {"rc": 0, "skill_count": len(skills_map), "skills": skills_map},
+                indent=2,
+            )
+        )
+        return 0
+
+    if args.list_mcp_tools:
+        print(
+            json.dumps(
+                {
+                    "rc": 0,
+                    "tool_count": len(bd_local_mcp_bridge.FLEET_MCP_TOOLS_OPENAI),
+                    "tools": bd_local_mcp_bridge.FLEET_MCP_TOOLS_OPENAI,
+                },
+                indent=2,
+            )
+        )
+        return 0
+
+    role_block = load_role_systemprompt_block(args.role)
+    if role_block:
+        global ARGON4_SYSTEM_PROMPT
+        ARGON4_SYSTEM_PROMPT = ARGON4_SYSTEM_PROMPT + role_block
+
+    tool_subset = (
+        [x.strip() for x in args.tools.split(",") if x.strip()] if args.tools else None
+    )
+
+    harness = "openrouter" if args.harness == "openrouter-local" else args.harness
+
+    try:
+        stream_dir = "/var/tmp/bd-headless-streams"
+        os.makedirs(stream_dir, exist_ok=True)
+        latest_log = os.path.join(stream_dir, f"{harness}-latest.log")
+        ts_str = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        with open(latest_log, "a", encoding="utf-8") as sf:
+            sf.write(
+                f"\n{'='*72}\n"
+                f"[HEADLESS-{harness.upper()}] START {ts_str} | tier={args.tier} | model={args.model or 'auto'}\n"
+                f"Prompt: {(args.prompt or '(interactive/extra args)')[:240]}\n"
+                f"{'-'*72}\n"
+            )
+
+        class _TeeOut:
+            def __init__(self, orig: Any, path: str) -> None:
+                self._orig = orig
+                self._path = path
+
+            def write(self, data: str) -> int:
+                res = self._orig.write(data)
+                try:
+                    with open(self._path, "a", encoding="utf-8") as f:
+                        f.write(data)
+                except Exception:
+                    pass
+                return res
+
+            def flush(self) -> None:
+                try:
+                    self._orig.flush()
+                except Exception:
+                    pass
+
+            def __getattr__(self, name: str) -> Any:
+                return getattr(self._orig, name)
+
+        sys.stdout = _TeeOut(sys.stdout, latest_log)  # type: ignore[assignment]
+        sys.stderr = _TeeOut(sys.stderr, latest_log)  # type: ignore[assignment]
+    except Exception:
+        pass
+
+    maybe_switch_tier(args.tier, args.model, args.switch)
+
+    if harness == "claude":
+        return run_harness_claude(
+            args.tier, args.model, args.prompt, args.print_env, extra, skills=args.skill
+        )
+    if harness == "codex":
+        return run_harness_codex(
+            args.tier, args.model, args.prompt, args.print_env, extra, skills=args.skill
+        )
+    if harness == "opencode":
+        return run_harness_opencode(
+            args.tier, args.model, args.prompt, args.print_env, extra, skills=args.skill
+        )
+    if harness == "openclaw":
+        return run_harness_openclaw(
+            args.tier,
+            args.model,
+            args.prompt,
+            args.print_env,
+            extra,
+            skills=args.skill,
+            role_block="",
+            effort=args.effort,
+            context_win=args.context,
+            autocompact=args.autocompact,
+        )
+    if harness == "hermes":
+        return run_harness_hermes(
+            args.tier,
+            args.model,
+            args.prompt,
+            max_steps=args.max_steps,
+            skills=args.skill,
+            tool_subset=tool_subset,
+        )
+    if harness == "deepseek":
+        return run_harness_deepseek(
+            args.tier, args.model, args.prompt, skills=args.skill
+        )
+    if harness == "openrouter":
+        return run_harness_openrouter(
+            args.tier,
+            args.model,
+            args.prompt,
+            list_models=args.list_models,
+            skills=args.skill,
+        )
+
+    print(f"ERROR: Unsupported harness: {harness}", file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

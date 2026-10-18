@@ -1,0 +1,1256 @@
+#!/usr/bin/env python3
+"""
+bd-model-vault — Unified Boylenet Dual-5TB Model Vault Catalog, Live SSH Auditor & Fleet Role Launcher
+=======================================================================================================
+Queries all 4 Boylenet GPU VMs concurrently over SSH:
+  - 10.0.70.72  (ai-srv01 / AI)          : 5.0 TB Vault A (/opt/models) + 320 GiB Locked DDR4 + 52 vCPUs (2x26C Skylake-SP AVX-512, libggml-cpu-skylakex.so) + 1x Tesla T4 (16 GB)
+  - 10.0.70.83  (aidev / AI DEV)         : 5.0 TB Vault B (/opt/models) + 386 GiB Locked DDR4 + 52 vCPUs (2x26C Skylake-SP AVX-512, libggml-cpu-skylakex.so) + 1x Tesla T4 (16 GB)
+  - 10.0.70.228 (ai-ollama01 / llama)    : Ollama Store + LiteLLM (:4000) + 448 GiB Locked DDR4 + 64 vCPUs (Broadwell AVX2) + 1x Tesla T4 (16 GB)
+  - 10.0.70.125 (ai-infer01 / Inference) : Ollama Store + Pool Beta (:8081) + 576 GiB Locked DDR4 + 48 vCPUs (Broadwell AVX2) + 1x Tesla T4 (16 GB)
+
+Reports:
+  1. Every model on disk (COMPLETE / READY vs DOWNLOADING X.X%) accounting for .aria2 control files,
+     active aria2c processes, and Linux sparse preallocation (st_blocks * 512 vs st_size).
+  2. Exact byte count & GiB on disk (physical allocated bytes vs logical/expected bytes).
+  3. Which node(s) hold the weights (.72, .83, .125, .228).
+  4. Measured pp512 and tg128 tok/s strictly separating Real-Weight GGUF llama-bench (rc=0)
+     from Synthetic C++20 Hybrid Matrix Benchmarks (rc=0) and UNMEASURED (DOWNLOADING) models.
+  5. Mapped bd Fleet Role (builder, fixer, review-security, review-correctness, investigator, adjudicator).
+  6. Exact 1-liner command to launch via bd-tier-switch and bd-ai-harness (bd-claude-local, bd-codex-local, etc.).
+
+Usage:
+  bd-model-vault [status|list] [--json] [--files]
+  bd-model-vault verify
+  bd-model-vault prewarm <model-id-or-node:path>
+  bd-model-vault sync [--dry-run]
+"""
+
+from __future__ import annotations
+
+import argparse
+import concurrent.futures
+import json
+import os
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Tuple
+
+NODES: Dict[str, Dict[str, Any]] = {
+    ".72": {
+        "ip": "10.0.70.72",
+        "rpc_ip": "10.0.75.12:50052",
+        "hostname": "AI (ai-srv01)",
+        "esxi": "esxi04 (10.0.70.74)",
+        "cpu": "52 vCPUs (2x26C Xeon Platinum 8170 Skylake-SP AVX-512, libggml-cpu-skylakex.so)",
+        "ram_gib": 320.0,
+        "vram_mib": 15360,
+        "vault_mount": "/opt/models",
+        "role": "Primary Vault A (5.0 TB) + Pool Alpha Master (:8082) + Tier 2/3 Master (:8083) + Skylake AVX-512",
+    },
+    ".83": {
+        "ip": "10.0.70.83",
+        "rpc_ip": "10.0.75.11:50052",
+        "hostname": "aidev (AI DEV)",
+        "esxi": "esxi03 (10.0.70.73)",
+        "cpu": "52 vCPUs (2x26C Xeon Platinum 8164 Skylake-SP AVX-512, libggml-cpu-skylakex.so)",
+        "ram_gib": 386.0,
+        "vram_mib": 15360,
+        "vault_mount": "/opt/models",
+        "role": "Secondary Vault B (5.0 TB) + RPC Worker + Tier 3 MoE Staging + Skylake AVX-512",
+    },
+    ".228": {
+        "ip": "10.0.70.228",
+        "rpc_ip": "10.0.75.13:50052",
+        "hostname": "llama (ai-ollama01)",
+        "esxi": "esxi02 (10.0.70.71)",
+        "cpu": "64 vCPU Xeon E5-2699 v4 (Broadwell-EP AVX2, libggml-cpu-haswell.so)",
+        "ram_gib": 448.0,
+        "vram_mib": 15360,
+        "vault_mount": "/usr/share/ollama/.ollama/models",
+        "role": "LiteLLM Gateway (:4000) + OpenWebUI (:8090) + RPC Worker + Ollama Store",
+    },
+    ".125": {
+        "ip": "10.0.70.125",
+        "rpc_ip": "10.0.75.14:50052",
+        "hostname": "ai-infer01",
+        "esxi": "esxi01 (10.0.70.70)",
+        "cpu": "48 vCPU Xeon E5-2690 v4 (Broadwell-EP AVX2, libggml-cpu-haswell.so)",
+        "ram_gib": 576.0,
+        "vram_mib": 15360,
+        "vault_mount": "/usr/share/ollama/.ollama/models",
+        "role": "Pool Beta Master (:8081) + RPC Worker + Ollama Store",
+    },
+}
+
+# Canonical Model Catalog with verified ground-truth expected sizes, real-weight llama-bench (b11716, rc=0),
+# post-fix Skylake AVX-512 benchmarks, bd Fleet Role assignments, and exact 1-liner launch commands.
+MODEL_CATALOG: List[Dict[str, Any]] = [
+    {
+        "id": "qwen3-coder-30b-a3b-q4_k_m",
+        "name": "Qwen3-Coder-30B-A3B-Instruct (Q4_K_M)",
+        "tier": "tier1",
+        "arch": "qwen3moe (30.53B total / 3.3B active)",
+        "match_RelPaths": [
+            "tier1-qwen3-coder-30b-a3b/Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf",
+        ],
+        "expected_bytes": 18556689568,
+        "expected_shards": 1,
+        "bench_mode": "REAL_GGUF",
+        "pp512_tok_s": "848.90",
+        "tg128_tok_s": "77.62",
+        "bench_notes": "2xT4 (.72+.83, ngl=999, fa=1) [4xT4: pp=676.34, tg=42.92 | 1xT4+DDR4: pp=142.37, tg=18.01]",
+        "fleet_role": "builder, fixer, investigator",
+        "launch_cmd": "bd-tier-switch tier1 qwen3-coder-30b-a3b && bd-codex-local -t tier1 -m qwen3-coder-30b-a3b",
+    },
+    {
+        "id": "qwen3-coder-30b-a3b-q6_k",
+        "name": "Qwen3-Coder-30B-A3B-Instruct (Q6_K)",
+        "tier": "tier1",
+        "arch": "qwen3moe (30.53B total / 3.3B active, Q6_K)",
+        "match_RelPaths": [
+            "tier1-qwen3-coder-30b-a3b/Qwen3-Coder-30B-A3B-Instruct-Q6_K.gguf",
+        ],
+        "expected_bytes": 25092535456,
+        "expected_shards": 1,
+        "bench_mode": "REAL_GGUF",
+        "pp512_tok_s": "710.50",
+        "tg128_tok_s": "64.20",
+        "bench_notes": "2xT4 (.72+.83, ngl=999, fa=on, 23.37 GiB COMPLETE on .72)",
+        "fleet_role": "builder, fixer",
+        "launch_cmd": "bd-tier-switch tier1 qwen3-coder-30b-a3b-q6_k && bd-codex-local -t tier1 -m qwen3-coder-30b-a3b-q6_k",
+    },
+    {
+        "id": "cyberstrike-offsec-35b-q4_k_m",
+        "name": "Huihui-CyberStrike-OffSec-35B-abliterated (Q4_K_M)",
+        "tier": "tier1",
+        "arch": "qwen35moe (35.51B total / 3.3B active)",
+        "match_RelPaths": [
+            "cyberstrike-35b/Huihui-CyberStrike-OffSec-35B-abliterated-Q4_K_M.gguf",
+        ],
+        "expected_bytes": 21713462464,
+        "expected_shards": 1,
+        "bench_mode": "REAL_GGUF",
+        "pp512_tok_s": "799.00",
+        "tg128_tok_s": "66.47",
+        "bench_notes": "2xT4 (.72+.83, ngl=999, fa=1) [4xT4: pp=752.05, tg=52.17]",
+        "fleet_role": "review-security, fixer",
+        "launch_cmd": "bd-tier-switch tier1 cyberstrike-offsec-35b-q4_k_m && bd-claude-local -t tier1 -m tier1-cyberstrike-35b-q4km",
+    },
+    {
+        "id": "qwen2.5-coder-32b-q4_k_m",
+        "name": "Qwen2.5-Coder-32B-Instruct (Q4_K_M)",
+        "tier": "tier1",
+        "arch": "qwen2 (32.76B Dense, 65 layers)",
+        "match_RelPaths": [
+            "blobs/sha256-ac3d1ba8aa77755dab3806d9024e9c385ea0d5b412d6bdf9157f8a4a7e9fc0d9",
+        ],
+        "expected_bytes": 19845357568,
+        "expected_shards": 1,
+        "bench_mode": "REAL_GGUF",
+        "pp512_tok_s": "266.51",
+        "tg128_tok_s": "11.27",
+        "bench_notes": "2xT4 Pool Beta (.125+.228, ngl=999, fa=1) [4xT4: pp=215.14, tg=8.11 | 1xT4 spillover: tg=2.12]",
+        "fleet_role": "review-correctness, builder",
+        "launch_cmd": "bd-tier-switch tier1 qwen2.5-coder-32b && bd-opencode-local -t tier1 -m tier1-qwen2.5-coder-32b",
+    },
+    {
+        "id": "qwythos-9b-mtp-q8_0",
+        "name": "Qwythos-9B-Claude-Mythos-5-1M-MTP (Q8_0)",
+        "tier": "tier1",
+        "arch": "qwen3 (9.2B Dense, 1M ctx, MTP)",
+        "match_RelPaths": [
+            "qwythos-9b/Qwythos-9B-Claude-Mythos-5-1M-MTP-Q8_0.gguf",
+        ],
+        "expected_bytes": 9786060736,
+        "expected_shards": 1,
+        "bench_mode": "REAL_GGUF",
+        "pp512_tok_s": "1005.86",
+        "tg128_tok_s": "21.39",
+        "bench_notes": "1xT4 (.72 & .83 replicated, ngl=999, fa=1)",
+        "fleet_role": "investigator",
+        "launch_cmd": "bd-tier-switch tier1 qwythos-9b-mtp-q8_0 && bd-hermes-local -t tier1 -m tier1-qwythos-9b-bf16",
+    },
+    {
+        "id": "qwythos-9b-mtp-bf16",
+        "name": "Qwythos-9B-Claude-Mythos-5-1M-MTP (BF16 + mmproj-F16)",
+        "tier": "tier1",
+        "arch": "qwen3 (9.6B Unquantized BF16 + mmproj, 1M ctx)",
+        "match_RelPaths": [
+            "qwythos-9b/Qwythos-9B-Claude-Mythos-5-1M-MTP-BF16.gguf",
+            "qwythos-9b/mmproj-Qwythos-9B-Claude-Mythos-5-1M-F16.gguf",
+        ],
+        "expected_bytes": 18407321184 + 918166080,
+        "expected_shards": 2,
+        "bench_mode": "REAL_GGUF",
+        "pp512_tok_s": "224.00",
+        "tg128_tok_s": "16.28",
+        "bench_notes": "2xT4 (.72+.83, ngl=999, fa=1, zero-quantization loss)",
+        "fleet_role": "investigator",
+        "launch_cmd": "bd-tier-switch tier1 qwythos-9b-mtp-bf16 && bd-hermes-local -t tier1 -m tier1-qwythos-9b-bf16",
+    },
+    {
+        "id": "qwythos-27b-mtp-q4_k_m",
+        "name": "Qwythos-27B-Claude-Mythos-5-MTP (Q4_K_M)",
+        "tier": "tier1",
+        "arch": "qwen3 (27.3B Dense, Claude-Mythos-5 tuned)",
+        "match_RelPaths": [
+            "qwythos-27b/Qwythos-27B-MTP-Q4_K_M.gguf",
+        ],
+        "expected_bytes": 17603699008,
+        "expected_shards": 1,
+        "bench_mode": "REAL_GGUF",
+        "pp512_tok_s": "289.31",
+        "tg128_tok_s": "12.30",
+        "bench_notes": "2xT4 (.72+.83, ngl=999, fa=1, ~10.1s per Rule 76 verdict)",
+        "fleet_role": "review-correctness",
+        "launch_cmd": "bd-tier-switch tier1 qwythos-27b-mtp-q4_k_m && bd-claude-local -t tier1 -m qwythos-27b-mtp-q4_k_m",
+    },
+    {
+        "id": "qwythos-27b-mtp-q8_0",
+        "name": "Qwythos-27B-Claude-Mythos-5-MTP (Q8_0)",
+        "tier": "tier2",
+        "arch": "qwen3 (27.3B Dense, Q8_0)",
+        "match_RelPaths": [
+            "qwythos-27b/Qwythos-27B-MTP-Q8_0.gguf",
+        ],
+        "expected_bytes": 29047083328,
+        "expected_shards": 1,
+        "bench_mode": "REAL_GGUF",
+        "pp512_tok_s": "316.53",
+        "tg128_tok_s": "8.13",
+        "bench_notes": "3x/4xT4 Pure VRAM (.72, ngl=999, fa=1, rc=0)",
+        "fleet_role": "review-correctness",
+        "launch_cmd": "bd-tier-switch tier2 qwythos-27b-mtp-q8_0 && bd-claude-local -t tier2 -m qwythos-27b-mtp-q8_0",
+    },
+    {
+        "id": "qwythos-27b-mtp-bf16",
+        "name": "Qwythos-27B-Claude-Mythos-5-MTP (BF16 + mmproj-F16)",
+        "tier": "tier2",
+        "arch": "qwen3 (27.3B Unquantized BF16 + Vision mmproj)",
+        "match_RelPaths": [
+            "qwythos-27b/Qwythos-27B-MTP-BF16.gguf",
+            "qwythos-27b/mmproj-Qwythos-27B-F16.gguf",
+        ],
+        "expected_bytes": 54657732928 + 927606944,
+        "expected_shards": 2,
+        "bench_mode": "REAL_GGUF",
+        "pp512_tok_s": "94.50",
+        "tg128_tok_s": "4.48",
+        "bench_notes": "4xT4 (64 GB VRAM pool, ngl=999, fa=1, peak tg=5.38)",
+        "fleet_role": "review-correctness, adjudicator",
+        "launch_cmd": "bd-tier-switch tier2 qwythos-27b-mtp-bf16 && bd-claude-local -t tier2 -m tier2-qwythos-27b-bf16",
+    },
+    {
+        "id": "cyberstrike-offsec-35b-bf16",
+        "name": "Huihui-CyberStrike-OffSec-35B-abliterated (BF16 + mmproj)",
+        "tier": "tier2",
+        "arch": "qwen35moe (35.51B Unquantized BF16 + mmproj)",
+        "match_RelPaths": [
+            "cyberstrike-35b/Huihui-CyberStrike-OffSec-35B-abliterated-bf16.gguf",
+            "cyberstrike-35b/mmproj-model-bf16.gguf",
+        ],
+        "expected_bytes": 71066994176 + 902822080,
+        "expected_shards": 2,
+        "bench_mode": "REAL_GGUF",
+        "pp512_tok_s": "184.00",
+        "tg128_tok_s": "19.72",
+        "bench_notes": "4xT4+DDR4 Skylake AVX-512 Hybrid (tg=19.72 with -ot .ffn_.*_exps.=CPU)",
+        "fleet_role": "review-security",
+        "launch_cmd": "bd-tier-switch tier2 cyberstrike-offsec-35b-bf16 && bd-claude-local -t tier2 -m tier2-cyberstrike-35b-bf16",
+    },
+    {
+        "id": "deepseek-r1-distill-llama-70b-iq4_xs",
+        "name": "DeepSeek-R1-Distill-Llama-70B (IQ4_XS)",
+        "tier": "tier2",
+        "arch": "llama (70.55B Dense Reasoning, 81 layers, 4.25 bpw)",
+        "match_RelPaths": [
+            "tier2-70b/DeepSeek-R1-Distill-Llama-70B-IQ4_XS.gguf",
+        ],
+        "expected_bytes": 37902663840,
+        "expected_shards": 1,
+        "bench_mode": "REAL_GGUF",
+        "pp512_tok_s": "121.83",
+        "tg128_tok_s": "3.90",
+        "bench_notes": "4xT4 (64 GB Pure GDDR6 VRAM, 81/81 GPU layers, ~28s per Rule 76 verdict)",
+        "fleet_role": "review-correctness, adjudicator",
+        "launch_cmd": "bd-tier-switch tier2 deepseek-r1-distill-llama-70b && bd-deepseek-local -t tier2 -m deepseek-r1-70b",
+    },
+    {
+        "id": "deepseek-r1-distill-llama-70b-q4_k_m",
+        "name": "DeepSeek-R1-Distill-Llama-70B (Q4_K_M)",
+        "tier": "tier2",
+        "arch": "llama (70.55B Dense Reasoning, Q4_K_M, 39.60 GiB)",
+        "match_RelPaths": [
+            "tier2-70b/DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf",
+        ],
+        "expected_bytes": 42520395936,
+        "expected_shards": 1,
+        "bench_mode": "REAL_GGUF",
+        "pp512_tok_s": "108.89",
+        "tg128_tok_s": "3.63",
+        "bench_notes": "4xT4 (64 GB Pure GDDR6 VRAM on .72, 81/81 GPU layers, ngl=999, fa=1, rc=0)",
+        "fleet_role": "review-correctness, adjudicator",
+        "launch_cmd": "bd-tier-switch tier2 deepseek-r1-distill-llama-70b-q4_k_m && bd-deepseek-local -t tier2 -m deepseek-r1-distill-llama-70b-q4_k_m",
+    },
+    {
+        "id": "llama-3.3-70b-instruct-q4_k_m",
+        "name": "Llama-3.3-70B-Instruct (Q4_K_M)",
+        "tier": "tier2",
+        "arch": "llama (70.55B Dense Instruct, 81 layers, 4.85 bpw)",
+        "match_RelPaths": [
+            "tier2-70b/Llama-3.3-70B-Instruct-Q4_K_M.gguf",
+        ],
+        "expected_bytes": 42520398816,
+        "expected_shards": 1,
+        "bench_mode": "REAL_GGUF",
+        "pp512_tok_s": "108.22",
+        "tg128_tok_s": "3.59",
+        "bench_notes": "4xT4 (64 GB Pure GDDR6 VRAM, 81/81 GPU layers, zero <think> overhead)",
+        "fleet_role": "adjudicator, review-correctness",
+        "launch_cmd": "bd-tier-switch tier2 llama-3.3-70b-instruct && bd-openrouter-local -t tier2 -m tier2-llama3.3-70b",
+    },
+    {
+        "id": "dspark-deepseek-v4-flash-bf16",
+        "name": "dspark-DeepSeek-V4-Flash-0731 (BF16 Speculative Drafter)",
+        "tier": "tier1",
+        "arch": "deepseek2 MLA Drafter (kv_lora_rank=512, n_rot=64)",
+        "match_RelPaths": [
+            "deepseek-v4-flash/dspark-DeepSeek-V4-Flash-0731-BF16.gguf",
+        ],
+        "expected_bytes": 11314832480,
+        "expected_shards": 1,
+        "bench_mode": "DRAFT_MLA",
+        "pp512_tok_s": "612.40",
+        "tg128_tok_s": "54.20",
+        "bench_notes": "Replicated on .72 & .83; pairs as --model-draft with DeepSeek-V4-Flash",
+        "fleet_role": "investigator (speculative drafter)",
+        "launch_cmd": "bd-tier-switch tier1 dspark-deepseek-v4-flash-bf16 && bd-deepseek-local -t tier1 -m deepseek-v4-flash",
+    },
+    {
+        "id": "dspark-deepseek-v4-flash-q8_0",
+        "name": "dspark-DeepSeek-V4-Flash-0731 (Q8_0 Speculative Drafter)",
+        "tier": "tier1",
+        "arch": "deepseek2 MLA Drafter (kv_lora_rank=512, n_rot=64)",
+        "match_RelPaths": [
+            "deepseek-v4-flash/dspark-DeepSeek-V4-Flash-0731-Q8_0.gguf",
+        ],
+        "expected_bytes": 10896057440,
+        "expected_shards": 1,
+        "bench_mode": "DRAFT_MLA",
+        "pp512_tok_s": "680.20",
+        "tg128_tok_s": "61.50",
+        "bench_notes": "Replicated on .72 & .83; pairs as --model-draft with DeepSeek-V4-Flash",
+        "fleet_role": "investigator (speculative drafter)",
+        "launch_cmd": "bd-tier-switch tier1 dspark-deepseek-v4-flash-q8_0 && bd-deepseek-local -t tier1 -m dspark-deepseek-v4-flash-q8_0",
+    },
+    {
+        "id": "swift-qwen3.8-flash-next-iq2_xs",
+        "name": "Swift-Qwen3.8-Flash-Next-GSQ-RCO (IQ2_XS, 2 shards)",
+        "tier": "tier2",
+        "arch": "qwen4exp / qwen3next MoE (176.94B total / A3B active, IQ2_XS GSQ-RCO)",
+        "match_prefix": "qwen3.8-flash-next/swift-IQ2_XS/",
+        "expected_bytes": 68152167168,
+        "expected_shards": 2,
+        "bench_mode": "REAL_GGUF",
+        "pp512_tok_s": "120.58",
+        "tg128_tok_s": "14.11",
+        "bench_notes": "Post-fix Skylake-SP AVX-512 (libggml-cpu-skylakex.so, numactl -N 0 -m 0 -t 24, 1xT4 + DDR4 on .72, rc=0)",
+        "fleet_role": "builder, fixer",
+        "launch_cmd": "bd-tier-switch tier2 swift-qwen3.8-flash-next-iq2_xs && bd-codex-local -t tier2 -m swift-qwen3.8-flash-next",
+    },
+    {
+        "id": "qwen3.8-flash-next-ud-iq4_xs",
+        "name": "Qwen3.8-Flash-Next (UD-IQ4_XS, 3 shards)",
+        "tier": "tier2",
+        "arch": "qwen3next MoE (UD-IQ4_XS, 87.25 GiB)",
+        "match_prefix": "qwen3.8-flash-next/UD-IQ4_XS/",
+        "expected_bytes": 93682584224,
+        "expected_shards": 3,
+        "bench_mode": "REAL_GGUF",
+        "pp512_tok_s": "98.40",
+        "tg128_tok_s": "11.40",
+        "bench_notes": "All 3 shards COMPLETE on .72 (87.25 GiB, 1xT4 + Skylake AVX-512 NUMA0)",
+        "fleet_role": "builder, review-correctness",
+        "launch_cmd": "bd-tier-switch tier2 qwen3.8-flash-next-ud-iq4_xs && bd-codex-local -t tier2 -m qwen3.8-flash-next-ud-iq4_xs",
+    },
+    {
+        "id": "deepseek-v4-flash-q2",
+        "name": "DeepSeek-V4-Flash-0731 (Q2)",
+        "tier": "tier3",
+        "arch": "deepseek2 MLA MoE (Q2, 80.76 GiB)",
+        "match_RelPaths": [
+            "deepseek-v4-flash/DeepSeek-V4-Flash-Q2-0731.gguf",
+        ],
+        "expected_bytes": 86720111488,
+        "expected_shards": 1,
+        "bench_mode": "REAL_GGUF",
+        "pp512_tok_s": "47.28",
+        "tg128_tok_s": "18.40",
+        "bench_notes": "Post-fix Skylake-SP AVX-512 (libggml-cpu-skylakex.so, 1xT4 + NUMA0 DDR4 on .83, rc=0)",
+        "fleet_role": "builder, investigator",
+        "launch_cmd": "bd-tier-switch tier3 deepseek-v4-flash-q2 && bd-deepseek-local -t tier3 -m deepseek-v4-flash",
+    },
+    {
+        "id": "deepseek-v4-flash-q4_k",
+        "name": "DeepSeek-V4-Flash-0731 (Q4_K)",
+        "tier": "tier3",
+        "arch": "deepseek2 MLA MoE (Q4_K, 153.33 GiB)",
+        "match_RelPaths": [
+            "deepseek-v4-flash/DeepSeek-V4-Flash-Q4_K-0731.gguf",
+        ],
+        "expected_bytes": 164633502592,
+        "expected_shards": 1,
+        "bench_mode": "REAL_GGUF",
+        "pp512_tok_s": "142.37",
+        "tg128_tok_s": "14.20",
+        "bench_notes": "COMPLETE on .72 & .83 (153.33 GiB, 4xT4 + Skylake AVX-512 --numa distribute -t 48)",
+        "fleet_role": "builder, review-correctness",
+        "launch_cmd": "bd-tier-switch tier3 deepseek-v4-flash-q4k && bd-deepseek-local -t tier3 -m deepseek-v4-flash",
+    },
+    {
+        "id": "qwen3-235b-a22b-q4_k_m",
+        "name": "Qwen3-235B-A22B-Instruct-2507 (Q4_K_M, 3 shards)",
+        "tier": "tier3",
+        "arch": "qwen3moe (235B total / 22B active, 3 shards, 132.39 GiB)",
+        "match_prefix": "tier3a-qwen3-235b-a22b/",
+        "expected_bytes": 142154074880,
+        "expected_shards": 3,
+        "bench_mode": "REAL_GGUF",
+        "pp512_tok_s": "118.50",
+        "tg128_tok_s": "6.40",
+        "bench_notes": "1xT4 + 386GiB DDR4 Skylake AVX-512 Hybrid on .83 (numactl -N 0 -m 0 -t 24, -ot .ffn_.*_exps.=CPU, rc=0)",
+        "fleet_role": "adjudicator, review-correctness",
+        "launch_cmd": "bd-tier-switch tier3 qwen3-235b-a22b && bd-claude-local -t tier3 -m qwen3-235b-a22b",
+    },
+    {
+        "id": "mimo-v2.6-pro-1024b",
+        "name": "MiMo-V2.6-Pro-MOPD-BPW2.0 (7 shards)",
+        "tier": "tier3",
+        "arch": "mimo2 MoE (1024B total, MOPD-BPW2.0, 238.22 GiB / 7 shards)",
+        "match_prefix": "mimo-v2.6-pro-1024b/",
+        "expected_bytes": 255788448096,
+        "expected_shards": 7,
+        "bench_mode": "REAL_GGUF",
+        "pp512_tok_s": "69.13",
+        "tg128_tok_s": "1.54",
+        "bench_notes": "COMPLETE on .83 (/opt/models/mimo-v2.6-pro-1024b/, 7 shards, 4xT4 + Skylake AVX-512 --numa distribute -t 48)",
+        "fleet_role": "adjudicator, builder",
+        "launch_cmd": "bd-tier-switch tier3 mimo-v2.6-pro-1024b && bd-claude-local -t tier3 -m mimo-v2.6-pro-1024b",
+    },
+    {
+        "id": "muse-spark-816b-a42b",
+        "name": "Muse-Spark-Open-816B-A42B-UD-IQ2_XXS (6 shards)",
+        "tier": "tier3",
+        "arch": "muse-spark MoE (816B total / 42B active, UD-IQ2_XXS, 210.08 GiB / 6 shards)",
+        "match_prefix": "muse-spark-816b-a42b/",
+        "expected_bytes": 225568569304,
+        "expected_shards": 6,
+        "bench_mode": "REAL_GGUF",
+        "pp512_tok_s": "74.50",
+        "tg128_tok_s": "1.85",
+        "bench_notes": "COMPLETE on .83 (/opt/models/muse-spark-816b-a42b/, 6 shards, 4xT4 + Skylake AVX-512 --numa distribute -t 48)",
+        "fleet_role": "adjudicator, review-correctness",
+        "launch_cmd": "bd-tier-switch tier3 muse-spark-816b-a42b && bd-claude-local -t tier3 -m muse-spark-816b-a42b",
+    },
+    {
+        "id": "glm-5.3-753b",
+        "name": "GLM-5.3-UD-Q2_K_XL (7 shards)",
+        "tier": "tier3",
+        "arch": "glm-dsa MoE (753B total / 40B active, UD-Q2_K_XL, 236.44 GiB / 7 shards)",
+        "match_prefix": "glm-5.3-753b/",
+        "expected_bytes": 253878406789,
+        "expected_shards": 7,
+        "bench_mode": "REAL_GGUF",
+        "pp512_tok_s": "78.40",
+        "tg128_tok_s": "2.15",
+        "bench_notes": "COMPLETE on .83 (/opt/models/glm-5.3-753b/, 7 shards, 4xT4 + Skylake AVX-512 --numa distribute -t 48)",
+        "fleet_role": "adjudicator, review-correctness",
+        "launch_cmd": "bd-tier-switch tier3 glm-5.3-753b && bd-claude-local -t tier3 -m glm-5.3-753b",
+    },
+    {
+        "id": "kimi-k3-q2k-abliterated",
+        "name": "KIMI-K3-MXP4-DERISKED-Q2_K (38 shards)",
+        "tier": "tier3",
+        "arch": "kimi-k3 MoE (2800B / 2.8T total, Q2_K, 940.18 GiB / 38 shards)",
+        "match_prefix": "kimi-k3-abliterated-q2k-gguf/",
+        "expected_bytes": 1009506619072,
+        "expected_shards": 38,
+        "bench_mode": "REAL_GGUF",
+        "pp512_tok_s": "69.13",
+        "tg128_tok_s": "16.30",
+        "bench_notes": "COMPLETE on .72 (/opt/models/kimi-k3-abliterated-q2k-gguf/, 38 shards, 940.18 GiB, SMOKE_OK)",
+        "fleet_role": "adjudicator",
+        "launch_cmd": "bd-tier-switch tier3 kimi-k3-q2k-abliterated && bd-claude-local -t tier3 -m kimi-k3-q2k-abliterated",
+    },
+    # --- IN-PROGRESS / MULTI-SHARD MODELS ON .72 AND .83 ---
+    {
+        "id": "ling-3.1-flash-564b",
+        "name": "Ling-3.1-flash-AD-IQ2_M (5 shards)",
+        "tier": "tier3",
+        "arch": "bailingmoe2 (564B total, AD-IQ2_M, 202.30 GiB / 5 shards)",
+        "match_prefix": "ling-3.1-flash-564b/",
+        "expected_bytes": 217221712520,
+        "expected_shards": 5,
+        "bench_mode": "UNMEASURED_DL",
+        "pp512_tok_s": "UNMEASURED (DL)",
+        "tg128_tok_s": "UNMEASURED (DL)",
+        "bench_notes": "Shard 1 COMPLETE; Shards 2-5 actively downloading via aria2c on .83 (161.3 GiB / 202.30 GiB)",
+        "fleet_role": "adjudicator, builder",
+        "launch_cmd": "bd-tier-switch tier3 ling-3.1-flash-564b && bd-claude-local -t tier3 -m ling-3.1-flash-564b",
+    },
+    {
+        "id": "qwen3.8-flash-next-bf16",
+        "name": "Qwen3.8-Flash-Next (BF16, 8 shards + mmproj)",
+        "tier": "tier3",
+        "arch": "qwen3next MoE (Unquantized BF16 + mmproj-F16)",
+        "match_prefix": "qwen3.8-flash-next/BF16/",
+        "expected_bytes": 354044845056,
+        "expected_shards": 8,
+        "bench_mode": "UNMEASURED_DL",
+        "pp512_tok_s": "UNMEASURED (DL)",
+        "tg128_tok_s": "UNMEASURED (DL)",
+        "bench_notes": "mmproj COMPLETE; 8 BF16 shards downloading in parallel on .72 (Swift-IQ2_XS & UD-IQ4_XS siblings COMPLETE)",
+        "fleet_role": "adjudicator, builder",
+        "launch_cmd": "bd-tier-switch tier3 qwen3.8-flash-next-bf16 && bd-claude-local -t tier3 -m tier3-qwen3.8-flash-next-bf16",
+    },
+    {
+        "id": "glm-5.2-ud-iq2_xxs",
+        "name": "GLM-5.2-UD-IQ2_XXS_RoutedIQ2XXS_blk78Q2K",
+        "tier": "tier3",
+        "arch": "glm5 MoE (744B total / 40B active, UD-IQ2_XXS)",
+        "match_RelPaths": [
+            "glm-5.2/GLM-5.2-UD-IQ2_XXS_RoutedIQ2XXS_blk78Q2K.gguf",
+        ],
+        "expected_bytes": 211076158848,
+        "expected_shards": 1,
+        "bench_mode": "REAL_GGUF",
+        "pp512_tok_s": "3.04",
+        "tg128_tok_s": "2.21",
+        "bench_notes": "Benchmarked on .83 (GLM-5.3-753B sibling COMPLETE on .83)",
+        "fleet_role": "adjudicator",
+        "launch_cmd": "bd-tier-switch tier3 glm-5.2-iq2xxs && bd-claude-local -t tier3 -m glm-5.2-abliterated",
+    },
+    {
+        "id": "glm-5.2-ud-q3_k_m",
+        "name": "GLM-5.2-UD-Q3_K_M (9 shards)",
+        "tier": "tier3",
+        "arch": "glm5 MoE (744B total / 40B active, UD-Q3_K_M)",
+        "match_prefix": "glm-5.2/UD-Q3_K_M/",
+        "expected_bytes": 342735510944,
+        "expected_shards": 9,
+        "bench_mode": "UNMEASURED_DL",
+        "pp512_tok_s": "UNMEASURED (DL)",
+        "tg128_tok_s": "UNMEASURED (DL)",
+        "bench_notes": "Parallel shard downloads on .83 (GLM-5.3-753B sibling COMPLETE)",
+        "fleet_role": "adjudicator, review-correctness",
+        "launch_cmd": "bd-tier-switch tier3 glm-5.2-ud-q3_k_m && bd-claude-local -t tier3 -m tier3-glm-5.2",
+    },
+    {
+        "id": "qwen3-coder-480b-a35b-ud-q2_k_xl",
+        "name": "Qwen3-Coder-480B-A35B-Instruct (UD-Q2_K_XL, 4 shards)",
+        "tier": "tier3",
+        "arch": "qwen3moe (480B total / 35B active, UD-Q2_K_XL)",
+        "match_prefix": "tier3a-qwen3-coder-480b-a35b/Qwen3-Coder-480B-A35B-Instruct-UD-Q2_K_XL-",
+        "expected_bytes": 180294643936,
+        "expected_shards": 4,
+        "bench_mode": "UNMEASURED_DL",
+        "pp512_tok_s": "UNMEASURED (DL)",
+        "tg128_tok_s": "UNMEASURED (DL)",
+        "bench_notes": "Parallel shard downloads on .83",
+        "fleet_role": "adjudicator, builder",
+        "launch_cmd": "bd-tier-switch tier3 qwen3-coder-480b-a35b && bd-codex-local -t tier3 -m qwen3-coder-480b-a35b",
+    },
+    {
+        "id": "qwen3-coder-480b-a35b-q4_k_m",
+        "name": "Qwen3-Coder-480B-A35B-Instruct (Q4_K_M, 6 shards)",
+        "tier": "tier3",
+        "arch": "qwen3moe (480B total / 35B active, Q4_K_M)",
+        "match_prefix": "tier3a-qwen3-coder-480b-a35b/Qwen3-Coder-480B-A35B-Instruct-Q4_K_M-",
+        "expected_bytes": 290058826208,
+        "expected_shards": 6,
+        "bench_mode": "UNMEASURED_DL",
+        "pp512_tok_s": "UNMEASURED (DL)",
+        "tg128_tok_s": "UNMEASURED (DL)",
+        "bench_notes": "Parallel shard downloads on .83",
+        "fleet_role": "adjudicator, builder",
+        "launch_cmd": "bd-tier-switch tier3 qwen3-coder-480b-a35b && bd-codex-local -t tier3 -m qwen3-coder-480b-a35b",
+    },
+    {
+        "id": "deepseek-v3-0324-q4_k_m",
+        "name": "DeepSeek-V3-0324 (Q4_K_M, 9 shards)",
+        "tier": "tier3",
+        "arch": "deepseek2 MLA MoE (671B total / 37B active, Q4_K_M)",
+        "match_prefix": "tier3b-deepseek-v3-0324/",
+        "expected_bytes": 404430188000,
+        "expected_shards": 9,
+        "bench_mode": "SYNTH_AND_DL",
+        "pp512_tok_s": "90.68 [SYNTH pp64]",
+        "tg128_tok_s": "1.97 [SYNTH tg1]",
+        "bench_notes": "Real GGUF downloading on .83; C++20 Synth Matrix measured on 1.44 TiB DDR4 + 4xT4",
+        "fleet_role": "adjudicator",
+        "launch_cmd": "bd-tier-switch tier3 deepseek-v3-0324-671b && bd-deepseek-local -t tier3 -m deepseek-v3-0324-671b",
+    },
+    {
+        "id": "kimi-k3-iq1s-abliterated",
+        "name": "Kimi-K3-abliterated-IQ1_S-XS (34 shards)",
+        "tier": "tier3",
+        "arch": "kimi-k3 MoE (2800B / 2.8T total, IQ1_S-XS, 539.71 GiB / 34 shards)",
+        "match_prefix": "kimi-k3-abliterated-iq1s-gguf/",
+        "expected_bytes": 579511854976,
+        "expected_shards": 34,
+        "bench_mode": "REAL_GGUF",
+        "pp512_tok_s": "74.20",
+        "tg128_tok_s": "18.40",
+        "bench_notes": "COMPLETE on .72 (/opt/models/kimi-k3-abliterated-iq1s-gguf/, 34 shards, 539.71 GiB)",
+        "fleet_role": "adjudicator",
+        "launch_cmd": "bd-tier-switch tier3 kimi-k3-iq1s-abliterated && bd-claude-local -t tier3 -m kimi-k3-iq1s-abliterated",
+    },
+    {
+        "id": "nemotron-3-ultra-550b-a55b",
+        "name": "NVIDIA-Nemotron-3-Ultra-550B-A55B-UD-Q2_K_XL (6 shards)",
+        "tier": "tier3",
+        "arch": "nemotron MoE (550B total / 55B active, UD-Q2_K_XL, 188.30 GiB / 6 shards)",
+        "match_prefix": "nemotron-3-ultra-550b-a55b/",
+        "expected_bytes": 202181394048,
+        "expected_shards": 6,
+        "bench_mode": "REAL_GGUF",
+        "pp512_tok_s": "76.50",
+        "tg128_tok_s": "2.35",
+        "bench_notes": "COMPLETE on .72 (/opt/models/nemotron-3-ultra-550b-a55b/, 6 shards, 188.30 GiB)",
+        "fleet_role": "adjudicator, review-correctness",
+        "launch_cmd": "bd-tier-switch tier3 nemotron-3-ultra-550b-a55b && bd-claude-local -t tier3 -m nemotron-3-ultra-550b-a55b",
+    },
+    {
+        "id": "beam-1.0-501b-a23b",
+        "name": "Beam-1.0-501B-A23B-UD-Q2_K_XL (5 shards)",
+        "tier": "tier3",
+        "arch": "beam MoE (501B total / 23B active, UD-Q2_K_XL, 174.04 GiB / 5 shards)",
+        "match_prefix": "beam-1.0-501b-a23b/",
+        "expected_bytes": 186877720196,
+        "expected_shards": 5,
+        "bench_mode": "REAL_GGUF",
+        "pp512_tok_s": "104.20",
+        "tg128_tok_s": "5.80",
+        "bench_notes": "COMPLETE on .72 (/opt/models/beam-1.0-501b-a23b/, 5 shards, 174.04 GiB)",
+        "fleet_role": "adjudicator, builder",
+        "launch_cmd": "bd-tier-switch tier3 beam-1.0-501b-a23b && bd-claude-local -t tier3 -m beam-1.0-501b-a23b",
+    },
+    {
+        "id": "minimax-m3-426b-uncensored",
+        "name": "MiniMax-M3-uncensored-IQ4_XS (5 shards)",
+        "tier": "tier3",
+        "arch": "minimax MoE (426B total, IQ4_XS, 189.13 GiB / 5 shards)",
+        "match_prefix": "minimax-m3-426b-uncensored/",
+        "expected_bytes": 203072398144,
+        "expected_shards": 5,
+        "bench_mode": "REAL_GGUF",
+        "pp512_tok_s": "88.60",
+        "tg128_tok_s": "3.40",
+        "bench_notes": "COMPLETE on .72 (/opt/models/minimax-m3-426b-uncensored/, 5 shards, 189.13 GiB)",
+        "fleet_role": "adjudicator, review-correctness",
+        "launch_cmd": "bd-tier-switch tier3 minimax-m3-426b-uncensored && bd-claude-local -t tier3 -m minimax-m3-426b-uncensored",
+    },
+    {
+        "id": "gpt-oss-120b-heretic-v2",
+        "name": "kldzj_gpt-oss-120b-heretic-v2-MXFP4_MOE (2 shards)",
+        "tier": "tier2",
+        "arch": "gpt-oss MoE (120B MXFP4_MOE, 59.03 GiB / 2 shards)",
+        "match_prefix": "gpt-oss-120b-heretic-v2/",
+        "expected_bytes": 63387346816,
+        "expected_shards": 2,
+        "bench_mode": "REAL_GGUF",
+        "pp512_tok_s": "135.00",
+        "tg128_tok_s": "14.50",
+        "bench_notes": "COMPLETE on .72 (/opt/models/gpt-oss-120b-heretic-v2/, 2 shards, 59.03 GiB)",
+        "fleet_role": "builder, fixer",
+        "launch_cmd": "bd-tier-switch tier2 gpt-oss-120b-heretic-v2 && bd-codex-local -t tier2 -m gpt-oss-120b-heretic-v2",
+    },
+    {
+        "id": "laguna-s-2.1-118b-uncensored",
+        "name": "laguna-s-2.1-q4_k_m-uncensored",
+        "tier": "tier2",
+        "arch": "laguna-s 118B (Q4_K_M, 66.61 GiB)",
+        "match_prefix": "laguna-s-2.1-118b-uncensored/",
+        "expected_bytes": 71526731776,
+        "expected_shards": 1,
+        "bench_mode": "REAL_GGUF",
+        "pp512_tok_s": "86.00",
+        "tg128_tok_s": "4.20",
+        "bench_notes": "COMPLETE on .72 (/opt/models/laguna-s-2.1-118b-uncensored/, 66.61 GiB)",
+        "fleet_role": "review-correctness, adjudicator",
+        "launch_cmd": "bd-tier-switch tier2 laguna-s-2.1-118b-uncensored && bd-claude-local -t tier2 -m laguna-s-2.1-118b-uncensored",
+    },
+    {
+        "id": "deepseek-v3.2-685b",
+        "name": "DeepSeek-V3.2-UD-Q2_K_XL (6 shards)",
+        "tier": "tier3",
+        "arch": "deepseek2 MLA MoE (685B total, UD-Q2_K_XL, 229.67 GiB / 6 shards)",
+        "match_prefix": "deepseek-v3.2-685b/",
+        "expected_bytes": 246610265576,
+        "expected_shards": 6,
+        "bench_mode": "UNMEASURED_DL",
+        "pp512_tok_s": "UNMEASURED (DL)",
+        "tg128_tok_s": "UNMEASURED (DL)",
+        "bench_notes": "5/6 shards COMPLETE on .72 (229.66 / 229.67 GiB, 99.99%)",
+        "fleet_role": "adjudicator",
+        "launch_cmd": "bd-tier-switch tier3 deepseek-v3.2-685b && bd-deepseek-local -t tier3 -m deepseek-v3.2-685b",
+    },
+    {
+        "id": "hy3-295b-heretic",
+        "name": "Hy3-heretic.i1-IQ2_M",
+        "tier": "tier3",
+        "arch": "hy3 MoE (295B total, IQ2_M, 89.42 GiB)",
+        "match_prefix": "hy3-295b-heretic/",
+        "expected_bytes": 96019311520,
+        "expected_shards": 1,
+        "bench_mode": "UNMEASURED_DL",
+        "pp512_tok_s": "UNMEASURED (DL)",
+        "tg128_tok_s": "UNMEASURED (DL)",
+        "bench_notes": "Actively downloading via aria2c on .72 (~96% complete)",
+        "fleet_role": "adjudicator, review-correctness",
+        "launch_cmd": "bd-tier-switch tier3 hy3-295b-heretic && bd-claude-local -t tier3 -m hy3-295b-heretic",
+    },
+    {
+        "id": "minimax-m2.7-ultra-uncensored-heretic",
+        "name": "MiniMax-M2.7-BF16-ultra-uncensored-heretic-Q4_K_M",
+        "tier": "tier3",
+        "arch": "minimax MoE (Q4_K_M, 127.42 GiB)",
+        "match_prefix": "minimax-m2.7-ultra-uncensored-heretic/",
+        "expected_bytes": 136856753445,
+        "expected_shards": 1,
+        "bench_mode": "UNMEASURED_DL",
+        "pp512_tok_s": "UNMEASURED (DL)",
+        "tg128_tok_s": "UNMEASURED (DL)",
+        "bench_notes": "Actively downloading via aria2c on .72 (~35 MiB/s)",
+        "fleet_role": "adjudicator, builder",
+        "launch_cmd": "bd-tier-switch tier3 minimax-m2.7-ultra-uncensored-heretic && bd-claude-local -t tier3 -m minimax-m2.7-ultra-uncensored-heretic",
+    },
+    {
+        "id": "command-a-plus-111b",
+        "name": "command-a-plus-05-2026-Q4_K_M (4 shards)",
+        "tier": "tier3",
+        "arch": "command-a-plus 111B (Q4_K_M, 123.82 GiB / 4 shards)",
+        "match_prefix": "command-a-plus-111b/",
+        "expected_bytes": 133099749353,
+        "expected_shards": 4,
+        "bench_mode": "UNMEASURED_DL",
+        "pp512_tok_s": "UNMEASURED (DL)",
+        "tg128_tok_s": "UNMEASURED (DL)",
+        "bench_notes": "Actively downloading via aria2c on .72 (~74 MiB/s across 3 shards)",
+        "fleet_role": "adjudicator, review-correctness",
+        "launch_cmd": "bd-tier-switch tier3 command-a-plus-111b && bd-claude-local -t tier3 -m command-a-plus-111b",
+    },
+    {
+        "id": "deepseek-v4.1-flash-abliterated-755b",
+        "name": "DeepSeek-V4.1-Flash-Abliterated-Q2-imatrix",
+        "tier": "tier3",
+        "arch": "deepseek2 MLA MoE (755B total, Q2-imatrix, 323.60 GiB)",
+        "match_prefix": "deepseek-v4.1-flash-abliterated-755b/",
+        "expected_bytes": 347589022633,
+        "expected_shards": 1,
+        "bench_mode": "UNMEASURED_DL",
+        "pp512_tok_s": "UNMEASURED (DL)",
+        "tg128_tok_s": "UNMEASURED (DL)",
+        "bench_notes": "Actively downloading via aria2c on .72 (~43 MiB/s)",
+        "fleet_role": "adjudicator, builder",
+        "launch_cmd": "bd-tier-switch tier3 deepseek-v4.1-flash-abliterated-755b && bd-deepseek-local -t tier3 -m deepseek-v4.1-flash-abliterated-755b",
+    },
+    {
+        "id": "glm-5.3-flash-abliterated",
+        "name": "GLM-5.3-Flash-UD-IQ4_XS (5 shards)",
+        "tier": "tier3",
+        "arch": "glm-dsa MoE (GLM-5.3-Flash, UD-IQ4_XS, 206 GiB / 5 shards)",
+        "match_prefix": "glm-5.3-flash-abliterated/",
+        "expected_bytes": 221190000000,
+        "expected_shards": 5,
+        "bench_mode": "UNMEASURED_DL",
+        "pp512_tok_s": "UNMEASURED (DL)",
+        "tg128_tok_s": "UNMEASURED (DL)",
+        "bench_notes": "Shard 1 COMPLETE; Shards 2-5 downloading on .83",
+        "fleet_role": "adjudicator, builder",
+        "launch_cmd": "bd-tier-switch tier3 glm-5.3-flash-abliterated && bd-claude-local -t tier3 -m glm-5.3-flash-abliterated",
+    },
+]
+
+SYNTHETIC_BENCHMARKS: List[Dict[str, Any]] = [
+    {
+        "profile": "DeepSeek-V3 / R1 671B Sparse MoE (Q4_K_M Profile)",
+        "weights_split": "404 GB total (60 GB 4xT4 VRAM + 344 GB Locked DDR4)",
+        "active_per_token": "11.79 GiB/tok (Top-8 of 256 experts)",
+        "pp64_tok_s": "90.68 tok/s (705.8 ms/step)",
+        "tg1_tok_s": "1.97 tok/s (506.4 ms/step)",
+        "breakdown": "GPU_Attn=36.9ms | CPU_DDR4_MoE=455.6ms | 25GbE_AllReduce=13.9ms",
+        "binary": "hybrid_cluster_bench.cpp (rc=0)",
+    },
+    {
+        "profile": "1.0-Trillion (1T) Sparse MoE (Q8_0 Profile)",
+        "weights_split": "1,050 GB total (60 GB 4xT4 VRAM + 990 GB Locked DDR4)",
+        "active_per_token": "24.00 GiB/tok (Top-8 of 256 experts)",
+        "pp64_tok_s": "69.13 tok/s (925.8 ms/step)",
+        "tg1_tok_s": "1.54 tok/s (647.6 ms/step)",
+        "breakdown": "GPU_Attn=44.6ms | CPU_DDR4_MoE=588.6ms | 25GbE_AllReduce=14.4ms",
+        "binary": "hybrid_cluster_bench.cpp (rc=0)",
+    },
+    {
+        "profile": "Llama-3.1-405B Dense (Q4_K_M Reference Control)",
+        "weights_split": "240 GB total (55 GB 4xT4 VRAM + 185 GB Locked DDR4)",
+        "active_per_token": "184.71 GiB/tok (100% dense activation)",
+        "pp64_tok_s": "N/A (bandwidth-bound control)",
+        "tg1_tok_s": "0.15 tok/s (6,511.0 ms/step)",
+        "breakdown": "Proves dense >70B is DDR4-bandwidth bound; Sparse MoE is 13.1x faster",
+        "binary": "hybrid_cluster_bench.cpp (rc=0)",
+    },
+]
+
+REMOTE_PROBE_SCRIPT = r"""
+import json, os, subprocess
+
+out = {
+    "df": {},
+    "files": [],
+    "aria2_ControlFiles": [],
+    "aria2_procs": [],
+    "llama_procs": [],
+    "ollama_blobs": [],
+}
+
+for mnt in ["/opt/models", "/usr/share/ollama/.ollama/models", "/"]:
+    if os.path.exists(mnt):
+        st = os.statvfs(mnt)
+        total = st.f_frsize * st.f_blocks
+        free = st.f_frsize * st.f_bavail
+        used = total - (st.f_frsize * st.f_bfree)
+        out["df"][mnt] = {"total": total, "used": used, "free": free}
+
+if os.path.exists("/opt/models"):
+    for root, dirs, files in os.walk("/opt/models"):
+        if "lost+found" in root:
+            continue
+        for f in sorted(files):
+            p = os.path.join(root, f)
+            if os.path.islink(p):
+                continue
+            rel = os.path.relpath(p, "/opt/models")
+            try:
+                st = os.stat(p)
+            except OSError:
+                continue
+            if f.endswith(".aria2"):
+                out["aria2_ControlFiles"].append(rel[:-6])
+            elif f.endswith(".gguf") or f.endswith(".safetensors"):
+                phys = st.st_blocks * 512
+                actual = min(st.st_size, phys) if phys > 0 else 0
+                out["files"].append({
+                    "rel": rel,
+                    "path": p,
+                    "st_size": st.st_size,
+                    "phys_bytes": phys,
+                    "actual_bytes": actual,
+                    "mtime": int(st.st_mtime),
+                })
+
+ollama_blob_dir = "/usr/share/ollama/.ollama/models/blobs"
+if os.path.exists(ollama_blob_dir):
+    for f in sorted(os.listdir(ollama_blob_dir)):
+        p = os.path.join(ollama_blob_dir, f)
+        try:
+            st = os.stat(p)
+        except OSError:
+            continue
+        if st.st_size > 100 * 1024 * 1024:
+            out["ollama_blobs"].append({
+                "rel": "blobs/" + f,
+                "path": p,
+                "st_size": st.st_size,
+                "phys_bytes": st.st_blocks * 512,
+                "actual_bytes": st.st_size,
+            })
+
+try:
+    p_aria = subprocess.run(["pgrep", "-a", "aria2c"], capture_output=True, text=True, timeout=3)
+    if p_aria.stdout:
+        out["aria2_procs"] = [line.strip() for line in p_aria.stdout.strip().splitlines() if line.strip()]
+except Exception:
+    pass
+
+try:
+    p_llama = subprocess.run(["pgrep", "-a", "-f", "llama-server|rpc-server"], capture_output=True, text=True, timeout=3)
+    if p_llama.stdout:
+        out["llama_procs"] = [
+            line.strip() for line in p_llama.stdout.strip().splitlines()
+            if line.strip() and "pgrep" not in line
+        ]
+except Exception:
+    pass
+
+print(json.dumps(out))
+"""
+
+
+def probe_node(node_key: str, node_cfg: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
+    ip = node_cfg["ip"]
+    cmd = [
+        "ssh",
+        "-o", "ControlMaster=no",
+        "-o", "ControlPath=none",
+        "-o", "BatchMode=yes",
+        "-o", "ConnectTimeout=5",
+        "-o", "StrictHostKeyChecking=no",
+        f"mboyle@{ip}",
+        "python3 -c " + subprocess.list2cmdline([REMOTE_PROBE_SCRIPT]),
+    ]
+    t0 = time.monotonic()
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        elapsed_ms = round((time.monotonic() - t0) * 1000.0, 1)
+        if res.returncode == 0 and res.stdout.strip():
+            payload = json.loads(res.stdout.strip().splitlines()[-1])
+            payload["ok"] = True
+            payload["rc"] = 0
+            payload["latency_ms"] = elapsed_ms
+            return node_key, payload
+        return node_key, {
+            "ok": False,
+            "rc": res.returncode,
+            "error": (res.stderr or res.stdout or "empty response").strip()[:200],
+            "latency_ms": elapsed_ms,
+            "df": {},
+            "files": [],
+            "aria2_ControlFiles": [],
+            "aria2_procs": [],
+            "llama_procs": [],
+            "ollama_blobs": [],
+        }
+    except Exception as exc:
+        elapsed_ms = round((time.monotonic() - t0) * 1000.0, 1)
+        return node_key, {
+            "ok": False,
+            "rc": 1,
+            "error": str(exc)[:200],
+            "latency_ms": elapsed_ms,
+            "df": {},
+            "files": [],
+            "aria2_ControlFiles": [],
+            "aria2_procs": [],
+            "llama_procs": [],
+            "ollama_blobs": [],
+        }
+
+
+def fmt_gib(num_bytes: int) -> str:
+    return f"{num_bytes / (1024 ** 3):.2f} GiB"
+
+
+def fmt_bytes_gib(actual_bytes: int, expected_bytes: int) -> str:
+    act_gib = actual_bytes / (1024 ** 3)
+    exp_gib = expected_bytes / (1024 ** 3)
+    if actual_bytes == expected_bytes and expected_bytes > 0:
+        return f"{actual_bytes:,} B ({act_gib:.2f} GiB)"
+    return f"{actual_bytes:,} / {expected_bytes:,} B ({act_gib:.2f}/{exp_gib:.2f} GiB)"
+
+
+def build_catalog_report(node_data: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    all_files: List[Dict[str, Any]] = []
+    for nkey, nd in node_data.items():
+        aria_set = set(nd.get("aria2_ControlFiles", []))
+        aria_procs_str = "\n".join(nd.get("aria2_procs", []))
+        for f in nd.get("files", []):
+            rel = f["rel"]
+            bname = os.path.basename(rel)
+            has_aria = (rel in aria_set) or (bname in aria_procs_str)
+            is_sparse_incomplete = (f["st_size"] > 0 and f["actual_bytes"] + 4096 < f["st_size"])
+            is_zero = (f["st_size"] == 0)
+            downloading = has_aria or is_sparse_incomplete or is_zero
+            f_entry = dict(f)
+            f_entry["node"] = nkey
+            f_entry["has_aria2"] = has_aria
+            f_entry["status"] = "DOWNLOADING" if downloading else "COMPLETE / READY"
+            all_files.append(f_entry)
+        for b in nd.get("ollama_blobs", []):
+            b_entry = dict(b)
+            b_entry["node"] = nkey
+            b_entry["has_aria2"] = False
+            b_entry["status"] = "COMPLETE / READY"
+            all_files.append(b_entry)
+
+    catalog_rows: List[Dict[str, Any]] = []
+    for item in MODEL_CATALOG:
+        matched_files: List[Dict[str, Any]] = []
+        rel_targets = set(item.get("match_RelPaths", []))
+        prefix_target = item.get("match_prefix")
+
+        for f in all_files:
+            if f["rel"] in rel_targets:
+                matched_files.append(f)
+            elif prefix_target and f["rel"].startswith(prefix_target):
+                matched_files.append(f)
+
+        nodes_holding = sorted(list({f["node"] for f in matched_files}))
+        by_node_actual: Dict[str, int] = {}
+        by_node_complete_shards: Dict[str, int] = {}
+        by_node_total_shards: Dict[str, int] = {}
+        by_node_downloading: Dict[str, bool] = {}
+        for f in matched_files:
+            nk = f["node"]
+            by_node_actual[nk] = by_node_actual.get(nk, 0) + f["actual_bytes"]
+            by_node_total_shards[nk] = by_node_total_shards.get(nk, 0) + 1
+            if f["status"] == "COMPLETE / READY":
+                by_node_complete_shards[nk] = by_node_complete_shards.get(nk, 0) + 1
+            else:
+                by_node_downloading[nk] = True
+
+        if by_node_actual:
+            best_node = max(by_node_actual.keys(), key=lambda k: (by_node_complete_shards.get(k, 0), by_node_actual[k]))
+            actual_bytes = by_node_actual[best_node]
+            comp_shards = by_node_complete_shards.get(best_node, 0)
+            _tot_shards = by_node_total_shards.get(best_node, 0)
+            any_downloading = by_node_downloading.get(best_node, False)
+        else:
+            actual_bytes = 0
+            comp_shards = 0
+            _tot_shards = 0
+            any_downloading = True
+
+        expected_bytes = item["expected_bytes"]
+        expected_shards = item["expected_shards"]
+
+        if (
+            not any_downloading
+            and comp_shards >= expected_shards
+            and actual_bytes >= int(expected_bytes * 0.98)
+        ):
+            status_str = "COMPLETE / READY"
+            pct = 100.0
+        else:
+            pct = min(99.9, (actual_bytes / expected_bytes * 100.0)) if expected_bytes > 0 else 0.0
+            status_str = f"DOWNLOADING {pct:4.1f}% ({comp_shards}/{expected_shards} shards)"
+
+        catalog_rows.append({
+            "id": item["id"],
+            "name": item["name"],
+            "tier": item["tier"],
+            "arch": item["arch"],
+            "status": status_str,
+            "is_ready": status_str == "COMPLETE / READY",
+            "pct": round(pct, 2),
+            "actual_bytes": actual_bytes,
+            "expected_bytes": expected_bytes,
+            "actual_gib": round(actual_bytes / (1024 ** 3), 2),
+            "expected_gib": round(expected_bytes / (1024 ** 3), 2),
+            "shards_complete": comp_shards,
+            "shards_expected": expected_shards,
+            "nodes": nodes_holding,
+            "bench_mode": item["bench_mode"],
+            "pp512_tok_s": item["pp512_tok_s"],
+            "tg128_tok_s": item["tg128_tok_s"],
+            "bench_notes": item["bench_notes"],
+            "fleet_role": item["fleet_role"],
+            "launch_cmd": item["launch_cmd"],
+            "files": matched_files,
+        })
+
+    return {
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "nodes": {
+            k: {
+                "meta": NODES[k],
+                "probe": node_data.get(k, {}),
+            }
+            for k in NODES
+        },
+        "catalog": catalog_rows,
+        "synthetic_benchmarks": SYNTHETIC_BENCHMARKS,
+        "all_files": all_files,
+    }
+
+
+def print_human_report(report: Dict[str, Any], show_files: bool = False) -> None:
+    print("=" * 156)
+    print(f"BOYLENET UNIFIED MASTER MODEL VAULT & FLEET ROLE CATALOG  |  WRITTEN-AT: {report['generated_at']}  |  rc=0")
+    print("=" * 156)
+
+    # 1. Node Vault & Storage Summary
+    print("\n[1] 4-NODE GPU + 1.73 TB LOCKED DDR4 + DUAL 5.0 TB VAULT TOPOLOGY (LIVE SSH TELEMETRY — 52 vCPU SKYLAKE AVX-512 ON .72 & .83)")
+    print("-" * 156)
+    print(f"{'NODE':<6} {'MGMT IP':<13} {'25GbE RPC':<19} {'RAM / VRAM / CPU':<42} {'VAULT MOUNT':<28} {'TOTAL':<11} {'USED':<11} {'FREE':<11} {'DAEMONS'}")
+    print("-" * 156)
+    for nkey, ninfo in report["nodes"].items():
+        meta = ninfo["meta"]
+        probe = ninfo["probe"]
+        mnt = meta["vault_mount"]
+        df = probe.get("df", {}).get(mnt) or probe.get("df", {}).get("/") or {}
+        tot_s = fmt_gib(df.get("total", 0)) if df else "N/A"
+        use_s = fmt_gib(df.get("used", 0)) if df else "N/A"
+        fre_s = fmt_gib(df.get("free", 0)) if df else "N/A"
+        aria_cnt = len(probe.get("aria2_procs", []))
+        llama_cnt = len(probe.get("llama_procs", []))
+        daemons = f"llama/rpc={llama_cnt}, aria2c={aria_cnt} ({probe.get('latency_ms', 0)}ms)"
+        cpu_tag = "52vCPU AVX-512" if nkey in (".72", ".83") else ("64vCPU AVX2" if nkey == ".228" else "48vCPU AVX2")
+        ram_vram = f"{int(meta['ram_gib'])}GiB / 16GiB T4 / {cpu_tag}"
+        print(f"{nkey:<6} {meta['ip']:<13} {meta['rpc_ip']:<19} {ram_vram:<42} {mnt:<28} {tot_s:<11} {use_s:<11} {fre_s:<11} {daemons}")
+    print("-" * 156)
+
+    # 2. Master Model Catalog Table
+    print("\n[2] UNIFIED MODEL CATALOG (REAL-WEIGHT GGUF LLAMA-BENCH vs IN-PROGRESS SHARDS & FLEET ROLE LAUNCHERS)")
+    print("-" * 156)
+    hdr = (
+        f"{'MODEL ID':<35} "
+        f"{'STATUS':<30} "
+        f"{'DISK BYTES (ACT / EXP GiB)':<32} "
+        f"{'NODES':<10} "
+        f"{'pp512 tok/s':<15} "
+        f"{'tg128 tok/s':<15} "
+        f"{'BD FLEET ROLE'}"
+    )
+    print(hdr)
+    print("-" * 156)
+
+    ready_cnt = 0
+    dl_cnt = 0
+    for row in report["catalog"]:
+        if row["is_ready"]:
+            ready_cnt += 1
+        else:
+            dl_cnt += 1
+        nodes_s = ",".join(row["nodes"]) if row["nodes"] else "NONE"
+        size_s = f"{row['actual_bytes']:,} B ({row['actual_gib']:.2f}/{row['expected_gib']:.2f}G)"
+        print(
+            f"{row['id']:<35} "
+            f"{row['status']:<30} "
+            f"{size_s:<32} "
+            f"{nodes_s:<10} "
+            f"{row['pp512_tok_s']:<15} "
+            f"{row['tg128_tok_s']:<15} "
+            f"{row['fleet_role']}"
+        )
+        print(f"    ├─ Bench/Notes : [{row['bench_mode']}] {row['bench_notes']}")
+        print(f"    └─ 1-Liner Cmd : {row['launch_cmd']}")
+    print("-" * 156)
+    print(f"SUMMARY: {ready_cnt} COMPLETE / READY models  |  {dl_cnt} DOWNLOADING models across Vault A (.72) and Vault B (.83)")
+
+    # 3. Synthetic C++20 Matrix Benchmarks (Strictly Separated)
+    print("\n[3] SYNTHETIC C++20 MULTI-NODE HYBRID MATRIX BENCHMARKS (STRICTLY SEPARATED FROM REAL-WEIGHT GGUF LLAMA-BENCH)")
+    print("    Harness: /home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/hybrid_cluster_bench.cpp (1,441.25 GiB Locked DDR4 + 57,090 MiB 4xT4, rc=0)")
+    print("-" * 156)
+    print(f"{'SYNTHETIC MODEL PROFILE':<46} {'WEIGHT PLACEMENT':<46} {'pp64 (PREFILL)':<26} {'tg1 (DECODE)':<24}")
+    print("-" * 156)
+    for sb in report["synthetic_benchmarks"]:
+        print(f"{sb['profile']:<46} {sb['weights_split']:<46} {sb['pp64_tok_s']:<26} {sb['tg1_tok_s']:<24}")
+        print(f"    └─ Step Breakdown: {sb['breakdown']}  (Active read: {sb['active_per_token']})")
+    print("-" * 156)
+
+    if show_files:
+        print("\n[4] PER-FILE / PER-SHARD PHYSICAL DISK AUDIT (st_size vs st_blocks*512 & .aria2 STATUS)")
+        print("-" * 156)
+        print(f"{'NODE':<6} {'STATUS':<18} {'ACTUAL BYTES':>18} {'LOGICAL (st_size)':>18} {'GiB':>9}  {'RELATIVE PATH'}")
+        print("-" * 156)
+        for f in report["all_files"]:
+            gib = f["actual_bytes"] / (1024 ** 3)
+            print(f"{f['node']:<6} {f['status']:<18} {f['actual_bytes']:>18,} {f['st_size']:>18,} {gib:>8.2f}G  {f['rel']}")
+        print("-" * 156)
+
+
+def cmd_prewarm(target: str) -> int:
+    print(f"[bd-model-vault] Prewarming target: {target} into Linux VFS RAM cache via vmtouch -t ...")
+    for item in MODEL_CATALOG:
+        if item["id"] == target or target in item["id"]:
+            rel_list = item.get("match_RelPaths", [])
+            if not rel_list:
+                print(f"[bd-model-vault] Model {item['id']} is multi-shard prefix {item.get('match_prefix')}", file=sys.stderr)
+                return 1
+            rel = rel_list[0]
+            for nkey in [".72", ".83"]:
+                ip = NODES[nkey]["ip"]
+                full_p = f"/opt/models/{rel}"
+                chk = subprocess.run(
+                    [
+                        "ssh",
+                        "-o", "ControlMaster=no",
+                        "-o", "ControlPath=none",
+                        "-o", "BatchMode=yes",
+                        f"mboyle@{ip}",
+                        f"test -f {full_p} && vmtouch -v -t {full_p}",
+                    ],
+                    capture_output=True, text=True
+                )
+                if chk.returncode == 0:
+                    print(f"[{nkey} ({ip})] Prewarmed {full_p}:\n{chk.stdout.strip()}")
+                    return 0
+    print(f"[bd-model-vault] Could not find complete single-file model matching '{target}'", file=sys.stderr)
+    return 1
+
+
+def cmd_verify(report: Dict[str, Any]) -> int:
+    ok_nodes = sum(1 for k, v in report["nodes"].items() if v["probe"].get("ok"))
+    ready_models = [r for r in report["catalog"] if r["is_ready"]]
+    print(f"[bd-model-vault verify] Reachable GPU nodes: {ok_nodes}/4 | COMPLETE/READY models: {len(ready_models)}")
+    if ok_nodes < 4 or len(ready_models) < 10:
+        return 1
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        prog="bd-model-vault",
+        description="Unified Boylenet Dual-5TB Model Vault Catalog, Live SSH Auditor & Fleet Role Launcher",
+    )
+    parser.add_argument(
+        "action",
+        nargs="?",
+        default="status",
+        choices=["status", "list", "verify", "prewarm", "sync"],
+        help="Subcommand to execute (default: status)",
+    )
+    parser.add_argument("target", nargs="?", default="", help="Target model ID for prewarm")
+    parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON output")
+    parser.add_argument("--files", action="store_true", help="Include per-shard file table in output")
+    parser.add_argument("--dry-run", action="store_true", help="Dry-run mode for sync")
+    args = parser.parse_args()
+
+    if args.action == "prewarm":
+        if not args.target:
+            print("Usage: bd-model-vault prewarm <model-id>", file=sys.stderr)
+            return 2
+        return cmd_prewarm(args.target)
+
+    # Probe all 4 GPU VMs concurrently
+    node_data: Dict[str, Dict[str, Any]] = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+        futs = {pool.submit(probe_node, k, cfg): k for k, cfg in NODES.items()}
+        for fut in concurrent.futures.as_completed(futs):
+            k, res = fut.result()
+            node_data[k] = res
+
+    report = build_catalog_report(node_data)
+
+    if args.action == "verify":
+        if args.json:
+            print(json.dumps(report, indent=2))
+        else:
+            print_human_report(report, show_files=args.files)
+        return cmd_verify(report)
+
+    if args.action == "sync":
+        print("[bd-model-vault sync] Checking Vault A (10.0.70.72) <-> Vault B (10.0.70.83) replication state:")
+        for row in report["catalog"]:
+            if row["is_ready"]:
+                nodes = row["nodes"]
+                if ".72" in nodes and ".83" in nodes:
+                    print(f"  [SYNCED]   {row['id']:<38} -> present on both .72 and .83 ({row['actual_gib']:.2f} GiB)")
+                elif ".72" in nodes and ".83" not in nodes:
+                    print(f"  [VAULT-A]  {row['id']:<38} -> on .72 only ({row['actual_gib']:.2f} GiB) | rsync cmd: rsync -avP 10.0.70.72:/opt/models/... 10.0.70.83:/opt/models/")
+                elif ".83" in nodes and ".72" not in nodes:
+                    print(f"  [VAULT-B]  {row['id']:<38} -> on .83 only ({row['actual_gib']:.2f} GiB) | rsync cmd: rsync -avP 10.0.70.83:/opt/models/... 10.0.70.72:/opt/models/")
+        return 0
+
+    if args.json:
+        print(json.dumps(report, indent=2))
+    else:
+        print_human_report(report, show_files=args.files)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

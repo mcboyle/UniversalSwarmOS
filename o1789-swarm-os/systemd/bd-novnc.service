@@ -1,0 +1,14 @@
+[Unit]
+Description=BulkDownloader noVNC web frontend (port 6080)
+After=bd-x11vnc.service
+Requires=bd-x11vnc.service
+
+[Service]
+Type=simple
+User=mboyle
+ExecStart=/usr/bin/websockify --web=/usr/share/novnc 6080 127.0.0.1:5900
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

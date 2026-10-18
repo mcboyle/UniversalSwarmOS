@@ -1,0 +1,1030 @@
+#!/usr/bin/env python3
+"""
+bd-vault-curator — Automated GGUF Model Vault Curator, Integrity Verifier & Speculative Draft-Pair Builder
+ Agent-60 (Swarm #12, O1789 Infra-Upgrade)
+
+Performs 4 automated curation tasks across Vault A (10.0.70.72:/opt/models),
+Vault B (10.0.70.83:/opt/models), and Pool Beta nodes (10.0.70.125, 10.0.70.228):
+  1. GGUF Magic & Shard Integrity Audit (47 47 55 46 header, non-zero, non-sparse physical blocks, N/N shard completeness, 0 .aria2 check)
+  2. Orphan & Duplicate Space Analyzer (stale vs active service-protected .aria2 files, partial sparse sets, cross-vault duplicates, reclaimable GiB)
+  3. Automatic Speculative Draft-Model Pair Mapping (DeepSeek dspark-Q8_0/BF16 MLA drafter, Qwen3 draft/MTP, Llama draft, GLM DFlash, and ngram-mod configs)
+  4. Unified Vault Manifest Generator (/var/tmp/bd-vault-manifest.json)
+"""
+
+from __future__ import annotations
+
+import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+from typing import Any, Dict, List, Optional, Tuple
+
+MANIFEST_PATH = "/var/tmp/bd-vault-manifest.json"
+
+SSH_BASE_ARGS = [
+    "ssh",
+    "-o", "ControlMaster=no",
+    "-o", "ControlPath=none",
+    "-o", "BatchMode=yes",
+    "-o", "ConnectTimeout=8",
+    "-o", "StrictHostKeyChecking=no",
+]
+
+NODES: Dict[str, Dict[str, Any]] = {
+    "10.0.70.72": {
+        "short": ".72",
+        "vault_name": "Vault A (wrk-test02)",
+        "rpc_endpoint": "10.0.75.12:50052",
+        "ram_gib": 320.0,
+        "vram_gib": 16.0,
+        "primary_mount": "/opt/models",
+        "pull_service": "bd-pull-kimi-k3-and-frontier-72.service",
+    },
+    "10.0.70.83": {
+        "short": ".83",
+        "vault_name": "Vault B (wrk-test05)",
+        "rpc_endpoint": "10.0.75.11:50052",
+        "ram_gib": 386.0,
+        "vram_gib": 16.0,
+        "primary_mount": "/opt/models",
+        "pull_service": "bd-pull-kimi-k3-and-frontier-83.service",
+    },
+    "10.0.70.125": {
+        "short": ".125",
+        "vault_name": "Pool Beta Master (ai-infer01)",
+        "rpc_endpoint": "10.0.75.14:50052",
+        "ram_gib": 576.0,
+        "vram_gib": 16.0,
+        "primary_mount": "/usr/share/ollama/.ollama/models",
+        "pull_service": None,
+    },
+    "10.0.70.228": {
+        "short": ".228",
+        "vault_name": "LiteLLM Gateway & Store (ai-ollama01)",
+        "rpc_endpoint": "10.0.75.13:50052",
+        "ram_gib": 448.0,
+        "vram_gib": 16.0,
+        "primary_mount": "/usr/share/ollama/.ollama/models",
+        "pull_service": None,
+    },
+}
+
+# Ground-truth measured benchmarks (pp512 / tg128 tok/s) from llama-bench (b11716, rc=0) & hybrid cluster benchmarks
+BENCHMARK_DB: Dict[str, Tuple[Optional[float], Optional[float], str]] = {
+    "minimax-m2.7-ultra-uncensored-heretic/MiniMax-M2.7-BF16-ultra-uncensored-heretic-Q4_K_M": (2.80, 4.39, "1xT4 + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=22)"),
+    "mimo-v2.6-flash-rl-heretic-311b/MiMo-V2.6-Flash-RL-Uncensored-Heretic-MXFP4-00001-of-00002": (1.39, 4.20, "1xT4 + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=22)"),
+    "command-a-plus-111b/command-a-plus-05-2026-Q4_K_M-00001-of-00004": (1.31, 2.40, "Skylake AVX-512 48-Thread DDR4 (ngl=0)"),
+    "glm-5.3-flash-abliterated/GLM-5.3-Flash-UD-IQ4_XS-00001-of-00005": (1.35, 0.73, "1xT4 + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=22)"),
+    "hy3-295b-heretic/Hy3-heretic.i1-IQ2_M": (8.80, 3.78, "1xT4 + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=99)"),
+    "glm-5.3-flash-uncensored/GLM-5.3-Flash-Uncensored-IQ2_XXS-00001-of-00003": (8.05, 1.88, "1xT4 + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=99)"),
+    "gpt-oss-120b-heretic-v2/kldzj_gpt-oss-120b-heretic-v2-MXFP4_MOE-00001-of-00002": (23.14, 8.24, "1xT4 + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=99)"),
+    "mirothinker-v1.5-30b-heretic/mirothinker-v1.5-30b-heretic-q8_0": (46.77, 9.92, "1xT4 + Skylake AVX-512 Hybrid (ngl=20, t=48)"),
+    "granite-4.0-h-32b-heretic/granite-4.0-h-small-heretic-high-UD-Q4_K_XL": (40.05, 6.34, "1xT4 + Skylake AVX-512 Hybrid (ngl=20, t=48)"),
+    "nemotron-3.5-lightning-30b-heretic/Nemotron-3.5-Lightning-30B-A3B-Heretic-Uncensored-Q4_K_M-GGUF": (120.01, 7.97, "Skylake AVX-512 48-Thread DDR4 (ngl=0)"),
+    "twilight-embrace-31b-heretic/Twilight-Embrace-31B-Heretic.i1-Q4_K_M": (170.06, 4.44, "1xT4 + Skylake AVX-512 Hybrid (ngl=44, t=48)"),
+    "gemma-4-31b-uncensored/gemma-4-31B-it-uncensored-Q4_K_M": (186.33, 4.47, "1xT4 + Skylake AVX-512 Hybrid (ngl=44, t=48)"),
+    "nemotron-3.5-super-vl-120b/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-UD-Q4_K_XL-00001-of-00003": (19.03, 8.4, "1xT4 + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=99)"),
+    "rvn-qwen3.8-flash-next-abliterated-177b/RVN-Qwen3.8-Flash-Next-IQ3_M-00001-of-00008": (22.87, 7.03, "1xT4 + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=99)"),
+    "ling-3.0-flash-abliterated-128b/Ling-3.0-flash-abliterated-APEX-Balanced": (10.16, 6.21, "1xT4 + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=99)"),
+    "qwen3-coder-next-80b/Qwen3-Coder-Next-Q5_K_M-00001-of-00003": (22.95, 8.03, "1xT4 + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=99)"),
+    "qwen3.8-27b-turbo-fable-heretic-neocoder/Qwen3.8-27B-TurboFCFusion-735-882-Here-Uncen-NEO-CODER-MAX-MTP-Q4_K_M": (92.01, 3.97, "1xT4 + Skylake AVX-512 Hybrid (ngl=44, t=48)"),
+    "glm-4.7-flash-30b-heretic-neocode/GLM-4.7-Flash-Uncen-Hrt-NEO-CODE-MAX-imat-D_AU-Q4_K_M": (147.05, 15.26, "1xT4 + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=99)"),
+    "qwen3-48b-savant-heretic/Qwen3-48B-A4B-Savant-Commander-Dstll-12X-Cl-Op-Hrtic-Uncen-Q6_K": (72.47, 5.58, "1xT4 + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=99)"),
+    "l3.1-dark-planet-47b-uncensored/L3.1-MOE-8X8B-Dark-Planet-8D-Mirrored-Chaos-Uncensored-47B.Q4_K_M": (66.41, 2.48, "1xT4 + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=99)"),
+    "nemotron-3.5-bolt-74b-a9b/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-UD-Q4_K_XL-00001-of-00003": (29.18, 13.46, "1xT4 + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=99)"),
+    "lfm2.5-24b-a2b-uncensored/LFM2.5-24B-A2B-Uncensored-AD-Q4_K_M": (172.71, 20.52, "1xT4 + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=99)"),
+    "captchakraken-v1.2-gguf/CaptchaKraken-v1.2-Q4_K_M": (958.05, 28.21, "1xT4 + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=99)"),
+    "gemma-4-26b-a4b-uncensored/gemma-4-26B-A4B-it-uncensored-Q4_K_M": (178.18, 21.57, "1xT4 + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=99)"),
+    "hemmingway-1-27b-heretic/Hemmingway-1-heretic-Q4_K_M": (185.28, 4.18, "1xT4 + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=45)"),
+    "qwen3.8-27b-heretic-abliterated-uncensored/RVN-Q4_K_M-mtp": (185.54, 4.18, "1xT4 + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=45)"),
+    "cyberstag-security-26b-a4b-heretic/CyberStag-Security-26B-A4B-V1-Uncensored-Heretic-UD-Q4_K_XL": (200.81, 21.93, "1xT4 + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=99)"),
+    "occamy-1.0-35b-abliterated/Occamy-1.0.APEX-I-MiniPlus-V2.1-Abliterated": (638.35, 50.98, "1xT4 Pure VRAM (ngl=999, fa=1)"),
+    "hermes-4.3-36b-abliterated-heretic/Hermes-4.3-36B-ABLITERATED-heretic.Q4_K_M": (148.22, 3.96, "1xT4 + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=45)"),
+    "minicpm-v-4.7-35b-a3b/MiniCPM-V-4_7-35B-A3B-Q4_K_M": (79.71, 23.14, "1xT4 + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=99)"),
+    "agents-a1-35b-uncensored/Agents-A1-Uncensored-MTP-APEX-I-Balanced": (54.18, 14.5, "1xT4 + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=99)"),
+    "moss-music-8b-instruct-gguf/moss-lm-q8_0": (135.25, 20.34, "1xT4 Pure VRAM (ngl=999, fa=1)"),
+    "tier1-qwen3-coder-30b-a3b/Qwen3-Coder-30B-A3B-Instruct-Q4_K_M": (848.90, 77.62, "2xT4 Pool Alpha (ngl=999, fa=1)"),
+    "tier1-qwen3-coder-30b-a3b/Qwen3-Coder-30B-A3B-Instruct-Q6_K": (710.50, 64.20, "2xT4 Pool Alpha (ngl=999, fa=1)"),
+    "cyberstrike-35b/Huihui-CyberStrike-OffSec-35B-abliterated-Q4_K_M": (799.00, 66.47, "2xT4 Pool Alpha (ngl=999, fa=1)"),
+    "cyberstrike-35b/Huihui-CyberStrike-OffSec-35B-abliterated-bf16": (184.00, 19.72, "4xT4 + Skylake AVX-512 Hybrid (-ot .ffn_.*_exps.=CPU)"),
+    "qwythos-9b/Qwythos-9B-Claude-Mythos-5-1M-MTP-Q8_0": (1005.86, 21.39, "1xT4 Pure VRAM (ngl=999, fa=1)"),
+    "qwythos-9b/Qwythos-9B-Claude-Mythos-5-1M-MTP-BF16": (224.00, 16.28, "2xT4 Pure VRAM (ngl=999, fa=1)"),
+    "qwythos-27b/Qwythos-27B-MTP-Q4_K_M": (289.31, 12.30, "2xT4 Pure VRAM (ngl=999, fa=1)"),
+    "qwythos-27b/Qwythos-27B-MTP-Q8_0": (316.53, 8.13, "3x/4xT4 Pure VRAM (ngl=999, fa=1)"),
+    "qwythos-27b/Qwythos-27B-MTP-BF16": (94.50, 4.48, "4xT4 Pure VRAM (ngl=999, fa=1)"),
+    "tier2-70b/DeepSeek-R1-Distill-Llama-70B-IQ4_XS": (121.83, 3.90, "4xT4 64GB Pure VRAM (81/81 GPU layers)"),
+    "deepseek-r1-70b-abliterated/huihui-ai_DeepSeek-R1-Distill-Llama-70B-abliterated-IQ4_XS": (121.83, 3.90, "4xT4 64GB Pure VRAM (81/81 GPU layers)"),
+    "tier2-70b/DeepSeek-R1-Distill-Llama-70B-Q4_K_M": (108.89, 3.63, "4xT4 64GB Pure VRAM (81/81 GPU layers)"),
+    "tier2-70b/Llama-3.3-70B-Instruct-Q4_K_M": (108.22, 3.59, "4xT4 64GB Pure VRAM (81/81 GPU layers)"),
+    "llama-3.3-70b-abliterated/Llama-3.3-70B-Instruct-abliterated-Q4_K_M": (108.22, 3.59, "4xT4 64GB Pure VRAM (81/81 GPU layers)"),
+    "hermes-4-70b-heretic/Hermes-4-70B-heretic.i1-Q4_K_M": (108.20, 3.60, "4xT4 64GB Pure VRAM (81/81 GPU layers)"),
+    "deepseek-v4-flash/dspark-DeepSeek-V4-Flash-0731-BF16": (612.40, 54.20, "1xT4 MLA Speculative Drafter"),
+    "deepseek-v4-flash/dspark-DeepSeek-V4-Flash-0731-Q8_0": (680.20, 61.50, "1xT4 MLA Speculative Drafter"),
+    "deepseek-v4-flash/DeepSeek-V4-Flash-Q2-0731": (47.28, 18.40, "1xT4 + Skylake AVX-512 NUMA0 Hybrid on .83"),
+    "deepseek-v4-flash/DeepSeek-V4-Flash-Q4_K-0731": (142.37, 14.20, "4xT4 + Skylake AVX-512 --numa distribute -t 48"),
+    "deepseek-v4.1-flash-abliterated-755b/DeepSeek-V4.1-Flash-Abliterated-Q2-imatrix": (88.00, 2.10, "4xT4 + Skylake AVX-512 Hybrid profile"),
+    "qwen3.8-flash-next/swift-IQ2_XS/Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS": (120.58, 14.11, "1xT4 + Skylake AVX-512 NUMA0 Hybrid on .72"),
+    "qwen3.8-flash-next/UD-IQ4_XS/Qwen3.8-Flash-Next-UD-IQ4_XS": (98.40, 11.40, "1xT4 + Skylake AVX-512 NUMA0 Hybrid on .72"),
+    "qwen3.8-flash-next/BF16/Qwen3.8-Flash-Next-BF16": (112.00, 8.90, "4xT4 + Skylake AVX-512 DDR4 Hybrid on .72"),
+    "rvn-qwen3.8-flash-next-abliterated-177b/RVN-Qwen3.8-Flash-Next-IQ3_M": (104.20, 12.10, "1xT4 + Skylake AVX-512 NUMA0 Hybrid on .83"),
+    "tier3a-qwen3-235b-a22b/Qwen3-235B-A22B-Instruct-2507-Q4_K_M": (118.50, 6.40, "1xT4 + 386GiB DDR4 Skylake AVX-512 Hybrid on .83"),
+    "tier3a-qwen3-coder-480b-a35b/Qwen3-Coder-480B-A35B-Instruct-UD-Q2_K_XL": (96.40, 4.10, "4xT4 + DDR4 Hybrid profile"),
+    "tier3a-qwen3-coder-480b-a35b/Qwen3-Coder-480B-A35B-Instruct-Q4_K_M": (84.20, 3.20, "4xT4 + DDR4 Hybrid profile"),
+    "tier3b-deepseek-v3-0324/DeepSeek-V3-0324-Q4_K_M": (90.68, 1.97, "C++20 Hybrid Cluster Synth Matrix (4xT4 + 1.44TiB DDR4)"),
+    "deepseek-v3.2-685b/DeepSeek-V3.2-UD-Q2_K_XL": (94.00, 2.40, "4xT4 + Skylake AVX-512 Hybrid on .72"),
+    "mimo-v2.6-pro-1024b/MiMo-V2.6-Pro-MOPD-BPW2.0": (69.13, 1.54, "4xT4 + Skylake AVX-512 Hybrid on .83"),
+    "muse-spark-816b-a42b/Muse-Spark-Open-816B-A42B-UD-IQ2_XXS": (74.50, 1.85, "4xT4 + Skylake AVX-512 Hybrid on .83"),
+    "glm-5.3-753b/GLM-5.3-UD-Q2_K_XL": (78.40, 2.15, "4xT4 + Skylake AVX-512 Hybrid on .83"),
+    "glm-5.3-flash-abliterated/GLM-5.3-Flash-UD-IQ4_XS": (110.00, 6.20, "4xT4 + Skylake AVX-512 Hybrid on .83"),
+    "glm-5.3-flash-uncensored/GLM-5.3-Flash-Uncensored-IQ2_XXS": (128.40, 8.60, "4xT4 + Skylake AVX-512 Hybrid on .72"),
+    "glm-5.2/GLM-5.2-UD-IQ2_XXS_RoutedIQ2XXS_blk78Q2K": (3.04, 2.21, "4xT4 + DDR4 Hybrid on .83"),
+    "glm-5.2/UD-Q3_K_M/GLM-5.2-UD-Q3_K_M": (84.10, 3.20, "4xT4 + DDR4 Hybrid profile"),
+    "kimi-k3-abliterated-q2k-gguf/KIMI-K3-MXP4-DERISKED-Q2_K": (69.13, 16.30, "4-Node 1.73TB DDR4 + 4xT4 Hybrid on .72 (SMOKE_OK)"),
+    "kimi-k3-abliterated-iq1s-gguf/Kimi-K3-abliterated-IQ1_S-XS": (74.20, 18.40, "4-Node 1.73TB DDR4 + 4xT4 Hybrid on .72"),
+    "ling-3.1-flash-564b/Ling-3.1-flash-AD-IQ2_M": (82.10, 2.45, "4xT4 + Skylake AVX-512 Hybrid on .83"),
+    "nemotron-3-ultra-550b-a55b/NVIDIA-Nemotron-3-Ultra-550B-A55B-UD-Q2_K_XL": (76.50, 2.35, "4xT4 + Skylake AVX-512 Hybrid on .72"),
+    "beam-1.0-501b-a23b/Beam-1.0-501B-A23B-UD-Q2_K_XL": (1.16, 3.05, "2xT4 Pool Alpha (.72+.228) + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=48)"),
+    "minimax-m3-426b-uncensored/MiniMax-M3-uncensored-IQ4_XS": (88.60, 3.40, "4xT4 + Skylake AVX-512 Hybrid on .72"),
+    "minimax-m2.7-ultra-uncensored-heretic/MiniMax-M2.7-BF16-ultra-uncensored-heretic-Q4_K_M": (2.80, 4.39, "1xT4 + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=22) on .72"),
+    "gpt-oss-120b-heretic-v2/kldzj_gpt-oss-120b-heretic-v2-MXFP4_MOE": (135.00, 14.50, "4xT4 + Skylake AVX-512 Hybrid on .72"),
+    "laguna-s-2.1-118b-uncensored/laguna-s-2.1-q4_k_m-uncensored": (86.00, 4.20, "4xT4 + Skylake AVX-512 Hybrid on .72"),
+    "hy3-295b-heretic/Hy3-heretic.i1-IQ2_M": (115.00, 6.80, "4xT4 + Skylake AVX-512 Hybrid on .72"),
+    "command-a-plus-111b/command-a-plus-05-2026-Q4_K_M": (82.00, 3.10, "4xT4 + Skylake AVX-512 Hybrid on .72"),
+    "qwen3.6-35b-claude-opus-abliterated/huihui-qwen3.6-35b-a3b-claude-4.7-opus-abliterated-q4_k_m": (795.00, 65.80, "2xT4 Pool Alpha (qwen3moe 35B-A3B Q4_K_M)"),
+    "qwen3-coder-next-80b/Qwen3-Coder-Next-Q5_K_M": (162.40, 15.80, "4xT4 + Skylake AVX-512 Hybrid on .83"),
+    "qwen3.5-122b-a10b-abliterated/Qwen3.5-122B-A10B-abliterated-v1.i1-IQ4_XS": (144.20, 12.60, "4xT4 + Skylake AVX-512 Hybrid on .83"),
+    "nemotron-3.5-bolt-74b-a9b/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-UD-Q4_K_XL": (178.50, 16.90, "4xT4 + Skylake AVX-512 Hybrid on .83"),
+    "glm-4.5-air-reap-82b-heretic/GLM-4.5-Air-REAP-82B-A12B-heretic-Q4_K_M": (152.00, 13.40, "4xT4 + Skylake AVX-512 Hybrid on .83"),
+    "blobs/sha256-ac3d1ba8aa77755dab3806d9024e9c385ea0d5b412d6bdf9157f8a4a7e9fc0d9": (266.51, 11.27, "2xT4 Pool Beta (.125+.228, Qwen2.5-Coder-32B-Q4_K_M)"),
+    "blobs/sha256-ac9bc7a69dab38da1c790838955f1293420b55ab555ef6b4615efa1c1507b1ed": (266.51, 11.27, "2xT4 Pool Beta (.228, Qwen2.5-Coder-32B-Q4_K_M)"),
+}
+
+REMOTE_SCAN_CODE = r"""
+import json, os, re, struct, subprocess
+
+res = {
+    "df": {},
+    "gguf_files": [],
+    "safetensors_files": [],
+    "aria2_files": [],
+    "symlinks": [],
+    "active_aria2_manifests": {},
+    "active_aria2_cmdlines": [],
+    "systemd_pull_status": "",
+    "pull_log_tail": [],
+    "ollama_blobs": [],
+}
+
+for mnt in ["/opt/models", "/usr/share/ollama/.ollama/models", "/"]:
+    if os.path.exists(mnt):
+        st = os.statvfs(mnt)
+        total = st.f_frsize * st.f_blocks
+        free = st.f_frsize * st.f_bavail
+        used = total - (st.f_frsize * st.f_bfree)
+        res["df"][mnt] = {"total": total, "used": used, "free": free}
+
+try:
+    p_aria = subprocess.run(["pgrep", "-a", "aria2c"], capture_output=True, text=True, timeout=4)
+    if p_aria.stdout:
+        res["active_aria2_cmdlines"] = [l.strip() for l in p_aria.stdout.splitlines() if l.strip()]
+except Exception:
+    pass
+
+active_input_files = set()
+for cmdline in res["active_aria2_cmdlines"]:
+    m = re.search(r"-i\s+(\S+)", cmdline)
+    if m:
+        active_input_files.add(m.group(1))
+
+if os.path.exists("/opt/models"):
+    for fn in sorted(os.listdir("/opt/models")):
+        if fn.startswith("aria2_") and fn.endswith(".txt"):
+            p = os.path.join("/opt/models", fn)
+            is_active_manifest = (p in active_input_files)
+            try:
+                txt = open(p, errors="ignore").read()
+                targets = []
+                cur_dir = None
+                cur_out = None
+                for line in txt.splitlines():
+                    s = line.strip()
+                    if not s or s.startswith("#"):
+                        continue
+                    if s.startswith("http://") or s.startswith("https://"):
+                        if cur_dir and cur_out:
+                            rel_t = os.path.relpath(os.path.join(cur_dir, cur_out), "/opt/models")
+                            targets.append(rel_t)
+                        cur_dir = None
+                        cur_out = None
+                    elif s.startswith("dir="):
+                        cur_dir = s[4:].strip()
+                    elif s.startswith("out="):
+                        cur_out = s[4:].strip()
+                if cur_dir and cur_out:
+                    rel_t = os.path.relpath(os.path.join(cur_dir, cur_out), "/opt/models")
+                    targets.append(rel_t)
+                res["active_aria2_manifests"][fn] = {
+                    "active": is_active_manifest,
+                    "targets": targets,
+                }
+            except Exception:
+                pass
+
+    for root, dirs, files in os.walk("/opt/models"):
+        if "lost+found" in root:
+            continue
+        for f in sorted(files):
+            p = os.path.join(root, f)
+            rel = os.path.relpath(p, "/opt/models")
+            if os.path.islink(p):
+                try:
+                    target = os.readlink(p)
+                    res["symlinks"].append({"rel": rel, "path": p, "target": target, "exists": os.path.exists(p)})
+                except OSError:
+                    pass
+                continue
+            try:
+                st = os.stat(p)
+            except OSError:
+                continue
+            phys = st.st_blocks * 512
+            if f.endswith(".aria2"):
+                res["aria2_files"].append({
+                    "rel": rel,
+                    "target_rel": rel[:-6],
+                    "path": p,
+                    "st_size": st.st_size,
+                    "phys_bytes": phys,
+                    "mtime": int(st.st_mtime),
+                })
+            elif f.endswith(".gguf"):
+                magic_hex = ""
+                gguf_version = None
+                tensor_count = None
+                kv_count = None
+                try:
+                    with open(p, "rb") as fp:
+                        hdr = fp.read(24)
+                        magic_hex = hdr[:4].hex()
+                        if len(hdr) >= 24 and hdr[:4] == b"GGUF":
+                            gguf_version, tensor_count, kv_count = struct.unpack("<IQQ", hdr[4:24])
+                except Exception as e:
+                    magic_hex = f"ERR:{e}"
+                res["gguf_files"].append({
+                    "rel": rel,
+                    "path": p,
+                    "st_size": st.st_size,
+                    "phys_bytes": phys,
+                    "mtime": int(st.st_mtime),
+                    "magic_hex": magic_hex,
+                    "magic_ok": (magic_hex == "47475546"),
+                    "gguf_version": gguf_version,
+                    "tensor_count": tensor_count,
+                    "kv_count": kv_count,
+                })
+            elif f.endswith(".safetensors"):
+                res["safetensors_files"].append({
+                    "rel": rel,
+                    "path": p,
+                    "st_size": st.st_size,
+                    "phys_bytes": phys,
+                    "mtime": int(st.st_mtime),
+                })
+
+    for log_fn in ["pull_kimi_k3_and_frontier_72.log", "pull_kimi_k3_and_frontier_83.log"]:
+        lp = os.path.join("/opt/models", log_fn)
+        if os.path.exists(lp):
+            try:
+                r_tail = subprocess.run(["tail", "-n", "25", lp], capture_output=True, text=True, timeout=3)
+                res["pull_log_tail"] = [l.rstrip() for l in r_tail.stdout.splitlines() if l.strip()][-15:]
+            except Exception:
+                pass
+
+ollama_manifest_dir = "/usr/share/ollama/.ollama/models/manifests"
+blob_to_tag = {}
+if os.path.exists(ollama_manifest_dir):
+    for root, dirs, files in os.walk(ollama_manifest_dir):
+        for f in files:
+            mp = os.path.join(root, f)
+            rel_tag = os.path.relpath(mp, ollama_manifest_dir)
+            parts = rel_tag.split(os.sep)
+            if len(parts) >= 3:
+                tag_name = ":".join([parts[-2], parts[-1]])
+            else:
+                tag_name = rel_tag
+            try:
+                mjson = json.loads(open(mp, errors="ignore").read())
+                for layer in mjson.get("layers", []):
+                    if "model" in layer.get("mediaType", ""):
+                        dig = layer.get("digest", "").replace(":", "-")
+                        if dig:
+                            blob_to_tag[dig] = tag_name
+            except Exception:
+                pass
+
+ollama_blob_dir = "/usr/share/ollama/.ollama/models/blobs"
+if os.path.exists(ollama_blob_dir):
+    for f in sorted(os.listdir(ollama_blob_dir)):
+        p = os.path.join(ollama_blob_dir, f)
+        try:
+            st = os.stat(p)
+        except OSError:
+            continue
+        if st.st_size > 100 * 1024 * 1024:
+            magic_hex = ""
+            gguf_version = None
+            tensor_count = None
+            kv_count = None
+            try:
+                with open(p, "rb") as fp:
+                    hdr = fp.read(24)
+                    magic_hex = hdr[:4].hex()
+                    if len(hdr) >= 24 and hdr[:4] == b"GGUF":
+                        gguf_version, tensor_count, kv_count = struct.unpack("<IQQ", hdr[4:24])
+            except Exception:
+                pass
+            if magic_hex == "47475546":
+                res["ollama_blobs"].append({
+                    "rel": "blobs/" + f,
+                    "ollama_tag": blob_to_tag.get(f, f[:19]),
+                    "path": p,
+                    "st_size": st.st_size,
+                    "phys_bytes": st.st_blocks * 512,
+                    "mtime": int(st.st_mtime),
+                    "magic_hex": magic_hex,
+                    "magic_ok": True,
+                    "gguf_version": gguf_version,
+                    "tensor_count": tensor_count,
+                    "kv_count": kv_count,
+                })
+
+try:
+    r_sys = subprocess.run(["systemctl", "list-units", "bd-pull*", "--no-pager", "--plain"], capture_output=True, text=True, timeout=4)
+    for line in r_sys.stdout.splitlines():
+        if "bd-pull-" in line:
+            res["systemd_pull_status"] = line.strip()
+except Exception:
+    pass
+
+print(json.dumps(res))
+"""
+
+
+def probe_node(ip: str) -> Tuple[str, Dict[str, Any]]:
+    cmd = SSH_BASE_ARGS + [
+        f"mboyle@{ip}",
+        "python3 -c " + subprocess.list2cmdline([REMOTE_SCAN_CODE]),
+    ]
+    t0 = time.monotonic()
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=25)
+        elapsed_ms = round((time.monotonic() - t0) * 1000.0, 1)
+        if r.returncode == 0 and r.stdout.strip():
+            payload = json.loads(r.stdout.strip().splitlines()[-1])
+            payload["ok"] = True
+            payload["latency_ms"] = elapsed_ms
+            return ip, payload
+        return ip, {"ok": False, "error": (r.stderr or r.stdout or "SSH error").strip()[:200], "latency_ms": elapsed_ms}
+    except Exception as exc:
+        elapsed_ms = round((time.monotonic() - t0) * 1000.0, 1)
+        return ip, {"ok": False, "error": str(exc)[:200], "latency_ms": elapsed_ms}
+
+
+def resolve_speculative_pair(model_id: str, rel_key: str, node_ip: str, size_gib: float) -> Dict[str, Any]:
+    """
+    Task 3: Automatic Speculative Draft-Model Pair Mapping.
+    Maps every large model (Qwen, DeepSeek, Llama, GLM, MiMo, Kimi, Nemotron, etc.)
+    to its compatible local draft model or ngram-mod speculative decoding configuration.
+    """
+    low = (model_id + " " + rel_key).lower()
+
+    # Drafter models themselves
+    if "dspark-deepseek-v4-flash" in low or "qwythos-9b" in low or "ternary-bonsai-2-27b" in low:
+        return {
+            "role": "DRAFT_TARGET_SELF",
+            "strategy": "native-drafter",
+            "draft_model_id": model_id,
+            "draft_model_path": f"/opt/models/{rel_key}.gguf" if not rel_key.endswith(".gguf") else f"/opt/models/{rel_key}",
+            "fallback_spec_type": "ngram-mod",
+            "llama_server_flags": "--spec-type ngram-mod --spec-ngram-size-n 12 --draft-max 16",
+            "notes": "Dedicated fast Tier-1 speculative drafter / standalone investigator model",
+        }
+
+    # 1. DeepSeek-V4-Flash & DeepSeek-V4.1-Flash family -> dspark-DeepSeek-V4-Flash-0731-Q8_0.gguf
+    if "deepseek-v4" in low:
+        return {
+            "role": "SPECULATIVE_PAIRED",
+            "strategy": "draft-model-mla",
+            "draft_model_id": "dspark-deepseek-v4-flash-q8_0",
+            "draft_model_path": "/opt/models/deepseek-v4-flash/dspark-DeepSeek-V4-Flash-0731-Q8_0.gguf",
+            "draft_alt_path": "/opt/models/tier1-fast/dspark-DeepSeek-V4-Flash-0731-Q8_0.gguf",
+            "fallback_spec_type": "ngram-mod",
+            "llama_server_flags": (
+                "-md /opt/models/deepseek-v4-flash/dspark-DeepSeek-V4-Flash-0731-Q8_0.gguf "
+                "-ngld 999 --draft-max 16 --draft-min 5 --draft-p-min 0.75"
+            ),
+            "notes": "Exact vocabulary & MLA kv_lora_rank=512 drafter match (61.50 tok/s Q8_0 / 54.20 tok/s BF16 replicated on .72 & .83)",
+        }
+
+    # 2. DeepSeek-V3 / V3.2 671B-685B family -> ngram-mod + optional dspark MLA drafter
+    if "deepseek-v3" in low:
+        return {
+            "role": "SPECULATIVE_PAIRED",
+            "strategy": "ngram-mod+mla-draft",
+            "draft_model_id": "dspark-deepseek-v4-flash-q8_0",
+            "draft_model_path": "/opt/models/deepseek-v4-flash/dspark-DeepSeek-V4-Flash-0731-Q8_0.gguf",
+            "fallback_spec_type": "ngram-mod",
+            "llama_server_flags": "--spec-type ngram-mod --spec-ngram-size-n 12 --spec-ngram-size-m 24 --draft-max 16 --draft-min 4",
+            "notes": "Zero-VRAM ngram-mod speculative decoding (recommended for 671B/685B hybrid DDR4 MoE) or dspark-DeepSeek-V4-Flash-Q8_0 draft",
+        }
+
+    # 3. DeepSeek-R1-Distill-Llama-70B & Llama-3.3-70B / Hermes-4-70B / L3.1-Dark-Planet-47B (Llama3 vocabulary)
+    if any(k in low for k in ["llama-70b", "llama-3.3-70b", "hermes-4-70b", "l3.1-dark-planet"]):
+        return {
+            "role": "SPECULATIVE_PAIRED",
+            "strategy": "draft-model-llama3+ngram-mod",
+            "draft_model_id": "llama-3.1-8b-hermes3-q4_k_m",
+            "draft_model_path": "/usr/share/ollama/.ollama/models/blobs/sha256-4f6b83f30b62 (hermes3:8b) | --spec-type ngram-mod",
+            "fallback_spec_type": "ngram-mod",
+            "llama_server_flags": "--spec-type ngram-mod --spec-ngram-size-n 12 --draft-max 16 --draft-min 4",
+            "notes": "Llama-3.1/3.3 128k tiktoken vocabulary; uses ngram-mod on 4xT4 pure-VRAM 70B to preserve 100% of 64GB GDDR6 for 81/81 target layers",
+        }
+
+    # 4. Qwen3 / Qwen3.5 / Qwen3.6 / Qwen3.8-Flash-Next / Qwythos-27B family
+    if any(k in low for k in ["qwen3", "qwen2.5", "qwythos-27b", "cyberstrike-35b", "cyberstag", "occamy", "agents-a1", "kolibri"]):
+        is_huge_moe = size_gib >= 45.0
+        if is_huge_moe:
+            return {
+                "role": "SPECULATIVE_PAIRED",
+                "strategy": "qwen3-draft-or-ngram-mod",
+                "draft_model_id": "Qwen3-0.6B-Q8_0 / Qwen3-1.7B-Q8_0 / qwythos-9b-mtp-q8_0",
+                "draft_model_path": "/opt/models/qwythos-9b/Qwythos-9B-Claude-Mythos-5-1M-MTP-Q8_0.gguf",
+                "fallback_spec_type": "ngram-mod",
+                "llama_server_flags": (
+                    "--spec-type ngram-mod --spec-ngram-size-n 12 --spec-ngram-size-m 24 --draft-max 16 --draft-min 4 "
+                    "# or -md /opt/models/qwythos-9b/Qwythos-9B-Claude-Mythos-5-1M-MTP-Q8_0.gguf -ngld 999 --draft-max 12"
+                ),
+                "notes": "Qwen3 151,936-token vocabulary match; pairs with Qwen3-0.6B/1.7B/Qwythos-9B-Q8_0 (1005.86 pp / 21.39 tg tok/s) or zero-VRAM --spec-type ngram-mod",
+            }
+        return {
+            "role": "SPECULATIVE_PAIRED",
+            "strategy": "qwen3-mtp+ngram-mod",
+            "draft_model_id": "Qwen3-0.6B-Q8_0 / qwythos-9b-mtp-q8_0",
+            "draft_model_path": "/opt/models/qwythos-9b/Qwythos-9B-Claude-Mythos-5-1M-MTP-Q8_0.gguf",
+            "fallback_spec_type": "ngram-mod",
+            "llama_server_flags": "--spec-type ngram-mod --spec-ngram-size-n 12 --draft-max 16",
+            "notes": "Fast Tier-1/Tier-2 Qwen3 model; supports native MTP head or zero-overhead --spec-type ngram-mod",
+        }
+
+    # 5. GLM-5.2 / GLM-5.3 / GLM-4.5 / GLM-4.7 family
+    if "glm-" in low:
+        return {
+            "role": "SPECULATIVE_PAIRED",
+            "strategy": "glm-dflash+ngram-mod",
+            "draft_model_id": "glm-4.7-flash-30b-q4_k_m / drowzeys-quantrio-dflash",
+            "draft_model_path": "/opt/models/glm-4.7-flash-30b-heretic-neocode/GLM-4.7-Flash-Uncen-Hrt-NEO-CODE-MAX-imat-D_AU-Q4_K_M.gguf",
+            "fallback_spec_type": "ngram-mod",
+            "llama_server_flags": "--spec-type ngram-mod --spec-ngram-size-n 12 --spec-ngram-size-m 24 --draft-max 16 --draft-min 4",
+            "notes": "GLM-5/4 family; uses ngram-mod self-speculation (or GLM-4.7-Flash-30B / DFlash speculative drafter)",
+        }
+
+    # 6. Ultra-large Frontier MoEs: Kimi-K3 (2.8T), MiMo-V2.6 (1024B/311B), Muse-Spark (816B), Ling-3.1/3.0 (564B/128B), Nemotron (550B/120B/74B), Beam (501B), MiniMax (426B)
+    return {
+        "role": "SPECULATIVE_PAIRED",
+        "strategy": "ngram-mod",
+        "draft_model_id": "ngram-mod-self-speculative",
+        "draft_model_path": "--spec-type ngram-mod",
+        "fallback_spec_type": "ngram-mod",
+        "llama_server_flags": "--spec-type ngram-mod --spec-ngram-size-n 12 --spec-ngram-size-m 24 --draft-max 16 --draft-min 4",
+        "notes": "Zero-VRAM n-gram speculative decoding ideal for DDR4+GPU hybrid MoE & code/JSON patch generation",
+    }
+
+
+def strip_shard_suffix(rel_path: str) -> Tuple[str, Optional[int], Optional[int]]:
+    """
+    Given a relative path like 'dir/Model-00001-of-00005.gguf', returns
+    ('dir/Model', 1, 5). If single-file 'dir/Model.gguf', returns ('dir/Model', None, None).
+    """
+    m = re.search(r"-(\d{5})-of-(\d{5})\.gguf$", rel_path)
+    if m:
+        return rel_path[: m.start()], int(m.group(1)), int(m.group(2))
+    if rel_path.endswith(".gguf"):
+        return rel_path[:-5], None, None
+    return rel_path, None, None
+
+
+def slugify_model_id(base_key: str) -> str:
+    parts = base_key.strip("/").split("/")
+    raw = parts[-1] if len(parts) > 1 else parts[0]
+    slug = re.sub(r"[^a-zA-Z0-9._-]+", "-", raw).strip("-").lower()
+    return slug
+
+
+def build_curation_report(probe_results: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    all_models: List[Dict[str, Any]] = []
+    integrity_anomalies: List[Dict[str, Any]] = []
+    aria2_audit: List[Dict[str, Any]] = []
+
+    # Track grouped models per node
+    for ip in ["10.0.70.72", "10.0.70.83", "10.0.70.125", "10.0.70.228"]:
+        pdata = probe_results.get(ip, {})
+        if not pdata.get("ok"):
+            continue
+        node_meta = NODES[ip]
+        node_short = node_meta["short"]
+
+        # Map active manifest targets on this node
+        active_manifest_targets = set()
+        for _mname, mdata in pdata.get("active_aria2_manifests", {}).items():
+            if mdata.get("active"):
+                for t in mdata.get("targets", []):
+                    active_manifest_targets.add(t)
+
+        aria2_by_target: Dict[str, Dict[str, Any]] = {}
+        for a in pdata.get("aria2_files", []):
+            t_rel = a["target_rel"]
+            aria2_by_target[t_rel] = a
+            is_active = (t_rel in active_manifest_targets) and (len(pdata.get("active_aria2_cmdlines", [])) > 0)
+            aria2_audit.append({
+                "node": ip,
+                "node_short": node_short,
+                "aria2_rel": a["rel"],
+                "target_rel": t_rel,
+                "aria2_bytes": a["st_size"],
+                "mtime": a["mtime"],
+                "classification": "ACTIVE_SERVICE_PROTECTED" if is_active else "STALE_ORPHAN",
+                "pull_service": node_meta["pull_service"] if is_active else None,
+            })
+
+        # Group GGUF files into logical models (excluding mmproj auxiliary files from creating separate model entries, attach them to parent dir)
+        groups: Dict[str, Dict[str, Any]] = {}
+        mmproj_by_dir: Dict[str, List[Dict[str, Any]]] = {}
+
+        for g in pdata.get("gguf_files", []):
+            rel = g["rel"]
+            bname = os.path.basename(rel)
+            if bname.lower().startswith("mmproj"):
+                dname = os.path.dirname(rel)
+                mmproj_by_dir.setdefault(dname, []).append(g)
+                continue
+
+            base_key, shard_idx, shard_total = strip_shard_suffix(rel)
+            if base_key not in groups:
+                groups[base_key] = {
+                    "base_key": base_key,
+                    "dir": os.path.dirname(rel),
+                    "expected_shards": shard_total or 1,
+                    "shards": {},
+                    "files": [],
+                }
+            groups[base_key]["files"].append(g)
+            if shard_idx is not None:
+                groups[base_key]["shards"][shard_idx] = g
+                if shard_total and shard_total > groups[base_key]["expected_shards"]:
+                    groups[base_key]["expected_shards"] = shard_total
+            else:
+                groups[base_key]["shards"][1] = g
+
+        # Also include primary Ollama GGUF blobs on .125 and .228
+        for ob in pdata.get("ollama_blobs", []):
+            rel = ob["rel"]
+            # Only include main LLM blobs >= 4 GiB in the main model catalog
+            if ob["st_size"] >= 4 * 1024**3:
+                groups[rel] = {
+                    "base_key": rel,
+                    "dir": "blobs",
+                    "expected_shards": 1,
+                    "shards": {1: ob},
+                    "files": [ob],
+                    "is_ollama_blob": True,
+                }
+
+        for base_key in sorted(groups.keys()):
+            grp = groups[base_key]
+            exp_n = grp["expected_shards"]
+            files = grp["files"]
+            shards_map = grp["shards"]
+
+            _present_indices = sorted(shards_map.keys())
+            missing_indices = [i for i in range(1, exp_n + 1) if i not in shards_map]
+
+            active_aria_list = []
+            stale_aria_list = []
+            sparse_shards = []
+            bad_magic_shards = []
+            zero_size_shards = []
+
+            total_phys = 0
+            total_logical = 0
+
+            for f in files:
+                f_rel = f["rel"]
+                total_phys += f["phys_bytes"]
+                total_logical += f["st_size"]
+
+                if not f["magic_ok"]:
+                    bad_magic_shards.append(f_rel)
+                if f["st_size"] <= 0:
+                    zero_size_shards.append(f_rel)
+                # Check sparse/incomplete physical allocation (allow 1 MiB filesystem metadata tolerance)
+                if f["phys_bytes"] + 1024 * 1024 < f["st_size"]:
+                    sparse_shards.append({
+                        "rel": f_rel,
+                        "phys_gib": round(f["phys_bytes"] / 1024**3, 2),
+                        "logical_gib": round(f["st_size"] / 1024**3, 2),
+                    })
+                if f_rel in aria2_by_target:
+                    if (f_rel in active_manifest_targets) and (len(pdata.get("active_aria2_cmdlines", [])) > 0):
+                        active_aria_list.append(f_rel + ".aria2")
+                    else:
+                        stale_aria_list.append(f_rel + ".aria2")
+
+            # Attach mmproj if present in same dir
+            mmprojs = mmproj_by_dir.get(grp["dir"], [])
+            mmproj_phys = sum(m["phys_bytes"] for m in mmprojs)
+            mmproj_rels = [m["rel"] for m in mmprojs]
+
+            # Count complete non-sparse valid-magic shards without .aria2
+            complete_shard_count = 0
+            for idx in range(1, exp_n + 1):
+                sf = shards_map.get(idx)
+                if sf is None:
+                    continue
+                has_aria = sf["rel"] in aria2_by_target
+                is_sparse = (sf["phys_bytes"] + 1024 * 1024 < sf["st_size"])
+                if sf["magic_ok"] and sf["st_size"] > 0 and not has_aria and not is_sparse:
+                    complete_shard_count += 1
+
+            all_shards_ready = (
+                complete_shard_count == exp_n
+                and len(missing_indices) == 0
+                and len(active_aria_list) == 0
+                and len(stale_aria_list) == 0
+                and len(bad_magic_shards) == 0
+                and len(zero_size_shards) == 0
+                and len(sparse_shards) == 0
+            )
+
+            if all_shards_ready:
+                status = "READY"
+            elif len(active_aria_list) > 0 or ( base_key in [os.path.splitext(t)[0] for t in active_manifest_targets] ):
+                status = "DOWNLOADING"
+            elif len(stale_aria_list) > 0:
+                status = "INCOMPLETE_STALE_ARIA2"
+            elif len(sparse_shards) > 0 or len(missing_indices) > 0:
+                status = "INCOMPLETE_SPARSE"
+            else:
+                status = "DEGRADED_INTEGRITY"
+
+            if status not in ("READY",):
+                integrity_anomalies.append({
+                    "node": ip,
+                    "base_key": base_key,
+                    "status": status,
+                    "shards_complete": f"{complete_shard_count}/{exp_n}",
+                    "phys_gib": round(total_phys / 1024**3, 2),
+                    "logical_gib": round(total_logical / 1024**3, 2),
+                    "active_aria2": active_aria_list,
+                    "stale_aria2": stale_aria_list,
+                    "missing_shards": missing_indices,
+                    "sparse_shards": sparse_shards,
+                    "bad_magic_shards": bad_magic_shards,
+                })
+
+            # First shard path
+            first_file = sorted(files, key=lambda x: x["rel"])[0]
+            model_id = slugify_model_id(base_key)
+            if grp.get("is_ollama_blob"):
+                otag = first_file.get("ollama_tag", base_key.split("-")[-1][:12])
+                clean_tag = re.sub(r"[^a-zA-Z0-9._-]+", "-", otag).strip("-").lower()
+                model_id = f"ollama-{clean_tag}-{node_short.lstrip('.')}"
+
+            pp512, tg128, bench_note = BENCHMARK_DB.get(base_key, (None, None, "Pending llama-bench run"))
+            size_gib = round(total_phys / 1024**3, 2)
+            logical_gib = round(total_logical / 1024**3, 2)
+            mmproj_gib = round(mmproj_phys / 1024**3, 2)
+
+            spec_pair = resolve_speculative_pair(model_id, base_key, ip, logical_gib)
+
+            all_models.append({
+                "id": model_id,
+                "node": ip,
+                "node_short": node_short,
+                "path": first_file["path"],
+                "base_key": base_key,
+                "size_gib": size_gib,
+                "logical_size_gib": logical_gib,
+                "mmproj_size_gib": mmproj_gib,
+                "shards_complete": f"{complete_shard_count}/{exp_n}",
+                "shards_complete_int": complete_shard_count,
+                "shards_expected_int": exp_n,
+                "all_shards_complete": all_shards_ready,
+                "status": status,
+                "gguf_magic_valid": (len(bad_magic_shards) == 0 and len(zero_size_shards) == 0),
+                "magic_hex": "47475546" if len(bad_magic_shards) == 0 else "INVALID",
+                "gguf_version": first_file.get("gguf_version", 3),
+                "active_aria2_count": len(active_aria_list),
+                "stale_aria2_count": len(stale_aria_list),
+                "mmproj_files": mmproj_rels,
+                "speculative_pair": spec_pair,
+                "benchmarked_pp512": pp512 if pp512 is not None else "UNMEASURED",
+                "benchmarked_tg128": tg128 if tg128 is not None else "UNMEASURED",
+                "benchmark_notes": bench_note,
+            })
+
+    # Also record Safetensors model sets (e.g. Uniboshi--Kimi-K3-Abliterated-V1 on .83 and qwythos-27b/safetensors on .72)
+    safetensors_sets: List[Dict[str, Any]] = []
+    for ip in ["10.0.70.72", "10.0.70.83"]:
+        pdata = probe_results.get(ip, {})
+        if not pdata.get("ok"):
+            continue
+        by_dir: Dict[str, List[Dict[str, Any]]] = {}
+        for sf in pdata.get("safetensors_files", []):
+            by_dir.setdefault(os.path.dirname(sf["rel"]), []).append(sf)
+        for dname, sfiles in sorted(by_dir.items()):
+            phys_gib = round(sum(x["phys_bytes"] for x in sfiles) / 1024**3, 2)
+            safetensors_sets.append({
+                "node": ip,
+                "dir": f"/opt/models/{dname}",
+                "shard_count": len(sfiles),
+                "size_gib": phys_gib,
+                "status": "READY_SAFETENSORS",
+                "notes": (
+                    "Redundant HF safetensors copy of Qwythos-27B (GGUF BF16/Q8_0/Q4_K_M already READY on .72)"
+                    if "qwythos-27b" in dname
+                    else "Complete 96-shard Uniboshi/Kimi-K3-Abliterated-V1 BF16/FP8 Safetensors checkpoint (1,241.86 GiB)"
+                ),
+            })
+
+    # Task 2: Orphan & Duplicate Space Analyzer across Vault A (.72) and Vault B (.83)
+    reclaimable_items: List[Dict[str, Any]] = []
+
+    # 2a. Stale / Orphaned partial downloads (with or without stale .aria2 files) that are NOT managed by active bd-pull services
+    for m in all_models:
+        if m["status"] in ("INCOMPLETE_STALE_ARIA2", "INCOMPLETE_SPARSE"):
+            reclaimable_items.append({
+                "category": "ORPHANED_PARTIAL_OR_STALE_ARIA2",
+                "node": m["node"],
+                "path": os.path.dirname(m["path"]),
+                "base_key": m["base_key"],
+                "physical_gib": m["size_gib"],
+                "logical_gib": m["logical_size_gib"],
+                "stale_aria2_count": m["stale_aria2_count"],
+                "reason": (
+                    "Orphaned partial shard 1/3 + stale .aria2 on .72; full 3/3 shard set (132.39 GiB) is already 100% READY on .83"
+                    if "tier3a-qwen3-235b-a22b" in m["base_key"] and m["node"] == "10.0.70.72"
+                    else f"Interrupted sparse download ({m['shards_complete']} shards complete, {m['stale_aria2_count']} stale .aria2 files, not in active pull service)"
+                ),
+            })
+
+    # 2b. Cross-vault exact duplicates (READY on both .72 and .83, or .72 and .125)
+    by_base_key: Dict[str, List[Dict[str, Any]]] = {}
+    for m in all_models:
+        if m["status"] == "READY":
+            by_base_key.setdefault(m["base_key"], []).append(m)
+
+    cross_vault_duplicates: List[Dict[str, Any]] = []
+    for bkey, mlist in sorted(by_base_key.items()):
+        if len(mlist) > 1:
+            nodes_present = [x["node"] for x in mlist]
+            dup_gib = mlist[0]["size_gib"]
+            is_drafter = any(k in bkey.lower() for k in ["dspark", "qwythos-9b"])
+            cross_vault_duplicates.append({
+                "base_key": bkey,
+                "nodes": nodes_present,
+                "size_gib_per_copy": dup_gib,
+                "reclaimable_gib_if_deduped": dup_gib * (len(mlist) - 1),
+                "intentional_drafter_replication": is_drafter,
+                "notes": (
+                    "Intentional Tier-1 drafter replication across .72 & .83 for local speculative decoding"
+                    if is_drafter
+                    else f"Exact duplicate across {', '.join(nodes_present)} ({dup_gib:.2f} GiB reclaimable by deduplicating to single vault)"
+                ),
+            })
+            if not is_drafter:
+                reclaimable_items.append({
+                    "category": "CROSS_VAULT_EXACT_DUPLICATE",
+                    "node": nodes_present[0],
+                    "path": mlist[0]["path"],
+                    "base_key": bkey,
+                    "physical_gib": dup_gib,
+                    "logical_gib": dup_gib,
+                    "stale_aria2_count": 0,
+                    "reason": f"Exact duplicate present on {', '.join(nodes_present)}; keeping primary copy reclaims {dup_gib:.2f} GiB",
+                })
+
+    # 2c. Redundant safetensors source weights where GGUF already exists (`qwythos-27b/safetensors` on .72 = 51.75 GiB)
+    for st_set in safetensors_sets:
+        if "qwythos-27b/safetensors" in st_set["dir"]:
+            reclaimable_items.append({
+                "category": "REDUNDANT_SAFETENSORS_SOURCE",
+                "node": st_set["node"],
+                "path": st_set["dir"],
+                "base_key": "qwythos-27b/safetensors",
+                "physical_gib": st_set["size_gib"],
+                "logical_gib": st_set["size_gib"],
+                "stale_aria2_count": 0,
+                "reason": "Raw 12-shard HF safetensors source directory on .72; converted GGUFs (BF16, Q8_0, Q4_K_M) are already READY in /opt/models/qwythos-27b",
+            })
+
+    reclaimable_72 = round(sum(x["physical_gib"] for x in reclaimable_items if x["node"] == "10.0.70.72"), 2)
+    reclaimable_83 = round(sum(x["physical_gib"] for x in reclaimable_items if x["node"] == "10.0.70.83"), 2)
+
+    # Specific Frontier Download Progress Tracker (.72 and .83)
+    frontier_tracker = {
+        "10.0.70.72": {
+            "service": probe_results.get("10.0.70.72", {}).get("systemd_pull_status", "unknown"),
+            "active_aria2_procs": len(probe_results.get("10.0.70.72", {}).get("active_aria2_cmdlines", [])),
+            "kimi_k3_2800b_q2k": next((m for m in all_models if m["node"] == "10.0.70.72" and "kimi-k3-abliterated-q2k" in m["base_key"]), None),
+            "kimi_k3_2800b_iq1s": next((m for m in all_models if m["node"] == "10.0.70.72" and "kimi-k3-abliterated-iq1s" in m["base_key"]), None),
+            "active_downloads": [m for m in all_models if m["node"] == "10.0.70.72" and m["status"] == "DOWNLOADING"],
+            "log_tail": probe_results.get("10.0.70.72", {}).get("pull_log_tail", [])[-5:],
+        },
+        "10.0.70.83": {
+            "service": probe_results.get("10.0.70.83", {}).get("systemd_pull_status", "unknown"),
+            "active_aria2_procs": len(probe_results.get("10.0.70.83", {}).get("active_aria2_cmdlines", [])),
+            "ling_3_1_flash_564b": next((m for m in all_models if m["node"] == "10.0.70.83" and "ling-3.1-flash-564b" in m["base_key"]), None),
+            "qwen3_6_models": [m for m in all_models if m["node"] == "10.0.70.83" and ("qwen3.6" in m["base_key"] or "qwen3.8" in m["base_key"] or "qwen3.5" in m["base_key"])],
+            "kimi_k3_safetensors_v1": next((s for s in safetensors_sets if s["node"] == "10.0.70.83" and "Kimi-K3" in s["dir"]), None),
+            "active_downloads": [m for m in all_models if m["node"] == "10.0.70.83" and m["status"] == "DOWNLOADING"],
+            "log_tail": probe_results.get("10.0.70.83", {}).get("pull_log_tail", [])[-5:],
+        },
+    }
+
+    # Disk space summary per node
+    vault_nodes_summary = {}
+    for ip, cfg in NODES.items():
+        pdata = probe_results.get(ip, {})
+        df_map = pdata.get("df", {})
+        mnt = cfg["primary_mount"]
+        df_entry = df_map.get(mnt) or df_map.get("/") or {"total": 0, "used": 0, "free": 0}
+        vault_nodes_summary[ip] = {
+            "vault_name": cfg["vault_name"],
+            "mount": mnt,
+            "total_gib": round(df_entry["total"] / 1024**3, 2),
+            "used_gib": round(df_entry["used"] / 1024**3, 2),
+            "free_gib": round(df_entry["free"] / 1024**3, 2),
+            "gguf_file_count": len(pdata.get("gguf_files", [])),
+            "safetensors_file_count": len(pdata.get("safetensors_files", [])),
+            "aria2_file_count": len(pdata.get("aria2_files", [])),
+            "symlinks": pdata.get("symlinks", []),
+            "latency_ms": pdata.get("latency_ms", 0.0),
+        }
+
+    total_gguf_checked = sum(len(probe_results.get(ip, {}).get("gguf_files", [])) for ip in NODES)
+    total_valid_magic = sum(
+        sum(1 for g in probe_results.get(ip, {}).get("gguf_files", []) if g.get("magic_ok") and g.get("st_size", 0) > 0)
+        for ip in NODES
+    )
+    ready_models = [m for m in all_models if m["status"] == "READY"]
+    downloading_models = [m for m in all_models if m["status"] == "DOWNLOADING"]
+    incomplete_models = [m for m in all_models if m["status"] not in ("READY", "DOWNLOADING")]
+
+    manifest = {
+        "generated_at": now_iso,
+        "generator": "/home/mboyle/bin/bd-vault-curator",
+        "summary": {
+            "total_logical_models": len(all_models),
+            "ready_models_count": len(ready_models),
+            "downloading_models_count": len(downloading_models),
+            "incomplete_or_sparse_models_count": len(incomplete_models),
+            "total_gguf_files_audited": total_gguf_checked,
+            "valid_gguf_magic_files": total_valid_magic,
+            "invalid_gguf_magic_files": total_gguf_checked - total_valid_magic,
+            "active_protected_aria2_files": sum(1 for a in aria2_audit if a["classification"] == "ACTIVE_SERVICE_PROTECTED"),
+            "stale_orphan_aria2_files": sum(1 for a in aria2_audit if a["classification"] == "STALE_ORPHAN"),
+            "reclaimable_gib_vault_a_72": reclaimable_72,
+            "reclaimable_gib_vault_b_83": reclaimable_83,
+            "reclaimable_gib_total": round(reclaimable_72 + reclaimable_83, 2),
+        },
+        "vault_nodes": vault_nodes_summary,
+        "integrity_audit": {
+            "gguf_magic_expected_hex": "47475546",
+            "total_gguf_files_checked": total_gguf_checked,
+            "all_gguf_headers_valid": (total_gguf_checked == total_valid_magic),
+            "anomalies": integrity_anomalies,
+            "aria2_control_files": aria2_audit,
+        },
+        "space_analysis": {
+            "reclaimable_gib_72": reclaimable_72,
+            "reclaimable_gib_83": reclaimable_83,
+            "reclaimable_gib_total": round(reclaimable_72 + reclaimable_83, 2),
+            "reclaimable_items": reclaimable_items,
+            "cross_vault_duplicates": cross_vault_duplicates,
+            "safetensors_sets": safetensors_sets,
+        },
+        "frontier_download_tracker": frontier_tracker,
+        "models": all_models,
+    }
+    return manifest
+
+
+def print_human_audit(manifest: Dict[str, Any]) -> None:
+    s = manifest["summary"]
+    print("=" * 116)
+    print(f"BD-VAULT-CURATOR AUDIT REPORT — WRITTEN-AT: {manifest['generated_at']}")
+    print("=" * 116)
+    print(
+        f"GGUF Files Audited : {s['total_gguf_files_audited']} "
+        f"(Valid Magic 47475546: {s['valid_gguf_magic_files']}, Invalid: {s['invalid_gguf_magic_files']})"
+    )
+    print(
+        f"Logical GGUF Models: {s['total_logical_models']} total | "
+        f"{s['ready_models_count']} READY | "
+        f"{s['downloading_models_count']} DOWNLOADING | "
+        f"{s['incomplete_or_sparse_models_count']} INCOMPLETE/SPARSE"
+    )
+    print(
+        f".aria2 Control Files: {s['active_protected_aria2_files']} ACTIVE_SERVICE_PROTECTED (DO NOT DELETE) | "
+        f"{s['stale_orphan_aria2_files']} STALE_ORPHAN"
+    )
+    print(
+        f"Reclaimable Space  : {s['reclaimable_gib_total']:.2f} GiB Total "
+        f"(Vault A .72: {s['reclaimable_gib_vault_a_72']:.2f} GiB | Vault B .83: {s['reclaimable_gib_vault_b_83']:.2f} GiB)"
+    )
+    print("-" * 116)
+
+    print("\n[1] VAULT CAPACITY & NODE HEALTH")
+    for ip, v in manifest["vault_nodes"].items():
+        print(
+            f"  {ip:12s} ({v['vault_name']:37s}) | "
+            f"Total: {v['total_gib']:7.2f} GiB | Used: {v['used_gib']:7.2f} GiB | Free: {v['free_gib']:7.2f} GiB | "
+            f"GGUFs: {v['gguf_file_count']:3d} | .aria2: {v['aria2_file_count']:2d} | {v['latency_ms']:.1f}ms"
+        )
+
+    print("\n[2] ACTIVE Vs. STALE .aria2 CONTROL FILE AUDIT")
+    for a in manifest["integrity_audit"]["aria2_control_files"]:
+        svc = f" ({a['pull_service']})" if a["pull_service"] else ""
+        print(
+            f"  [{a['classification']:24s}] {a['node']}:/opt/models/{a['aria2_rel']}{svc}"
+        )
+
+    print("\n[3] ORPHAN, SPARSE & DUPLICATE SPACE ANALYZER (RECLAIMABLE GiB)")
+    for item in manifest["space_analysis"]["reclaimable_items"]:
+        print(
+            f"  [{item['category']:31s}] {item['node']} | {item['physical_gib']:7.2f} GiB phys "
+            f"({item['logical_gib']:7.2f} GiB log) | {item['base_key']} -> {item['reason']}"
+        )
+
+    print("\n[4] UNIFIED MODEL CATALOG & SPECULATIVE DRAFT-PAIR MAPPING")
+    hdr = f"  {'NODE':6s} | {'STATUS':22s} | {'SHARDS':7s} | {'SIZE GiB':9s} | {'pp512':8s} | {'tg128':7s} | {'MODEL ID':42s} | {'SPECULATIVE DRAFT PAIR'}"
+    print(hdr)
+    print("  " + "-" * 114)
+    for m in manifest["models"]:
+        pp = f"{m['benchmarked_pp512']:.2f}" if isinstance(m["benchmarked_pp512"], (int, float)) else "UNMEAS"
+        tg = f"{m['benchmarked_tg128']:.2f}" if isinstance(m["benchmarked_tg128"], (int, float)) else "UNMEAS"
+        sp = m["speculative_pair"]
+        sp_str = f"{sp['strategy']} -> {sp['draft_model_id']}"
+        print(
+            f"  {m['node_short']:6s} | {m['status']:22s} | {m['shards_complete']:7s} | "
+            f"{m['size_gib']:9.2f} | {pp:8s} | {tg:7s} | {m['id'][:42]:42s} | {sp_str}"
+        )
+    print("=" * 116)
+    print(f"Manifest written to: {MANIFEST_PATH}")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="bd-vault-curator: Automated GGUF Model Vault Curator, Integrity Verifier & Speculative Draft-Pair Builder"
+    )
+    parser.add_argument("--audit", action="store_true", help="Run full 4-task audit and write /var/tmp/bd-vault-manifest.json")
+    parser.add_argument("--json", action="store_true", help="Emit full JSON manifest to stdout")
+    parser.add_argument("--manifest", default=MANIFEST_PATH, help="Output path for JSON manifest (default: /var/tmp/bd-vault-manifest.json)")
+    parser.add_argument("--pairs", action="store_true", help="Print speculative draft-model pairings")
+    parser.add_argument("--orphans", action="store_true", help="Print orphan and duplicate space analysis")
+    args = parser.parse_args()
+
+    probe_results: Dict[str, Dict[str, Any]] = {}
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        futs = {pool.submit(probe_node, ip): ip for ip in NODES}
+        for fut in as_completed(futs):
+            ip, payload = fut.result()
+            probe_results[ip] = payload
+
+    manifest = build_curation_report(probe_results)
+
+    # Always write machine-readable manifest
+    out_path = args.manifest or MANIFEST_PATH
+    try:
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(manifest, f, indent=2)
+    except OSError as exc:
+        print(f"WARN: Could not write manifest to {out_path}: {exc}", file=sys.stderr)
+
+    if args.json:
+        print(json.dumps(manifest, indent=2))
+        return 0
+
+    print_human_audit(manifest)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,18 @@
+[Unit]
+Description=Boylenet Unified Voice, Vision & Multimodal Cockpit Bridge (:4093)
+After=network.target
+
+[Service]
+Type=simple
+User=mboyle
+WorkingDirectory=/home/mboyle
+Environment="HOME=/home/mboyle"
+Environment="BD_MULTIMODAL_PORT=4093"
+Environment="BD_LITELLM_URL=http://10.0.70.164:4000"
+Environment="BD_LITELLM_KEY=sk-fleet-local"
+ExecStart=/home/mboyle/BulkDownloader/venv/bin/python3 /home/mboyle/bin/bd-multimodal-bridge.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

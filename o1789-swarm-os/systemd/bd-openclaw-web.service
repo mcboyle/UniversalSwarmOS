@@ -1,0 +1,19 @@
+[Unit]
+Description=Boylenet OpenClaw Control UI & WebSocket Gateway (:4097)
+After=network.target
+
+[Service]
+Type=simple
+User=mboyle
+WorkingDirectory=/home/mboyle
+Environment="HOME=/home/mboyle"
+Environment="PATH=/home/mboyle/.local/node24/bin:/home/mboyle/.local/bin:/home/mboyle/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="OPENAI_BASE_URL=http://10.0.70.164:4000/v1"
+Environment="OPENAI_API_KEY=sk-fleet-local"
+Environment="OPENCLAW_GATEWAY_PASSWORD=boylenet-admin"
+ExecStart=/home/mboyle/.local/bin/openclaw --dev gateway run --allow-unconfigured --bind lan --auth password --password boylenet-admin --port 4097 --force
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

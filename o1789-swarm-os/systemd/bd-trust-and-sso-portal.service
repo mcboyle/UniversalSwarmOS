@@ -1,0 +1,15 @@
+[Unit]
+Description=Boylenet Zero-Friction SSO, QR Handoff & Root CA Trust Portal (:4082)
+After=network.target
+
+[Service]
+Type=simple
+User=mboyle
+WorkingDirectory=/home/mboyle
+Environment="BD_SSO_PORTAL_PORT=4082"
+ExecStart=/usr/bin/python3 /home/mboyle/bin/bd-trust-and-sso-portal.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

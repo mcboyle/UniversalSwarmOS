@@ -1,0 +1,93 @@
+{
+  "status": true,
+  "data": [
+    {
+      "id": "bd_kb_auto_grounding_pipeline",
+      "name": "📚 [PIPELINE • FILTER] BD KB Auto-Grounding & Citation Injector",
+      "type": "filter",
+      "priority": 10,
+      "pipelines": [
+        "*"
+      ],
+      "valves": true,
+      "description": "Automatically retrieves authoritative chunks from BD KB (BulkDownloader, 27-Node Cluster, 86 Models, Fleet Law) when prompts reference Boylenet/BD topics."
+    },
+    {
+      "id": "bd_smart_o1740_intent_router_pipeline",
+      "name": "🧭 [PIPELINE • ROUTER] O1740 Smart Intent & Best-Benchmark Auto-Router",
+      "type": "pipe",
+      "priority": 20,
+      "pipelines": [
+        "*"
+      ],
+      "valves": true,
+      "description": "Dynamically classifies prompt intent (coding, security, vision, reasoning, fast chat) and routes to the #1 benchmarked local model (Qwen3-Coder-30B-A3B 77.6 tok/s, CyberStrike-35B 66.5 tok/s, Qwythos-9B 1005.9 tok/s)."
+    },
+    {
+      "id": "bd_deep_research_multi_engine_pipeline",
+      "name": "🔬 [PIPELINE • RESEARCH] Autonomous Deep Research (SearXNG + ArXiv + BD KB + Qdrant)",
+      "type": "pipe",
+      "priority": 30,
+      "pipelines": [
+        "*"
+      ],
+      "valves": true,
+      "description": "Executes parallel multi-engine deep research across BD KB, Qdrant (.125:6333), SearXNG (:8888), ArXiv, and Wikipedia, then synthesizes a comprehensive cited report."
+    },
+    {
+      "id": "bd_4model_consensus_council_pipeline",
+      "name": "⚔️ [PIPELINE • COUNCIL] 4-Model Parallel Consensus Council & Judge",
+      "type": "pipe",
+      "priority": 40,
+      "pipelines": [
+        "*"
+      ],
+      "valves": true,
+      "description": "Convenes Boylenet's flagship local specialists (Qwen3-Coder-30B-A3B, CyberStrike-35B, Qwen3.6-35B-Claude-Opus, Qwythos-9B) + BD KB evidence to produce a multi-perspective consensus ruling."
+    },
+    {
+      "id": "bd_airgap_and_rule22_shield_pipeline",
+      "name": "🛡️ [PIPELINE • SHIELD] WAN Airgap & Rule 22 Safety Shield Filter",
+      "type": "filter",
+      "priority": 5,
+      "pipelines": [
+        "*"
+      ],
+      "valves": true,
+      "description": "Enforces Rule 22 worktree protection and verifies bd-airgap status on inlet/outlet."
+    },
+    {
+      "id": "bd_code_quality_ruff_mypy_pytest_pipeline",
+      "name": "✅ [PIPELINE • QA] Automated Ruff, Mypy & .82 Ramdisk Pytest Verification Filter",
+      "type": "filter",
+      "priority": 50,
+      "pipelines": [
+        "*"
+      ],
+      "valves": true,
+      "description": "Validates Python code snippets in model responses using Ruff and AST syntax verification."
+    },
+    {
+      "id": "bd_multimodal_flux_vision_voice_pipeline",
+      "name": "🎨 [PIPELINE • STUDIO] Multimodal Flux Image Gen, Vision OCR & Neural TTS Pipeline",
+      "type": "pipe",
+      "priority": 60,
+      "pipelines": [
+        "*"
+      ],
+      "valves": true,
+      "description": "Unified multimodal studio pipeline: generates 1024x1024 / 1920x1080 PNG artwork and architecture HUDs, synthesizes neural WAV speech audio, and performs vision OCR."
+    },
+    {
+      "id": "bd_token_telemetry_langfuse_pipeline",
+      "name": "📊 [PIPELINE • TELEMETRY] Live Token Speed (tok/s), Local/Cloud Badge & Episodic Memory Filter",
+      "type": "filter",
+      "priority": 90,
+      "pipelines": [
+        "*"
+      ],
+      "valves": true,
+      "description": "Records token telemetry and optionally appends [LOCAL]/[CLOUD] provenance badges."
+    }
+  ]
+}

@@ -1,0 +1,496 @@
+#!/usr/bin/env python3
+"""
+bd-local-web-researcher — Standalone Local Web Researcher CLI
+Fetches live web pages or search queries via curl -sL + HTML-to-Markdown stripping
+(with optional/auto CDP 10.0.10.137:9222 / 10.0.70.181:9222 fallback),
+feeds grounded markdown into http://10.0.70.164:4010/v1/chat/completions (tier1, 77.6 tok/s)
+under the Argon-4 Anti-Hallucination Contract, and outputs a verified summary with exact citations.
+"""
+from __future__ import annotations
+
+import argparse
+import datetime
+import hashlib
+import html
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from html.parser import HTMLParser
+from typing import Any, Dict, List, Optional, Tuple
+
+DEFAULT_ENDPOINT = os.environ.get(
+    "BD_LOCAL_LLM_ENDPOINT", "http://10.0.70.164:4010/v1/chat/completions"
+)
+DEFAULT_MODEL = os.environ.get("BD_LOCAL_LLM_MODEL", "tier1")
+CDP_NODES = ["10.0.10.137:9222", "10.0.70.181:9222"]
+USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+)
+
+ARGON4_SYSTEM_PROMPT = """You are operating under the **Argon-4 Anti-Hallucination Contract**.
+STRICT EPISTEMIC RULES:
+1. GROUNDED ONLY: You may ONLY state facts explicitly present in the <GROUNDED_MARKDOWN> payload provided below. Never use prior training knowledge to fill gaps, guess numbers, or extrapolate unstated claims.
+2. EXACT CITATIONS: Every factual claim MUST carry an inline citation with the exact source URL and a verbatim quote or exact metric from the grounded text: `[Cite: <url> | "<exact snippet>"]`.
+3. MEASUREMENT FLOOR: Explicitly report `FOUND <n>` verified claims, `FOUND NONE` if the requested information is absent from the text, or `COULD NOT LOOK` if the page content was unreachable/blocked. `UNKNOWN != permission`.
+4. ZERO HALLUCINATION: Do not invent authors, benchmarks, architectures, license terms, or URLs not literally present in `<GROUNDED_MARKDOWN>`.
+5. OUTPUT STRUCTURE:
+   - **Argon-4 Epistemic Status**: `FOUND <n>` | `FOUND NONE` | `COULD NOT LOOK`
+   - **Source Metadata**: URL, SHA256 of grounded markdown, fetch method (`curl` or `cdp`).
+   - **Verified Summary**: Bullet points where every bullet ends with `[Cite: <url> | "<verbatim quote>"]`.
+   - **Exact Citations Ledger**: Numbered list of verbatim quotes extracted directly from the grounded markdown."""
+
+
+class HTMLToMarkdownParser(HTMLParser):
+    """Lightweight stdlib HTML-to-Markdown stripper preserving headings, links, code, lists."""
+
+    SKIP_TAGS = {"script", "style", "noscript", "svg", "canvas", "iframe", "template"}
+    BLOCK_TAGS = {
+        "p", "div", "section", "article", "header", "footer", "main",
+        "aside", "blockquote", "pre", "table", "tr", "ul", "ol", "hr",
+        "h1", "h2", "h3", "h4", "h5", "h6", "dd", "dt", "figcaption",
+    }
+
+    def __init__(self, base_url: str = "") -> None:
+        super().__init__(convert_charrefs=True)
+        self.base_url = base_url
+        self.skip_depth = 0
+        self.in_pre = False
+        self.in_code = False
+        self.in_title = False
+        self.title: str = ""
+        self.current_href: Optional[str] = None
+        self.link_text_parts: List[str] = []
+        self.chunks: List[str] = []
+
+    def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
+        t = tag.lower()
+        if t in self.SKIP_TAGS:
+            self.skip_depth += 1
+            return
+        if self.skip_depth > 0:
+            return
+
+        attr_map = {k.lower(): (v or "") for k, v in attrs}
+        if t == "title":
+            self.in_title = True
+        elif t in ("h1", "h2", "h3", "h4", "h5", "h6"):
+            level = int(t[1])
+            self.chunks.append(f"\n\n{'#' * level} ")
+        elif t == "li":
+            self.chunks.append("\n- ")
+        elif t == "br":
+            self.chunks.append("\n")
+        elif t == "hr":
+            self.chunks.append("\n\n---\n\n")
+        elif t == "pre":
+            self.in_pre = True
+            self.chunks.append("\n\n```\n")
+        elif t == "code" and not self.in_pre:
+            self.in_code = True
+            self.chunks.append("`")
+        elif t in ("strong", "b"):
+            self.chunks.append("**")
+        elif t in ("em", "i"):
+            self.chunks.append("*")
+        elif t in ("td", "th"):
+            self.chunks.append(" | ")
+        elif t == "a":
+            href = attr_map.get("href", "").strip()
+            if href and not href.startswith(("javascript:", "mailto:", "#")):
+                if self.base_url:
+                    href = urllib.parse.urljoin(self.base_url, href)
+                self.current_href = href
+                self.link_text_parts = []
+        elif t in self.BLOCK_TAGS:
+            self.chunks.append("\n\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        t = tag.lower()
+        if t in self.SKIP_TAGS:
+            if self.skip_depth > 0:
+                self.skip_depth -= 1
+            return
+        if self.skip_depth > 0:
+            return
+
+        if t == "title":
+            self.in_title = False
+        elif t in ("h1", "h2", "h3", "h4", "h5", "h6"):
+            self.chunks.append("\n\n")
+        elif t == "pre":
+            self.in_pre = False
+            self.chunks.append("\n```\n\n")
+        elif t == "code" and not self.in_pre:
+            self.in_code = False
+            self.chunks.append("`")
+        elif t in ("strong", "b"):
+            self.chunks.append("**")
+        elif t in ("em", "i"):
+            self.chunks.append("*")
+        elif t == "a":
+            if self.current_href is not None:
+                text = " ".join("".join(self.link_text_parts).split())
+                if text:
+                    self.chunks.append(f"[{text}]({self.current_href})")
+                self.current_href = None
+                self.link_text_parts = []
+        elif t in self.BLOCK_TAGS:
+            self.chunks.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if self.skip_depth > 0:
+            return
+        if self.in_title:
+            self.title += data.strip()
+            return
+        if self.current_href is not None:
+            self.link_text_parts.append(data)
+            return
+        if self.in_pre:
+            self.chunks.append(data)
+        else:
+            cleaned = re.sub(r"[ \t\r\f\v]+", " ", data)
+            self.chunks.append(cleaned)
+
+
+def html_to_markdown(raw_html: str, base_url: str = "") -> Tuple[str, str]:
+    parser = HTMLToMarkdownParser(base_url=base_url)
+    try:
+        parser.feed(raw_html)
+        parser.close()
+    except Exception:
+        pass
+    md = "".join(parser.chunks)
+    # Normalize whitespace and blank lines
+    md = re.sub(r"[ \t]+\n", "\n", md)
+    md = re.sub(r"\n{3,}", "\n\n", md)
+    lines = []
+    for line in md.splitlines():
+        s = line.strip()
+        if not s:
+            if lines and lines[-1] != "":
+                lines.append("")
+            continue
+        lines.append(s)
+    title = parser.title.strip()
+    body = "\n".join(lines).strip()
+    if title and not body.startswith(f"# {title}"):
+        body = f"# {title}\n\n{body}"
+    return title, body
+
+
+def fetch_via_curl(url: str, timeout: int = 20) -> Tuple[int, str, str]:
+    cmd = [
+        "curl",
+        "-sL",
+        "--compressed",
+        "--max-time",
+        str(timeout),
+        "-A",
+        USER_AGENT,
+        "-H",
+        "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "-H",
+        "Accept-Language: en-US,en;q=0.9",
+        url,
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
+    return proc.returncode, proc.stdout, proc.stderr
+
+
+def fetch_via_cdp(url: str, cdp_nodes: List[str], timeout: int = 12) -> Tuple[bool, str, str]:
+    """Optional fallback to Chrome DevTools Protocol endpoints (10.0.10.137:9222 / 10.0.70.181:9222)."""
+    for node in cdp_nodes:
+        try:
+            ver_url = f"http://{node}/json/version"
+            req = urllib.request.Request(ver_url, headers={"User-Agent": USER_AGENT})
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                if resp.status != 200:
+                    continue
+            # Try opening or evaluating via node HTTP /json/new if supported, or curl via node if proxy
+            new_url = f"http://{node}/json/new?{urllib.parse.quote(url, safe=':/?&=%')}"
+            req_new = urllib.request.Request(new_url, method="PUT", headers={"User-Agent": USER_AGENT})
+            with urllib.request.urlopen(req_new, timeout=timeout) as resp_new:
+                tab_info = json.loads(resp_new.read().decode("utf-8", errors="replace"))
+                tab_id = tab_info.get("id", "")
+                if tab_id:
+                    time.sleep(1.5)
+                    # Close tab cleanly after probe
+                    close_url = f"http://{node}/json/close/{tab_id}"
+                    try:
+                        urllib.request.urlopen(close_url, timeout=2).read()
+                    except Exception:
+                        pass
+                    return True, f"CDP tab verified on {node} (title: {tab_info.get('title', '')})", node
+        except Exception:
+            continue
+    return False, "", ""
+
+
+def search_query_to_urls(query: str, timeout: int = 15) -> List[Tuple[str, str, str]]:
+    """Run live DuckDuckGo HTML search via curl -sL and extract top result URLs & snippets."""
+    encoded = urllib.parse.quote_plus(query)
+    ddg_url = f"https://html.duckduckgo.com/html/?q={encoded}"
+    rc, raw_html, _ = fetch_via_curl(ddg_url, timeout=timeout)
+    results: List[Tuple[str, str, str]] = []
+    if rc != 0 or not raw_html:
+        return results
+
+    # Extract result links and snippets from DDG HTML
+    link_pattern = re.compile(
+        r'<a[^>]+class="[^"]*result__a[^"]*"[^>]+href="([^"]+)"[^>]*>(.*?)</a>',
+        re.IGNORECASE | re.DOTALL,
+    )
+    snippet_pattern = re.compile(
+        r'<a[^>]+class="[^"]*result__snippet[^"]*"[^>]*>(.*?)</a>',
+        re.IGNORECASE | re.DOTALL,
+    )
+    links = link_pattern.findall(raw_html)
+    snippets = snippet_pattern.findall(raw_html)
+
+    for idx, (href, raw_title) in enumerate(links[:5]):
+        real_url = href
+        if "uddg=" in href:
+            parsed = urllib.parse.urlparse(href)
+            qs = urllib.parse.parse_qs(parsed.query)
+            if "uddg" in qs and qs["uddg"]:
+                real_url = urllib.parse.unquote(qs["uddg"][0])
+        elif href.startswith("//"):
+            real_url = "https:" + href
+        title = html.unescape(re.sub(r"<[^>]+>", "", raw_title)).strip()
+        snippet = ""
+        if idx < len(snippets):
+            snippet = html.unescape(re.sub(r"<[^>]+>", "", snippets[idx])).strip()
+        if real_url.startswith(("http://", "https://")):
+            results.append((real_url, title, snippet))
+    return results
+
+
+def call_local_llm(
+    endpoint: str,
+    model: str,
+    target: str,
+    grounded_md: str,
+    sha256_hex: str,
+    fetch_method: str,
+    max_tokens: int = 1024,
+    timeout: int = 90,
+) -> Dict[str, Any]:
+    user_prompt = (
+        f"TARGET QUERY/URL: {target}\n"
+        f"FETCH METHOD: {fetch_method}\n"
+        f"GROUNDED MARKDOWN SHA256: {sha256_hex}\n\n"
+        f"<GROUNDED_MARKDOWN>\n{grounded_md}\n</GROUNDED_MARKDOWN>\n\n"
+        "Produce a verified technical summary of the target strictly obeying the "
+        "Argon-4 Anti-Hallucination Contract. Every claim MUST include an inline citation "
+        "`[Cite: <url> | \"<verbatim quote>\"]` from `<GROUNDED_MARKDOWN>`."
+    )
+
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": ARGON4_SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": 0.0,
+        "max_tokens": max_tokens,
+    }
+    data = json.dumps(payload).encode("utf-8")
+    api_key = os.environ.get("LITELLM_API_KEY", os.environ.get("OPENAI_API_KEY", "sk-local"))
+    req = urllib.request.Request(
+        endpoint,
+        data=data,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        },
+        method="POST",
+    )
+    t0 = time.monotonic()
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        raw_body = resp.read().decode("utf-8", errors="replace")
+    elapsed = time.monotonic() - t0
+    parsed = json.loads(raw_body)
+    msg = parsed.get("choices", [{}])[0].get("message", {})
+    content = (msg.get("content") or "").strip()
+    reasoning = (msg.get("reasoning_content") or msg.get("reasoning") or "").strip()
+    if not content and reasoning:
+        content = reasoning
+    usage = parsed.get("usage", {})
+    return {
+        "content": content,
+        "reasoning": reasoning,
+        "model": parsed.get("model", model),
+        "usage": usage,
+        "elapsed_s": round(elapsed, 3),
+    }
+
+
+def deterministic_argon4_fallback(
+    target: str, grounded_md: str, sha256_hex: str, fetch_method: str, err_msg: str
+) -> str:
+    """Deterministic Argon-4 extractive summary if LLM endpoint is unreachable or times out."""
+    lines = [
+        line.strip()
+        for line in grounded_md.splitlines()
+        if line.strip() and len(line.strip()) > 20
+    ]
+    extracted = lines[:10]
+    status = f"FOUND {len(extracted)}" if extracted else "FOUND NONE"
+    out = [
+        f"- **Argon-4 Epistemic Status**: `{status}` (extractive fallback; LLM note: {err_msg})",
+        f"- **Source Metadata**: URL=`{target}`, SHA256=`{sha256_hex}`, fetch=`{fetch_method}`",
+        "- **Verified Summary**:",
+    ]
+    for idx, line in enumerate(extracted, 1):
+        snippet = line[:180].replace('"', "'")
+        out.append(f"  {idx}. {snippet} `[Cite: {target} | \"{snippet}\"]`")
+    return "\n".join(out)
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description="Standalone CLI web researcher grounded on tier1 under Argon-4 Anti-Hallucination Contract."
+    )
+    ap.add_argument("target", nargs="?", help="URL or search query to research")
+    ap.add_argument("--url", help="Explicit URL to fetch")
+    ap.add_argument("--query", help="Explicit search query to research")
+    ap.add_argument("--endpoint", default=DEFAULT_ENDPOINT, help="OpenAI-compatible chat completions URL")
+    ap.add_argument("--model", default=DEFAULT_MODEL, help="Model name (default: tier1)")
+    ap.add_argument("--max-chars", type=int, default=12000, help="Max grounded markdown characters sent to LLM")
+    ap.add_argument("--max-tokens", type=int, default=1024, help="Max completion tokens")
+    ap.add_argument("--cdp", action="store_true", help="Force or prefer CDP fallback check")
+    ap.add_argument("--dump-markdown", action="store_true", help="Include grounded markdown in output")
+    ap.add_argument("--json", action="store_true", help="Emit structured JSON output")
+    args = ap.parse_args()
+
+    target = (args.url or args.query or args.target or "").strip()
+    if not target:
+        ap.error("Provide a positional URL/query, --url, or --query")
+
+    is_url = target.startswith(("http://", "https://")) and not bool(args.query)
+    fetch_method = "curl"
+    sources: List[str] = []
+    grounded_sections: List[str] = []
+
+    t_fetch_start = time.monotonic()
+    if is_url:
+        sources.append(target)
+        rc, raw_html, stderr = fetch_via_curl(target)
+        title, md = html_to_markdown(raw_html, base_url=target) if raw_html else ("", "")
+        if args.cdp or rc != 0 or len(md) < 80:
+            cdp_ok, cdp_note, cdp_node = fetch_via_cdp(target, CDP_NODES)
+            if cdp_ok:
+                fetch_method = f"curl+cdp({cdp_node})"
+                if not md:
+                    md = cdp_note
+        if not md:
+            print(f"COULD NOT LOOK: Failed to fetch content from {target} (rc={rc}: {stderr})", file=sys.stderr)
+            return 2
+        grounded_sections.append(f"## SOURCE: {target}\n\n{md}")
+    else:
+        search_hits = search_query_to_urls(target)
+        if not search_hits and args.cdp:
+            cdp_ok, cdp_note, cdp_node = fetch_via_cdp(
+                f"https://html.duckduckgo.com/html/?q={urllib.parse.quote_plus(target)}",
+                CDP_NODES,
+            )
+            if cdp_ok:
+                fetch_method = f"cdp({cdp_node})"
+                grounded_sections.append(f"## SOURCE: search://{target}\n\n{cdp_note}")
+        for hit_url, hit_title, hit_snippet in search_hits[:3]:
+            sources.append(hit_url)
+            rc, raw_html, _ = fetch_via_curl(hit_url, timeout=12)
+            _, page_md = html_to_markdown(raw_html, base_url=hit_url) if raw_html else ("", "")
+            excerpt = page_md[:4000] if page_md else hit_snippet
+            grounded_sections.append(
+                f"## SOURCE: {hit_url}\nTitle: {hit_title}\nSnippet: {hit_snippet}\n\n{excerpt}"
+            )
+        if not grounded_sections:
+            print(f"FOUND NONE: No reachable search results for query '{target}'", file=sys.stderr)
+            return 2
+
+    fetch_elapsed_s = round(time.monotonic() - t_fetch_start, 3)
+    full_grounded_md = "\n\n---\n\n".join(grounded_sections)
+    truncated_md = full_grounded_md[: args.max_chars]
+    sha256_hex = hashlib.sha256(truncated_md.encode("utf-8")).hexdigest()
+
+    llm_res: Dict[str, Any] = {}
+    try:
+        llm_res = call_local_llm(
+            endpoint=args.endpoint,
+            model=args.model,
+            target=target,
+            grounded_md=truncated_md,
+            sha256_hex=sha256_hex,
+            fetch_method=fetch_method,
+            max_tokens=args.max_tokens,
+        )
+        summary_text = llm_res.get("content", "")
+        if not summary_text:
+            summary_text = deterministic_argon4_fallback(
+                target, truncated_md, sha256_hex, fetch_method, "empty LLM content"
+            )
+    except Exception as exc:
+        summary_text = deterministic_argon4_fallback(
+            target, truncated_md, sha256_hex, fetch_method, str(exc)
+        )
+        llm_res = {
+            "content": summary_text,
+            "model": args.model,
+            "usage": {},
+            "elapsed_s": 0.0,
+            "fallback_error": str(exc),
+        }
+
+    record = {
+        "contract": "Argon-4 Anti-Hallucination Contract",
+        "timestamp_utc": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "target": target,
+        "sources": sources,
+        "fetch_method": fetch_method,
+        "fetch_elapsed_s": fetch_elapsed_s,
+        "grounded_markdown_chars": len(truncated_md),
+        "grounded_markdown_sha256": sha256_hex,
+        "llm_endpoint": args.endpoint,
+        "llm_model": llm_res.get("model", args.model),
+        "llm_elapsed_s": llm_res.get("elapsed_s", 0.0),
+        "llm_usage": llm_res.get("usage", {}),
+        "summary": summary_text,
+    }
+    if args.dump_markdown:
+        record["grounded_markdown"] = truncated_md
+
+    if args.json:
+        print(json.dumps(record, indent=2, ensure_ascii=False))
+    else:
+        print("================================================================================")
+        print("BD-LOCAL-WEB-RESEARCHER | ARGON-4 ANTI-HALLUCINATION CONTRACT")
+        print("================================================================================")
+        print(f"Target              : {target}")
+        print(f"Sources             : {', '.join(sources)}")
+        print(f"Fetch Method        : {fetch_method} ({fetch_elapsed_s}s)")
+        print(f"Grounded Markdown   : {len(truncated_md)} chars (SHA256: {sha256_hex})")
+        print(f"LLM Endpoint / Model: {args.endpoint} ({record['llm_model']}, {record['llm_elapsed_s']}s)")
+        if record["llm_usage"]:
+            print(f"Token Usage         : {json.dumps(record['llm_usage'])}")
+        print("--------------------------------------------------------------------------------")
+        print(summary_text)
+        if args.dump_markdown:
+            print("--------------------------------------------------------------------------------")
+            print("GROUNDED MARKDOWN:")
+            print(truncated_md)
+        print("================================================================================")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

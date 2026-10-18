@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""
+bd-speculative-patch: Deterministic Speculative Code Editing for LLM Agents.
+Treats the existing file on disk as a deterministic draft.
+Applies localized search-and-replace or unified hunk patches with atomic write,
+instant AST/syntax verification, and automatic rollback on failure.
+"""
+
+import sys
+import os
+import argparse
+import subprocess
+import shutil
+import tempfile
+
+def verify_syntax(file_path: str) -> tuple:
+    """Verify syntax using py_compile. Returns (ok: bool, err_msg: str)."""
+    if not file_path.endswith(".py"):
+        return True, ""
+    try:
+        res = subprocess.run(
+            [sys.executable, "-m", "py_compile", file_path],
+            capture_output=True,
+            text=True
+        )
+        if res.returncode == 0:
+            return True, ""
+        return False, res.stderr.strip()
+    except Exception as e:
+        return False, str(e)
+
+def verify_ruff(file_path: str) -> tuple:
+    """Run ruff check if available. Returns (ok: bool, err_msg: str)."""
+    if not file_path.endswith(".py"):
+        return True, ""
+    ruff_bin = shutil.which("ruff")
+    if not ruff_bin:
+        # Check standard virtualenv paths
+        for candidate in ["/home/mboyle/BulkDownloader/venv/bin/ruff", "/home/mboyle/.local/bin/ruff"]:
+            if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+                ruff_bin = candidate
+                break
+    if not ruff_bin:
+        return True, ""
+
+    try:
+        res = subprocess.run([ruff_bin, "check", file_path], capture_output=True, text=True)
+        if res.returncode == 0:
+            return True, ""
+        return False, res.stdout.strip() + "\n" + res.stderr.strip()
+    except Exception:
+        return True, ""  # Don't hard-fail if ruff execution fails
+
+def apply_block_replace(target_file: str, search_str: str, replace_str: str, allow_multiple: bool = False) -> None:
+    if not os.path.isfile(target_file):
+        print(f"ERROR: target file not found: {target_file}", file=sys.stderr)
+        sys.exit(1)
+
+    with open(target_file, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    count = content.count(search_str)
+    if count == 0:
+        print(f"ERROR: search string not found in {target_file}", file=sys.stderr)
+        sys.exit(2)
+    if count > 1 and not allow_multiple:
+        print(f"ERROR: search string occurs {count} times (must be unique). Use --allow-multiple to replace all.", file=sys.stderr)
+        sys.exit(3)
+
+    # Backup original content
+    orig_content = content
+    new_content = content.replace(search_str, replace_str, -1 if allow_multiple else 1)
+
+    # Write to temp file in same dir for atomic move
+    target_dir = os.path.dirname(os.path.abspath(target_file))
+    with tempfile.NamedTemporaryFile("w", dir=target_dir, delete=False, encoding="utf-8") as tf:
+        tf.write(new_content)
+        tmp_path = tf.name
+
+    try:
+        # Syntax check the tmp file before replacing
+        ok_syntax, err = verify_syntax(tmp_path)
+        if not ok_syntax:
+            os.remove(tmp_path)
+            print(f"ERROR: syntax error in modified code:\n{err}", file=sys.stderr)
+            sys.exit(4)
+
+        # Atomic replace
+        os.replace(tmp_path, target_file)
+
+        # Post-replace ruff check
+        ok_ruff, ruff_err = verify_ruff(target_file)
+        if not ok_ruff:
+            # Rollback
+            with open(target_file, "w", encoding="utf-8") as f:
+                f.write(orig_content)
+            print(f"ERROR: ruff lint failed, rolled back to original:\n{ruff_err}", file=sys.stderr)
+            sys.exit(5)
+
+        delta_bytes = len(new_content) - len(orig_content)
+        sign = "+" if delta_bytes >= 0 else ""
+        print(f"[SPECULATIVE-PATCH] OK {target_file} (bytes: {sign}{delta_bytes})")
+
+    except Exception as e:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        # Restore original
+        with open(target_file, "w", encoding="utf-8") as f:
+            f.write(orig_content)
+        print(f"ERROR: exception during patch application: {e}", file=sys.stderr)
+        sys.exit(6)
+
+def main():
+    parser = argparse.ArgumentParser(description="Deterministic Speculative Code Editing")
+    parser.add_argument("target", help="Target file path")
+    parser.add_argument("--search", required=True, help="Exact code block to find")
+    parser.add_argument("--replace", required=True, help="Replacement code block")
+    parser.add_argument("--allow-multiple", action="store_true", help="Allow multiple occurrences")
+    args = parser.parse_args()
+
+    apply_block_replace(args.target, args.search, args.replace, args.allow_multiple)
+
+if __name__ == "__main__":
+    main()

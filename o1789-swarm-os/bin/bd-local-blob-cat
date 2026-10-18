@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+"""Rule 80 bounded CAS blob inspector (/var/tmp/bd-blobs/<sha256>.log).
+
+Ensures local GPU and fleet agents inspect CAS blobs via bounded slices
+(--head N, --tail N, --grep PATTERN) without ingesting raw >15-line outputs.
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import sys
+from pathlib import Path
+
+BLOB_DIR = Path(os.environ.get("BD_BLOB_DIR", "/var/tmp/bd-blobs"))
+DEFAULT_MAX_LINES = int(os.environ.get("BD_BLOB_MAX_LINES", "15"))
+
+
+def resolve_blob(ref: str) -> Path:
+    candidate = Path(ref)
+    if candidate.is_file():
+        return candidate
+    cleaned = ref.strip()
+    if cleaned.startswith("CAS:"):
+        cleaned = cleaned.split("CAS:", 1)[1].strip()
+    name = Path(cleaned).name
+    if not name.endswith(".log"):
+        name_with_ext = f"{name}.log"
+    else:
+        name_with_ext = name
+    direct = BLOB_DIR / name_with_ext
+    if direct.is_file():
+        return direct
+    # Prefix match fallback inside BLOB_DIR
+    stem = name[:-4] if name.endswith(".log") else name
+    if re.fullmatch(r"[0-9a-fA-F]{6,64}", stem) and BLOB_DIR.is_dir():
+        matches = sorted(BLOB_DIR.glob(f"{stem}*.log"))
+        if len(matches) == 1:
+            return matches[0]
+    return direct
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="bd-local-blob-cat",
+        description="Rule 80 bounded CAS blob inspection (--head N, --tail N, --grep PATTERN).",
+    )
+    parser.add_argument(
+        "blob",
+        nargs="?",
+        help="SHA256, <sha256>.log, or path to /var/tmp/bd-blobs/<sha256>.log",
+    )
+    parser.add_argument("--blob", "--sha", "--file", dest="blob_opt", help="Blob SHA256 or path")
+    parser.add_argument("--head", "-n", type=int, default=None, help="Show first N lines (bounded <=15)")
+    parser.add_argument("--tail", type=int, default=None, help="Show last N lines (bounded <=15)")
+    parser.add_argument("--grep", "-g", "-e", dest="grep_pattern", default=None, help="Filter lines matching regex PATTERN")
+    parser.add_argument("-i", "--ignore-case", action="store_true", help="Case-insensitive grep")
+    parser.add_argument("-C", "--context", type=int, default=0, help="Context lines around grep matches")
+
+    args = parser.parse_args(argv)
+    target_ref = args.blob_opt or args.blob
+    if not target_ref:
+        parser.error("blob reference required (<sha256> or /var/tmp/bd-blobs/<sha256>.log)")
+
+    blob_path = resolve_blob(target_ref)
+    if not blob_path.is_file():
+        sys.stderr.write(f"ERROR: blob not found: {blob_path}\n")
+        return 2
+
+    raw_lines = blob_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    total_lines = len(raw_lines)
+
+    # Number lines 1..N for clear machine coordinates
+    indexed_lines: list[tuple[int, str]] = list(enumerate(raw_lines, start=1))
+
+    if args.grep_pattern is not None:
+        flags = re.IGNORECASE if args.ignore_case else 0
+        try:
+            regex = re.compile(args.grep_pattern, flags)
+        except re.error:
+            regex = re.compile(re.escape(args.grep_pattern), flags)
+
+        ctx = max(0, args.context)
+        selected_indices: set[int] = set()
+        for idx0, (_, line_text) in enumerate(indexed_lines):
+            if regex.search(line_text):
+                start = max(0, idx0 - ctx)
+                end = min(total_lines, idx0 + ctx + 1)
+                selected_indices.update(range(start, end))
+        filtered = [indexed_lines[i] for i in sorted(selected_indices)]
+    else:
+        filtered = indexed_lines
+
+    filtered_count = len(filtered)
+    cap = DEFAULT_MAX_LINES
+
+    if args.head is not None and args.tail is not None:
+        h = max(0, min(args.head, cap))
+        t = max(0, min(args.tail, max(0, cap - h)))
+        head_slice = filtered[:h]
+        tail_slice = filtered[-t:] if t > 0 and filtered_count > h else []
+        # Deduplicate preserving order if overlapping
+        seen: set[int] = set()
+        sliced: list[tuple[int, str]] = []
+        for item in head_slice + tail_slice:
+            if item[0] not in seen:
+                seen.add(item[0])
+                sliced.append(item)
+    elif args.tail is not None:
+        t = max(0, min(args.tail, cap))
+        sliced = filtered[-t:] if t > 0 else []
+    elif args.head is not None:
+        h = max(0, min(args.head, cap))
+        sliced = filtered[:h]
+    else:
+        sliced = filtered[:cap]
+
+    sys.stdout.write(
+        f"# BLOB: {blob_path} | total_lines={total_lines} | matched={filtered_count} | shown={len(sliced)} (cap={cap})\n"
+    )
+    for lineno, text in sliced:
+        sys.stdout.write(f"{lineno}: {text}\n")
+
+    if filtered_count > len(sliced):
+        omitted = filtered_count - len(sliced)
+        sys.stdout.write(f"# [Rule 80 bounded: {omitted} additional line(s) omitted; refine with --head/--tail/--grep]\n")
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,282 @@
+#!/usr/bin/env python3
+"""bd-local-context-compress: Caveman-compress skill parity on local GPU cluster (tier1).
+
+Compresses a markdown/notes file into Caveman format via http://10.0.70.164:4010/v1/chat/completions
+(model: tier1) with deterministic local fallback, enforcing Argon-4 preservation of all paths,
+numbers, and commands/code blocks, saving a .bak backup, and reporting exact token/byte savings.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shutil
+import sys
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+DEFAULT_ENDPOINT = os.environ.get(
+    "BD_LOCAL_COMPRESS_URL", "http://10.0.70.164:4010/v1/chat/completions"
+)
+DEFAULT_MODEL = os.environ.get("BD_LOCAL_COMPRESS_MODEL", "tier1")
+DEFAULT_API_KEY = os.environ.get("BD_LOCAL_COMPRESS_KEY", "sk-local-cluster")
+
+SYSTEM_PROMPT = (
+    "You are a Caveman-Compress engine enforcing Argon-4 invariants. "
+    "Compress the given markdown/notes into ultra-terse Caveman format: "
+    "drop articles (a, an, the), filler words, pleasantries, and redundant prose; "
+    "use telegraphic fragments and symbols (->, |, =, +). "
+    "ARGON-4 HARD INVARIANT: You MUST preserve 100% of file paths, URLs, numbers, "
+    "versions, IPs, dates, inline code (`...`), and fenced command/code blocks verbatim. "
+    "Return ONLY the compressed markdown without wrapper commentary."
+)
+
+FILLER_PATTERNS = [
+    (r"\b(please note that|it is important to note that|in order to)\b", "to"),
+    (r"\b(as a result of|due to the fact that|because of the fact that)\b", "because"),
+    (r"\b(at this point in time|currently|at the present time)\b", "now"),
+    (r"\b(for the purpose of)\b", "for"),
+    (r"\b(in the event that)\b", "if"),
+    (r"\b(is able to|are able to|can be used to)\b", "can"),
+    (r"\b(make sure to|be sure to|ensure that you|you must always)\b", "must"),
+    (r"\b(that is to say|in other words)\b", "i.e."),
+    (r"\b(with respect to|with regard to|concerning|regarding)\b", "re:"),
+    (r"\b(is responsible for|are responsible for)\b", "handles"),
+    (r"\b(in addition to|additionally|furthermore|moreover)\b", "also"),
+    (r"\b(would like to|we need to|you should|we should)\b", ""),
+    (r"\b(a|an|the)\s+", ""),
+    (r"\b(is|are|was|were|will be|has been|have been)\s+", ""),
+    (r"\b(very|really|extremely|quite|basically|essentially|simply|just)\s+", ""),
+]
+
+
+def estimate_tokens(text: str) -> int:
+    if not text:
+        return 0
+    # Standard word/subword approximation (~0.75 words per token / 4 chars per token hybrid)
+    chunks = re.findall(r"\w+|[^\w\s]", text, re.UNICODE)
+    char_est = (len(text) + 3) // 4
+    return max(1, (len(chunks) + char_est) // 2)
+
+
+def extract_argon4_anchors(text: str) -> dict[str, set[str]]:
+    """Extract Argon-4 protected tokens: paths, numbers, and commands/code."""
+    code_blocks = set(re.findall(r"```[\s\S]*?```", text))
+    inline_code = set(re.findall(r"`[^`\n]+`", text))
+    paths = set(
+        re.findall(
+            r"(?:https?://[^\s)\]>\"'`]+|(?:/[\w.\-]+){2,}/?|\b[\w.\-]+/[\w.\-/]+)",
+            text,
+        )
+    )
+    numbers = set(re.findall(r"\b\d+(?:\.\d+)*\b", text))
+    return {
+        "code_blocks": code_blocks,
+        "inline_code": inline_code,
+        "paths": paths,
+        "numbers": numbers,
+    }
+
+
+def verify_argon4(original: str, candidate: str) -> tuple[bool, list[str]]:
+    anchors = extract_argon4_anchors(original)
+    missing: list[str] = []
+    for category, items in anchors.items():
+        for item in items:
+            if item not in candidate:
+                missing.append(f"{category}:{item[:40]}")
+    return (len(missing) == 0, missing)
+
+
+def deterministic_caveman_compress(text: str) -> str:
+    """Deterministic Argon-4-safe Caveman compressor protecting code, paths, and numbers."""
+    protected: list[str] = []
+
+    def _stash(match: re.Match[str]) -> str:
+        idx = len(protected)
+        protected.append(match.group(0))
+        return f"@@ARGON4_{idx}@@"
+
+    # Protect fenced code blocks, inline code, URLs, paths, and numbers
+    work = re.sub(r"```[\s\S]*?```", _stash, text)
+    work = re.sub(r"`[^`\n]+`", _stash, work)
+    work = re.sub(
+        r"(?:https?://[^\s)\]>\"'`]+|(?:/[\w.\-]+){2,}/?|\b[\w.\-]+/[\w.\-/]+)",
+        _stash,
+        work,
+    )
+    work = re.sub(r"\b\d+(?:\.\d+)*\b", _stash, work)
+
+    out_lines: list[str] = []
+    for line in work.splitlines():
+        raw = line.strip()
+        if not raw:
+            continue
+        # Compress prose outside protected tokens
+        compressed = raw
+        for pattern, repl in FILLER_PATTERNS:
+            compressed = re.sub(pattern, repl, compressed, flags=re.IGNORECASE)
+        compressed = re.sub(r"[ \t]{2,}", " ", compressed).strip()
+        compressed = re.sub(r"\s+([,.;:!?])", r"\1", compressed)
+        if compressed:
+            out_lines.append(compressed)
+
+    result = "\n".join(out_lines)
+    # Restore in reverse order so nested/sequential placeholders expand cleanly
+    for idx in range(len(protected) - 1, -1, -1):
+        result = result.replace(f"@@ARGON4_{idx}@@", protected[idx])
+    return result + ("\n" if text.endswith("\n") else "")
+
+
+def call_cluster_tier1(
+    text: str, endpoint: str, model: str, timeout: float
+) -> tuple[str | None, str]:
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": text},
+        ],
+        "temperature": 0.0,
+        "max_tokens": max(256, estimate_tokens(text)),
+    }
+    req = urllib.request.Request(
+        endpoint,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {DEFAULT_API_KEY}",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+            content = body["choices"][0]["message"]["content"].strip()
+            if content.startswith("```markdown") and content.endswith("```"):
+                content = content[len("```markdown") : -3].strip()
+            return content + ("\n" if text.endswith("\n") else ""), "cluster:tier1"
+    except Exception as exc:
+        return None, f"fallback:deterministic ({type(exc).__name__})"
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Compress markdown/notes to Caveman format via local GPU cluster (tier1) with Argon-4 safety."
+    )
+    parser.add_argument("file", help="Path to markdown/notes file to compress")
+    parser.add_argument(
+        "-o", "--output", help="Output path (default: overwrite input file in-place)"
+    )
+    parser.add_argument(
+        "--endpoint",
+        default=DEFAULT_ENDPOINT,
+        help=f"OpenAI-compatible endpoint (default: {DEFAULT_ENDPOINT})",
+    )
+    parser.add_argument(
+        "--model",
+        default=DEFAULT_MODEL,
+        help=f"Model tier name (default: {DEFAULT_MODEL})",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=8.0,
+        help="Cluster HTTP timeout seconds (default: 8.0)",
+    )
+    parser.add_argument(
+        "--no-backup",
+        action="store_true",
+        help="Skip creating <file>.bak backup",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Compute compression and print stats without writing files",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit machine-readable JSON receipt",
+    )
+    args = parser.parse_args()
+
+    src_path = Path(args.file).expanduser().resolve()
+    if not src_path.is_file():
+        print(f"ERROR: file not found: {src_path}", file=sys.stderr)
+        return 2
+
+    original = src_path.read_text(encoding="utf-8")
+    orig_bytes = len(original.encode("utf-8"))
+    orig_tokens = estimate_tokens(original)
+
+    candidate, backend = call_cluster_tier1(
+        original, args.endpoint, args.model, args.timeout
+    )
+    if candidate is not None:
+        ok, missing = verify_argon4(original, candidate)
+        if not ok or len(candidate.encode("utf-8")) >= orig_bytes:
+            # Enforce Argon-4 + net savings via deterministic Caveman pass
+            candidate = deterministic_caveman_compress(original)
+            backend = f"{backend}->argon4-guard"
+    else:
+        candidate = deterministic_caveman_compress(original)
+
+    ok, missing = verify_argon4(original, candidate)
+    if not ok:
+        print(f"ERROR: Argon-4 verification failed: {missing}", file=sys.stderr)
+        return 1
+
+    comp_bytes = len(candidate.encode("utf-8"))
+    comp_tokens = estimate_tokens(candidate)
+    saved_bytes = orig_bytes - comp_bytes
+    saved_tokens = orig_tokens - comp_tokens
+    pct_bytes = (saved_bytes / orig_bytes * 100.0) if orig_bytes else 0.0
+    pct_tokens = (saved_tokens / orig_tokens * 100.0) if orig_tokens else 0.0
+
+    bak_path = src_path.with_name(src_path.name + ".bak")
+    out_path = Path(args.output).expanduser().resolve() if args.output else src_path
+
+    if not args.dry_run:
+        if not args.no_backup:
+            shutil.copy2(src_path, bak_path)
+        out_path.write_text(candidate, encoding="utf-8")
+
+    anchors = extract_argon4_anchors(original)
+    report = {
+        "status": "OK",
+        "file": str(out_path),
+        "backup": str(bak_path) if (not args.no_backup and not args.dry_run) else None,
+        "backend": backend,
+        "endpoint": args.endpoint,
+        "model": args.model,
+        "argon4_verified": True,
+        "argon4_counts": {k: len(v) for k, v in anchors.items()},
+        "orig_bytes": orig_bytes,
+        "comp_bytes": comp_bytes,
+        "saved_bytes": saved_bytes,
+        "pct_bytes": round(pct_bytes, 2),
+        "orig_tokens": orig_tokens,
+        "comp_tokens": comp_tokens,
+        "saved_tokens": saved_tokens,
+        "pct_tokens": round(pct_tokens, 2),
+    }
+
+    if args.json:
+        print(json.dumps(report))
+    else:
+        print(
+            f"CAVEMAN-COMPRESS OK | file={out_path} | bak={report['backup']} | "
+            f"backend={backend} | Argon-4=PASS "
+            f"(paths={len(anchors['paths'])}, nums={len(anchors['numbers'])}, "
+            f"code={len(anchors['inline_code']) + len(anchors['code_blocks'])}) | "
+            f"bytes: {orig_bytes}->{comp_bytes} (-{saved_bytes}B, -{pct_bytes:.1f}%) | "
+            f"tokens: {orig_tokens}->{comp_tokens} (-{saved_tokens} tok, -{pct_tokens:.1f}%)"
+        )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

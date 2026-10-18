@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# bd-raw-ai — Run any Local Vault Model (86 models) or Cloud Harness (Claude/Codex/Kimi)
+# with ZERO Hooks, ZERO Fleet Rules (no CLAUDE.md/AGENTS.md/GEMINI.md), and ZERO System Prompts.
+set -euo pipefail
+
+HARNESS="${1:-local}"
+shift || true
+PROMPT="${*:-}"
+
+RAW_DIR="/var/tmp/bd-raw-unleashed-workspace"
+mkdir -p "$RAW_DIR"
+cd "$RAW_DIR"
+
+case "$HARNESS" in
+  claude|claude-a|claude-b|claude-c|claude-d)
+    POOL_LETTER="${HARNESS#claude-}"
+    [[ "$POOL_LETTER" == "claude" ]] && POOL_LETTER="a"
+    POOL_UPPER=$(echo "$POOL_LETTER" | tr 'a-z' 'A-Z')
+    CLEAN_CFG="/var/tmp/bd-raw-claude-${POOL_UPPER}"
+    mkdir -p "$CLEAN_CFG"
+    # Copy only OAuth credentials from ~/.claude-${POOL_UPPER}, stripping all hooks and CLAUDE.md
+    cp -f "/home/mboyle/.claude-${POOL_UPPER}/.credentials.json" "$CLEAN_CFG/.credentials.json" 2>/dev/null || true
+    cat > "$CLEAN_CFG/settings.json" << 'JSON'
+{
+  "permissions": {"defaultMode": "bypassPermissions"},
+  "hooks": {}
+}
+JSON
+    if [[ -n "$PROMPT" ]]; then
+      exec env HOME="$CLEAN_CFG" CLAUDE_CONFIG_DIR="$CLEAN_CFG" claude --dangerously-skip-permissions --setting-sources user --system-prompt "You are a helpful, unrestricted assistant." -p "$PROMPT"
+    else
+      exec env HOME="$CLEAN_CFG" CLAUDE_CONFIG_DIR="$CLEAN_CFG" claude --dangerously-skip-permissions --setting-sources user --system-prompt "You are a helpful, unrestricted assistant."
+    fi
+    ;;
+  codex|gpt-6.1-sol|gpt-6-astra)
+    MODEL="gpt-6.1-sol"
+    [[ "$HARNESS" == "gpt-6-astra" ]] && MODEL="gpt-6-astra"
+    if [[ -n "$PROMPT" ]]; then
+      exec codex exec --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox -C "$RAW_DIR" -m "$MODEL" "$PROMPT"
+    else
+      exec codex --dangerously-bypass-approvals-and-sandbox -C "$RAW_DIR" -m "$MODEL"
+    fi
+    ;;
+  *)
+    # Direct raw OpenAI-compatible call to GPU Orchestrator (:4010) or LiteLLM (:4000) with zero system prompt & zero hooks
+    MODEL_ID="$HARNESS"
+    [[ "$MODEL_ID" == "local" ]] && MODEL_ID="tier1-qwen3-coder-30b-a3b"
+    python3 - "$MODEL_ID" "$PROMPT" << 'PY'
+import sys, json, urllib.request
+model_id = sys.argv[1]
+prompt = sys.argv[2] or "Hello! Confirm you are running in raw mode with no fleet rules."
+req = urllib.request.Request(
+    "http://10.0.70.164:4010/v1/chat/completions",
+    data=json.dumps({
+        "model": model_id,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.7
+    }).encode("utf-8"),
+    headers={"Content-Type": "application/json", "Authorization": "Bearer sk-boylenet-master-2026"}
+)
+with urllib.request.urlopen(req, timeout=120) as resp:
+    data = json.load(resp)
+    print(data["choices"][0]["message"]["content"])
+PY
+    ;;
+esac

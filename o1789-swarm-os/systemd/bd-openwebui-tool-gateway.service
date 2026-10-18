@@ -1,0 +1,18 @@
+[Unit]
+Description=Boylenet Universal OpenWebUI Tool, Skill, Plugin, Git, Web, Browser & MCP Gateway (:4079)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mboyle
+WorkingDirectory=/home/mboyle
+Environment="HOME=/home/mboyle"
+Environment="PATH=/home/mboyle/bin:/home/mboyle/.local/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="BD_OPENWEBUI_TOOL_GATEWAY_PORT=4079"
+ExecStart=/usr/bin/python3 /home/mboyle/bin/bd-openwebui-tool-gateway.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

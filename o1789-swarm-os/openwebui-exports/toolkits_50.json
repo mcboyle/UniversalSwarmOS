@@ -1,0 +1,3360 @@
+[
+  {
+    "version_id": "19934dcb-653d-4292-8db2-ab41cd0ab3ee",
+    "id": "tk_21_document_pdf_csv_json_toolkit",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "📄 PDF, Markdown, CSV, JSON, YAML & HTML Converter",
+    "meta": {
+      "i18n": null,
+      "description": "Convert structured data between JSON, Markdown tables, CSV, YAML, and HTML.",
+      "manifest": {
+        "title": "📄 PDF, Markdown, CSV, JSON, YAML & HTML Converter",
+        "author": "Boylenet Fleet",
+        "version": "2.0.0",
+        "description": "Convert structured data between JSON, Markdown tables, CSV, YAML, and HTML."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "1c6fad9f-c6a3-494c-89a6-6601aac331e9",
+        "resource_type": "tool",
+        "resource_id": "tk_21_document_pdf_csv_json_toolkit",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356272
+      }
+    ],
+    "updated_at": 1792356272,
+    "created_at": 1792355034,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "document_convert_extract",
+        "description": "Convert structured data between JSON, Markdown tables, CSV, and HTML.",
+        "parameters": {
+          "properties": {
+            "content": {
+              "description": "Input document string.",
+              "type": "string"
+            },
+            "source_format": {
+              "default": "json",
+              "description": "'json', 'csv', 'markdown', or 'html'.",
+              "type": "string"
+            },
+            "target_format": {
+              "default": "markdown",
+              "description": "'markdown', 'json', 'csv', or 'html'.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "content"
+          ],
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "f58f7069-ffb9-477c-87ce-6ea12b3e314f",
+    "id": "tk_22_github_gitea_ci_taxonomy",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "🔧 GitHub CLI, Gitea PR Inspector & Boylenet CI Failure Taxonomy Doctor",
+    "meta": {
+      "i18n": null,
+      "description": "Diagnose CI shard and precut failures using Fleet Rules 41-47 and inspect Gitea repositories.",
+      "manifest": {
+        "title": "🔧 GitHub CLI, Gitea PR Inspector & Boylenet CI Failure Taxonomy Doctor",
+        "author": "Boylenet Fleet",
+        "version": "2.0.0",
+        "description": "Diagnose CI shard and precut failures using Fleet Rules 41-47 and inspect Gitea repositories."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "b2c75bfc-863b-4f23-8efe-d37445007b89",
+        "resource_type": "tool",
+        "resource_id": "tk_22_github_gitea_ci_taxonomy",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356272
+      }
+    ],
+    "updated_at": 1792356272,
+    "created_at": 1792355034,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "ci_taxonomy_doctor",
+        "description": "Diagnose CI failures against the Boylenet CI Failure Taxonomy (Rules 41-47) and Gitea status.",
+        "parameters": {
+          "properties": {
+            "error_signature": {
+              "default": "",
+              "description": "CI failure log snippet or error signature.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "fd9cc4b3-61bd-4e16-b140-d9e468a910fd",
+    "id": "tk_23_ast_slicing_serena_lsp",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "🧬 RATF AST Surgical Slicer & Serena LSP Symbol Navigator",
+    "meta": {
+      "i18n": null,
+      "description": "Extract AST classes, methods, and functions with exact line numbers without full-file token bloat.",
+      "manifest": {
+        "title": "🧬 RATF AST Surgical Slicer & Serena LSP Symbol Navigator",
+        "author": "Boylenet Fleet",
+        "version": "2.0.0",
+        "description": "Extract AST classes, methods, and functions with exact line numbers without full-file token bloat."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "ebf10ad2-f492-48c5-87ec-82d1e97e2f58",
+        "resource_type": "tool",
+        "resource_id": "tk_23_ast_slicing_serena_lsp",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356272
+      }
+    ],
+    "updated_at": 1792356272,
+    "created_at": 1792355034,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "ast_slicer_serena",
+        "description": "Extract AST classes and functions with exact line ranges from a Python file.",
+        "parameters": {
+          "properties": {
+            "file_path": {
+              "description": "Absolute path to Python source file.",
+              "type": "string"
+            },
+            "symbol": {
+              "default": "",
+              "description": "Optional class or function name filter.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "file_path"
+          ],
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "664e28e2-5f58-4e5e-827e-9e548e228f11",
+    "id": "tk_24_python_ruff_mypy_linter",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "✅ Instant Python Ruff Linter, Formatter & Mypy Type Enforcer",
+    "meta": {
+      "i18n": null,
+      "description": "Run fast-fail Ruff lint checks and Mypy static type verification on any Python file or folder.",
+      "manifest": {
+        "title": "✅ Instant Python Ruff Linter, Formatter & Mypy Type Enforcer",
+        "author": "Boylenet Fleet",
+        "version": "2.0.0",
+        "description": "Run fast-fail Ruff lint checks and Mypy static type verification on any Python file or folder."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "291cb798-4e94-48eb-a98e-58a2bcf99aa9",
+        "resource_type": "tool",
+        "resource_id": "tk_24_python_ruff_mypy_linter",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356272
+      }
+    ],
+    "updated_at": 1792356272,
+    "created_at": 1792355035,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "python_ruff_mypy_check",
+        "description": "Run Ruff linter and Mypy type checker on a Python file or directory.",
+        "parameters": {
+          "properties": {
+            "file_path": {
+              "default": "/var/tmp/openwebui-workspace",
+              "description": "Target file or directory path.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "1d0407bc-d116-470b-be75-b751d233f50a",
+    "id": "tk_25_ramdisk_pytest_turbo",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "🚀 64-Core .82 /dev/shm Ramdisk Pytest Digest Runner",
+    "meta": {
+      "i18n": null,
+      "description": "Execute bd-pytest-digest in /dev/shm ramdisk with <25 token summary output (Rule 78).",
+      "manifest": {
+        "title": "🚀 64-Core .82 /dev/shm Ramdisk Pytest Digest Runner",
+        "author": "Boylenet Fleet",
+        "version": "2.0.0",
+        "description": "Execute bd-pytest-digest in /dev/shm ramdisk with <25 token summary output (Rule 78)."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "1d1ac9ec-6780-480c-823a-3469cd082f64",
+        "resource_type": "tool",
+        "resource_id": "tk_25_ramdisk_pytest_turbo",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356272
+      }
+    ],
+    "updated_at": 1792356272,
+    "created_at": 1792355035,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "ramdisk_pytest_runner",
+        "description": "Run bd-pytest-digest inside /dev/shm ramdisk and return a compact <=3 line digest.",
+        "parameters": {
+          "properties": {
+            "target": {
+              "default": "",
+              "description": "Pytest file path or -k expression.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "cc9ff578-51e7-47b6-be20-b4477b5d0243",
+    "id": "tk_26_cross_pool_subagent_dispatcher",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "🐝 Multi-Harness Subagent Spawner: Claude, Codex, Kimi & Local",
+    "meta": {
+      "i18n": null,
+      "description": "Dispatch tasks to Boylenet multi-harness subagents (claude-abcd, codex, kimi, hermes, deepseek).",
+      "manifest": {
+        "title": "🐝 Multi-Harness Subagent Spawner: Claude, Codex, Kimi & Local",
+        "author": "Boylenet Fleet",
+        "version": "2.0.0",
+        "description": "Dispatch tasks to Boylenet multi-harness subagents (claude-abcd, codex, kimi, hermes, deepseek)."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "f39a6fbd-fc40-4ad6-bd72-501de7a67622",
+        "resource_type": "tool",
+        "resource_id": "tk_26_cross_pool_subagent_dispatcher",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356272
+      }
+    ],
+    "updated_at": 1792356272,
+    "created_at": 1792355035,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "subagent_swarm_dispatch",
+        "description": "Dispatch a subagent task to Claude, Codex, Kimi, Hermes, or DeepSeek via :4093 bridge.",
+        "parameters": {
+          "properties": {
+            "prompt": {
+              "description": "Task instructions for the subagent.",
+              "type": "string"
+            },
+            "harness": {
+              "default": "hermes",
+              "description": "Target harness ('hermes', 'deepseek', 'claude-abcd', 'codex', 'kimi').",
+              "type": "string"
+            }
+          },
+          "required": [
+            "prompt"
+          ],
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "9c2dbe5b-d2e0-45d1-8220-d0072c58d3ec",
+    "id": "tk_27_cloud_burst_quota_router",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "☁️ $1,000 Cloud Credit & O1740 Dynamic Pool Quota Router",
+    "meta": {
+      "i18n": null,
+      "description": "Inspect live POOL_STATE.tsv quota percentages, $1,000 Cloud API credits, and O1740 routing rules.",
+      "manifest": {
+        "title": "☁️ $1,000 Cloud Credit & O1740 Dynamic Pool Quota Router",
+        "author": "Boylenet Fleet",
+        "version": "2.0.0",
+        "description": "Inspect live POOL_STATE.tsv quota percentages, $1,000 Cloud API credits, and O1740 routing rules."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "37615d37-1185-4873-98a1-9ec92cf394f9",
+        "resource_type": "tool",
+        "resource_id": "tk_27_cloud_burst_quota_router",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356272
+      }
+    ],
+    "updated_at": 1792356272,
+    "created_at": 1792355035,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "cloud_burst_quota_status",
+        "description": "Inspect O1740 POOL_STATE.tsv quota state, $1,000 Cloud credit allocation, and airgap status.",
+        "parameters": {
+          "properties": {},
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "24d871f2-3b61-4752-aa76-8d0f96b9aa65",
+    "id": "tk_28_crypto_weather_world_clock",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "🌍 Live Crypto/FX Rates, Open-Meteo Weather & World Timezone Math",
+    "meta": {
+      "i18n": null,
+      "description": "Fetch live UTC/Unix timestamps and Open-Meteo weather forecasts for any latitude/longitude.",
+      "manifest": {
+        "title": "🌍 Live Crypto/FX Rates, Open-Meteo Weather & World Timezone Math",
+        "author": "Boylenet Fleet",
+        "version": "2.0.0",
+        "description": "Fetch live UTC/Unix timestamps and Open-Meteo weather forecasts for any latitude/longitude."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "f5659fdb-b130-4e40-82f2-1ccc8ab37f3b",
+        "resource_type": "tool",
+        "resource_id": "tk_28_crypto_weather_world_clock",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356272
+      }
+    ],
+    "updated_at": 1792356272,
+    "created_at": 1792355035,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "crypto_weather_world_time",
+        "description": "Get live UTC/Unix time and current Open-Meteo weather telemetry.",
+        "parameters": {
+          "properties": {
+            "latitude": {
+              "default": 37.7749,
+              "description": "Latitude coordinate.",
+              "type": "number"
+            },
+            "longitude": {
+              "default": -122.4194,
+              "description": "Longitude coordinate.",
+              "type": "number"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "a9a77f20-32da-4fa6-b6d5-fbc5ee328521",
+    "id": "tk_29_cyber_cve_nvd_security_audit",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "🔒 CVE/NVD Vulnerability Search, Secret Scanner & Red-Team Auditor",
+    "meta": {
+      "i18n": null,
+      "description": "Search CVE vulnerability records from CIRCL/NVD and scan workspace files for exposed secrets.",
+      "manifest": {
+        "title": "🔒 CVE/NVD Vulnerability Search, Secret Scanner & Red-Team Auditor",
+        "author": "Boylenet Fleet",
+        "version": "2.0.0",
+        "description": "Search CVE vulnerability records from CIRCL/NVD and scan workspace files for exposed secrets."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "9d902093-0350-4d23-b29a-f84f23a608cc",
+        "resource_type": "tool",
+        "resource_id": "tk_29_cyber_cve_nvd_security_audit",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356272
+      }
+    ],
+    "updated_at": 1792356272,
+    "created_at": 1792355035,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "cyber_cve_security_audit",
+        "description": "Look up a CVE ID (e.g. CVE-2024-3094) and scan a directory for accidental secret exposure.",
+        "parameters": {
+          "properties": {
+            "query": {
+              "default": "",
+              "description": "CVE identifier or security topic.",
+              "type": "string"
+            },
+            "scan_path": {
+              "default": "/var/tmp/openwebui-workspace",
+              "description": "Directory path to scan for secrets.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "b832e002-b036-4c5c-84e0-71d01bafe883",
+    "id": "tk_30_local_flux_image_voice_studio",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "🎨 Local 1080p Image Generator, Vision OCR & Voice TTS/STT",
+    "meta": {
+      "i18n": null,
+      "description": "Generate 1024x1024 local PNG images or synthesize Jarvis TTS speech audio on-prem.",
+      "manifest": {
+        "title": "🎨 Local 1080p Image Generator, Vision OCR & Voice TTS/STT",
+        "author": "Boylenet Fleet",
+        "version": "2.0.0",
+        "description": "Generate 1024x1024 local PNG images or synthesize Jarvis TTS speech audio on-prem."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "d033c8b7-edb9-488a-a2b0-19c1a2995fbb",
+        "resource_type": "tool",
+        "resource_id": "tk_30_local_flux_image_voice_studio",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356272
+      }
+    ],
+    "updated_at": 1792356272,
+    "created_at": 1792355035,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "multimodal_image_voice_studio",
+        "description": "Generate a crisp 1024x1024 local PNG image or synthesize local TTS speech audio.",
+        "parameters": {
+          "properties": {
+            "prompt": {
+              "description": "Image description or speech text.",
+              "type": "string"
+            },
+            "action": {
+              "default": "generate_image",
+              "description": "'generate_image' or 'tts'.",
+              "type": "string"
+            },
+            "size": {
+              "default": "1024x1024",
+              "description": "Image resolution (default '1024x1024').",
+              "type": "string"
+            },
+            "voice": {
+              "default": "alloy",
+              "description": "Voice preset for TTS ('alloy', 'nova', 'echo', 'jarvis').",
+              "type": "string"
+            }
+          },
+          "required": [
+            "prompt"
+          ],
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "d65844de-88d1-4f07-92d8-919a07fbe0d1",
+    "id": "tk_31_all_27_vms_open_terminal_multiplexer",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "🌐 All 27 Boylenet VMs — Open Terminal & SSH File/Command Multiplexer",
+    "meta": {
+      "i18n": null,
+      "description": "Browse files, read logs/configs, and run commands across all 27 Boylenet VMs (/vms/<ip>-<name>/) via SSH.",
+      "manifest": {
+        "title": "🌐 All 27 Boylenet VMs — Open Terminal & SSH File/Command Multiplexer",
+        "author": "Boylenet Fleet",
+        "version": "2.0.0",
+        "description": "Browse files, read logs/configs, and run commands across all 27 Boylenet VMs (/vms/<ip>-<name>/) via SSH."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "0b8b660d-3205-4b10-a230-e3dd68c8a0ca",
+        "resource_type": "tool",
+        "resource_id": "tk_31_all_27_vms_open_terminal_multiplexer",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356272
+      }
+    ],
+    "updated_at": 1792356272,
+    "created_at": 1792356225,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "browse_vm_files",
+        "description": "Browse files and directories on any of the 27 Boylenet VMs or list all 27 VMs under /vms.",
+        "parameters": {
+          "properties": {
+            "vm": {
+              "default": "all",
+              "description": "Target VM IP/hostname (e.g. 'all', '10.0.70.164', '10.0.70.72', '10.0.70.82', '10.0.70.125', '10.0.10.137')",
+              "type": "string"
+            },
+            "directory": {
+              "default": "/vms",
+              "description": "Directory path to list (e.g. '/vms', '/home/mboyle', '/mnt/ai-models')",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      },
+      {
+        "name": "exec_on_any_vm",
+        "description": "Execute a non-destructive shell command over SSH on any of the 27 Boylenet VMs.",
+        "parameters": {
+          "properties": {
+            "vm": {
+              "default": "10.0.70.164",
+              "description": "Target VM IP or hostname (e.g. '10.0.70.72', '10.0.70.82', 'ai-infer01', 'battlestation').",
+              "type": "string"
+            },
+            "command": {
+              "default": "hostname && uptime",
+              "description": "Shell command to run on the target VM.",
+              "type": "string"
+            },
+            "cwd": {
+              "default": "/home/mboyle",
+              "description": "Working directory on the target VM.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "aa885b6b-093b-467e-8ae0-36799a82cc0b",
+    "id": "web_search_and_fetch",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "🌐 Web Search (SearXNG) & URL Markdown Reader",
+    "meta": {
+      "i18n": null,
+      "description": "Search the live web via SearXNG (:8888) + DuckDuckGo/Wikipedia/HN fallbacks and read any HTTP/HTTPS URL as clean Markdown.",
+      "manifest": {
+        "title": "🌐 Web Search (SearXNG) & URL Markdown Reader",
+        "author": "Boylenet Fleet",
+        "version": "2.0.0",
+        "description": "Search the live web via SearXNG (:8888) + DuckDuckGo/Wikipedia/HN fallbacks and read any HTTP/HTTPS URL as clean Markdown."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "d05b2fde-83cd-48c9-9e48-0b129d1458f1",
+        "resource_type": "tool",
+        "resource_id": "web_search_and_fetch",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356271
+      }
+    ],
+    "updated_at": 1792356271,
+    "created_at": 1792353110,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "read_url_content",
+        "description": "Fetch any HTTP or HTTPS web page URL, strip scripts/styles, and return clean Markdown text and extracted links.",
+        "parameters": {
+          "properties": {
+            "url": {
+              "description": "Full http:// or https:// URL to fetch and convert to Markdown.",
+              "type": "string"
+            },
+            "max_chars": {
+              "default": 16000,
+              "description": "Maximum number of Markdown characters to return (default 16000).",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "url"
+          ],
+          "type": "object"
+        }
+      },
+      {
+        "name": "search_web",
+        "description": "Search the live web using Boylenet SearXNG (:8888), DuckDuckGo, Wikipedia, and HackerNews.",
+        "parameters": {
+          "properties": {
+            "query": {
+              "description": "The search query string to look up online.",
+              "type": "string"
+            },
+            "max_results": {
+              "default": 8,
+              "description": "Maximum number of search results to return (default 8).",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "query"
+          ],
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "d61aa882-4b40-42a2-8d43-e799018e13fe",
+    "id": "browser_oracle_cdp",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "🖥️ Live Chrome CDP Browser & Online Interactor (.137 / .181)",
+    "meta": {
+      "i18n": null,
+      "description": "Connect to live Chrome CDP Browser Oracles on BattleStation (10.0.10.137:9222) and Bittorrent (10.0.70.181:9222) or query bd-oracle.",
+      "manifest": {
+        "title": "🖥️ Live Chrome CDP Browser & Online Interactor (.137 / .181)",
+        "author": "Boylenet Fleet",
+        "version": "2.0.0",
+        "description": "Connect to live Chrome CDP Browser Oracles on BattleStation (10.0.10.137:9222) and Bittorrent (10.0.70.181:9222) or query bd-oracle."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "9c1c6fe3-1b45-47d8-af24-5daf1371e888",
+        "resource_type": "tool",
+        "resource_id": "browser_oracle_cdp",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356271
+      }
+    ],
+    "updated_at": 1792356271,
+    "created_at": 1792353110,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "browse_live_page_cdp",
+        "description": "Connect to the live Chrome CDP Browser Oracles (.137 BattleStation or .181 Bittorrent) to inspect tabs, read pages, or run bd-oracle.",
+        "parameters": {
+          "properties": {
+            "node": {
+              "default": "battlestation",
+              "description": "Target CDP node: 'battlestation' (10.0.10.137:9222) or 'bittorrent' (10.0.70.181:9222).",
+              "type": "string"
+            },
+            "action": {
+              "default": "list_tabs",
+              "description": "Action to perform: 'list_tabs', 'render_url', or 'oracle'.",
+              "type": "string"
+            },
+            "url": {
+              "default": "",
+              "description": "Optional URL to open/read.",
+              "type": "string"
+            },
+            "oracle_prompt": {
+              "default": "",
+              "description": "Optional prompt when action='oracle'.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "94738ac3-f60a-48ea-9c4c-ea54b6953097",
+    "id": "git_and_gitea_ops",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "🐙 Git Clone, Pull, Diff, Log & Gitea/GitHub Bridge",
+    "meta": {
+      "i18n": null,
+      "description": "Clone or pull Git repositories into /var/tmp/openwebui-repos, inspect git status/diff/log/show on BulkDownloader, and query Gitea API (:3000).",
+      "manifest": {
+        "title": "🐙 Git Clone, Pull, Diff, Log & Gitea/GitHub Bridge",
+        "author": "Boylenet Fleet",
+        "version": "2.0.0",
+        "description": "Clone or pull Git repositories into /var/tmp/openwebui-repos, inspect git status/diff/log/show on BulkDownloader, and query Gitea API (:3000)."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "d73988d7-28b9-4334-89b2-a65e7d16a2f2",
+        "resource_type": "tool",
+        "resource_id": "git_and_gitea_ops",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356271
+      }
+    ],
+    "updated_at": 1792356271,
+    "created_at": 1792353111,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "git_clone_or_pull",
+        "description": "Clone a Git repository into /var/tmp/openwebui-repos/<repo> or run git pull --ff-only if already cloned.",
+        "parameters": {
+          "properties": {
+            "repo_url": {
+              "description": "Full Git URL.",
+              "type": "string"
+            },
+            "branch": {
+              "default": "",
+              "description": "Optional branch name to checkout.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "repo_url"
+          ],
+          "type": "object"
+        }
+      },
+      {
+        "name": "git_status_diff_log",
+        "description": "Run read-only git status, diff, log, or show on /home/mboyle/BulkDownloader or /var/tmp/openwebui-repos/*.",
+        "parameters": {
+          "properties": {
+            "repo_path": {
+              "default": "/home/mboyle/BulkDownloader",
+              "description": "Path to repository.",
+              "type": "string"
+            },
+            "action": {
+              "default": "status",
+              "description": "One of 'status', 'diff', 'log', or 'show'.",
+              "type": "string"
+            },
+            "ref": {
+              "default": "",
+              "description": "Optional commit SHA or branch ref.",
+              "type": "string"
+            },
+            "limit": {
+              "default": 10,
+              "description": "Number of commits for git log.",
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        }
+      },
+      {
+        "name": "gitea_api",
+        "description": "Query local Boylenet Gitea REST API on http://10.0.70.164:3000/api/v1/... for repos, PRs, issues, or commits.",
+        "parameters": {
+          "properties": {
+            "endpoint": {
+              "default": "/api/v1/repos/search",
+              "description": "Gitea API path.",
+              "type": "string"
+            },
+            "query": {
+              "default": "",
+              "description": "Optional search query string.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "f4e1dc12-f31a-4efa-a931-304c2fd52f9c",
+    "id": "claude_codex_agy_code_tools",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "🛠️ Claude/Codex/Gemini Everyday File, Grep, Glob & Shell Tools",
+    "meta": {
+      "i18n": null,
+      "description": "Exact equivalents of Claude Code, Codex, and Gemini/Antigravity everyday tools: view_file, grep_search, find_by_name, write_or_edit_file, and run_command.",
+      "manifest": {
+        "title": "🛠️ Claude/Codex/Gemini Everyday File, Grep, Glob & Shell Tools",
+        "author": "Boylenet Fleet",
+        "version": "2.0.0",
+        "description": "Exact equivalents of Claude Code, Codex, and Gemini/Antigravity everyday tools: view_file, grep_search, find_by_name, write_or_edit_file, and run_command."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "410278d7-9d79-4a77-8e87-6c1fb2eae88d",
+        "resource_type": "tool",
+        "resource_id": "claude_codex_agy_code_tools",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356271
+      }
+    ],
+    "updated_at": 1792356271,
+    "created_at": 1792353111,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "find_by_name",
+        "description": "Find files by glob/substring name within a bounded directory depth.",
+        "parameters": {
+          "properties": {
+            "pattern": {
+              "description": "Substring or glob pattern to match file names.",
+              "type": "string"
+            },
+            "directory": {
+              "default": "/home/mboyle/BulkDownloader",
+              "description": "Root directory to search.",
+              "type": "string"
+            },
+            "max_depth": {
+              "default": 4,
+              "description": "Maximum folder recursion depth.",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "pattern"
+          ],
+          "type": "object"
+        }
+      },
+      {
+        "name": "grep_search",
+        "description": "Search for regex or text pattern across files using ripgrep (rg -n).",
+        "parameters": {
+          "properties": {
+            "pattern": {
+              "description": "Regex or literal search pattern.",
+              "type": "string"
+            },
+            "path": {
+              "default": "/home/mboyle/BulkDownloader/src",
+              "description": "Directory or file path to search.",
+              "type": "string"
+            },
+            "max_count": {
+              "default": 50,
+              "description": "Maximum number of matches to return.",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "pattern"
+          ],
+          "type": "object"
+        }
+      },
+      {
+        "name": "run_command",
+        "description": "Execute a non-destructive shell, python3, ruff, mypy, or bd-pytest-digest command.",
+        "parameters": {
+          "properties": {
+            "command": {
+              "description": "Shell command string to execute.",
+              "type": "string"
+            },
+            "cwd": {
+              "default": "/var/tmp/openwebui-workspace",
+              "description": "Working directory.",
+              "type": "string"
+            },
+            "timeout": {
+              "default": 20,
+              "description": "Timeout in seconds.",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "command"
+          ],
+          "type": "object"
+        }
+      },
+      {
+        "name": "view_file",
+        "description": "Read lines start_line..end_line of a file with 1-indexed line numbers.",
+        "parameters": {
+          "properties": {
+            "file_path": {
+              "description": "Absolute path to the file to read.",
+              "type": "string"
+            },
+            "start_line": {
+              "default": 1,
+              "description": "1-indexed starting line number.",
+              "type": "integer"
+            },
+            "end_line": {
+              "default": 200,
+              "description": "1-indexed ending line number.",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "file_path"
+          ],
+          "type": "object"
+        }
+      },
+      {
+        "name": "write_or_edit_file",
+        "description": "Create, overwrite, append, or replace text in a file inside /var/tmp/openwebui-workspace or /var/tmp/openwebui-repos.",
+        "parameters": {
+          "properties": {
+            "file_path": {
+              "description": "Relative path or absolute path inside /var/tmp/openwebui-*.",
+              "type": "string"
+            },
+            "mode": {
+              "default": "write",
+              "description": "'write', 'append', or 'replace'.",
+              "type": "string"
+            },
+            "content": {
+              "default": "",
+              "description": "File content for write or append mode.",
+              "type": "string"
+            },
+            "target_text": {
+              "default": "",
+              "description": "Exact substring to replace when mode='replace'.",
+              "type": "string"
+            },
+            "replacement_text": {
+              "default": "",
+              "description": "Replacement string when mode='replace'.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "file_path"
+          ],
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "2a307a4c-878c-4a8b-97f4-dcde4edd9be9",
+    "id": "mcp_universal_bridge",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "🔌 Universal 14-Server MCP Bridge (Serena, RATF, PG, Qdrant, Ruff, Mypy, VMware)",
+    "meta": {
+      "i18n": null,
+      "description": "List and invoke any tool across all 14 Boylenet MCP servers (99 tools total).",
+      "manifest": {
+        "title": "🔌 Universal 14-Server MCP Bridge (Serena, RATF, PG, Qdrant, Ruff, Mypy, VMware)",
+        "author": "Boylenet Fleet",
+        "version": "2.0.0",
+        "description": "List and invoke any tool across all 14 Boylenet MCP servers (99 tools total)."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "cce77ce8-55d7-41c7-97ba-15cc134db4d5",
+        "resource_type": "tool",
+        "resource_id": "mcp_universal_bridge",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356271
+      }
+    ],
+    "updated_at": 1792356271,
+    "created_at": 1792353111,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "mcp_call",
+        "description": "Invoke any MCP tool on any of the 14 Boylenet MCP servers.",
+        "parameters": {
+          "properties": {
+            "server": {
+              "description": "MCP server name.",
+              "type": "string"
+            },
+            "tool": {
+              "description": "Tool name on that server.",
+              "type": "string"
+            },
+            "arguments_json": {
+              "default": "{}",
+              "description": "JSON object string of arguments for the tool.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "server",
+            "tool"
+          ],
+          "type": "object"
+        }
+      },
+      {
+        "name": "mcp_list",
+        "description": "List all 14 Boylenet MCP servers and their available tool schemas.",
+        "parameters": {
+          "properties": {
+            "server": {
+              "default": "",
+              "description": "Optional server name filter.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "f1bb4933-84f3-44dd-a92a-9a70a2fcd462",
+    "id": "skills_and_plugins_runner",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "🧠 Claude, Codex & Gemini/AGY Skills & Plugins Loader (128 Skills)",
+    "meta": {
+      "i18n": null,
+      "description": "Browse and load full SKILL.md playbooks, plugins, Claude commands, and Codex agent profiles.",
+      "manifest": {
+        "title": "🧠 Claude, Codex & Gemini/AGY Skills & Plugins Loader (128 Skills)",
+        "author": "Boylenet Fleet",
+        "version": "2.0.0",
+        "description": "Browse and load full SKILL.md playbooks, plugins, Claude commands, and Codex agent profiles."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "37110cff-aef2-44eb-ab31-d552925ac24b",
+        "resource_type": "tool",
+        "resource_id": "skills_and_plugins_runner",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356271
+      }
+    ],
+    "updated_at": 1792356271,
+    "created_at": 1792353111,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "list_skills",
+        "description": "List available skills, plugins, Claude commands, and Codex agent profiles.",
+        "parameters": {
+          "properties": {
+            "query": {
+              "default": "",
+              "description": "Optional keyword filter.",
+              "type": "string"
+            },
+            "source": {
+              "default": "",
+              "description": "Optional source filter ('skill', 'plugin', 'claude', 'codex', 'gemini').",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      },
+      {
+        "name": "load_skill",
+        "description": "Load the full SKILL.md instructions and companion script paths for a specific skill or plugin.",
+        "parameters": {
+          "properties": {
+            "skill_id": {
+              "description": "Skill slug or name.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "skill_id"
+          ],
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "c6eb66b5-23a5-4d81-9c64-de172ff32216",
+    "id": "rag_and_hivemind_memory",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "📚 Qdrant Vector RAG & PostgreSQL Episodic Memory Search",
+    "meta": {
+      "i18n": null,
+      "description": "Search Qdrant vector collections (boylenet_fleet_rag, boylenet_episodic_memory, boylenet_codebase_ast) on 10.0.70.125:6333 and Hivemind PostgreSQL memory.",
+      "manifest": {
+        "title": "📚 Qdrant Vector RAG & PostgreSQL Episodic Memory Search",
+        "author": "Boylenet Fleet",
+        "version": "2.0.0",
+        "description": "Search Qdrant vector collections (boylenet_fleet_rag, boylenet_episodic_memory, boylenet_codebase_ast) on 10.0.70.125:6333 and Hivemind PostgreSQL memory."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "e69c552c-1d63-46bc-9409-383b73f82172",
+        "resource_type": "tool",
+        "resource_id": "rag_and_hivemind_memory",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356271
+      }
+    ],
+    "updated_at": 1792356271,
+    "created_at": 1792353111,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "pg_query",
+        "description": "Execute a SQL query against the local Boylenet PostgreSQL ai_mesh database.",
+        "parameters": {
+          "properties": {
+            "sql": {
+              "default": "SELECT table_name FROM information_schema.tables WHERE table_schema='public';",
+              "description": "SQL SELECT query to execute.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      },
+      {
+        "name": "qdrant_rag_search",
+        "description": "Search Qdrant Vector RAG collections on 10.0.70.125:6333 and Hivemind episodic memory.",
+        "parameters": {
+          "properties": {
+            "query": {
+              "description": "Semantic search query string.",
+              "type": "string"
+            },
+            "collection": {
+              "default": "boylenet_fleet_rag",
+              "description": "Qdrant collection name.",
+              "type": "string"
+            },
+            "limit": {
+              "default": 5,
+              "description": "Max results to return.",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "query"
+          ],
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "3feeed4c-5c61-4e8d-be6c-7ab5e06b7434",
+    "id": "swarm_and_airgap_control",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "🛡️ Subagent Delegation, GPU Model Switcher & Airgap Verifier",
+    "meta": {
+      "i18n": null,
+      "description": "Verify Boylenet WAN airgap status, inspect POOL_STATE.tsv quota telemetry, and check 4-GPU Mode Orchestrator (:4010) health.",
+      "manifest": {
+        "title": "🛡️ Subagent Delegation, GPU Model Switcher & Airgap Verifier",
+        "author": "Boylenet Fleet",
+        "version": "2.0.0",
+        "description": "Verify Boylenet WAN airgap status, inspect POOL_STATE.tsv quota telemetry, and check 4-GPU Mode Orchestrator (:4010) health."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "7980e318-2867-4ca1-ad84-1a4ad4236ceb",
+        "resource_type": "tool",
+        "resource_id": "swarm_and_airgap_control",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356271
+      }
+    ],
+    "updated_at": 1792356271,
+    "created_at": 1792353111,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "airgap_and_cluster_status",
+        "description": "Check live bd-airgap status, POOL_STATE.tsv quota state, and 4-GPU Orchestrator (:4010) health.",
+        "parameters": {
+          "properties": {},
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "a9562998-cef3-4b8c-b494-7ee544c62805",
+    "id": "tk_09_arxiv_academic_research",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "🎓 ArXiv, Semantic Scholar & DOI Paper Search",
+    "meta": {
+      "i18n": null,
+      "description": "Search ArXiv academic papers, preprints, authors, abstracts, and scientific citations.",
+      "manifest": {
+        "title": "🎓 ArXiv, Semantic Scholar & DOI Paper Search",
+        "author": "Boylenet Fleet",
+        "version": "2.0.0",
+        "description": "Search ArXiv academic papers, preprints, authors, abstracts, and scientific citations."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "db71359e-8ae0-4ff1-8557-b51e34c63361",
+        "resource_type": "tool",
+        "resource_id": "tk_09_arxiv_academic_research",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356271
+      }
+    ],
+    "updated_at": 1792356271,
+    "created_at": 1792355034,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "arxiv_search",
+        "description": "Search ArXiv academic papers and preprints by keyword, title, or author.",
+        "parameters": {
+          "properties": {
+            "query": {
+              "description": "Academic search query string.",
+              "type": "string"
+            },
+            "max_results": {
+              "default": 5,
+              "description": "Maximum number of papers to return (default 5).",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "query"
+          ],
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "bead9834-b4f0-45e1-97b2-706dce632906",
+    "id": "tk_10_wikipedia_wikidata_factcheck",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "📖 Wikipedia, Wikidata & Fact Verification Engine",
+    "meta": {
+      "i18n": null,
+      "description": "Query Wikipedia and Wikidata to verify encyclopedic facts, historical dates, and technical definitions.",
+      "manifest": {
+        "title": "📖 Wikipedia, Wikidata & Fact Verification Engine",
+        "author": "Boylenet Fleet",
+        "version": "2.0.0",
+        "description": "Query Wikipedia and Wikidata to verify encyclopedic facts, historical dates, and technical definitions."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "2f001aa3-02f0-47b8-a85a-d5f9e2101932",
+        "resource_type": "tool",
+        "resource_id": "tk_10_wikipedia_wikidata_factcheck",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356271
+      }
+    ],
+    "updated_at": 1792356271,
+    "created_at": 1792355034,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "wikipedia_factcheck",
+        "description": "Search Wikipedia and Wikidata to verify encyclopedic facts and entity summaries.",
+        "parameters": {
+          "properties": {
+            "query": {
+              "description": "Topic, person, or claim to fact-check.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "query"
+          ],
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "c1df9b03-c281-4356-9311-40db5d79de91",
+    "id": "tk_11_youtube_media_transcripts",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "🎬 YouTube Metadata, Captions & Video Analyzer",
+    "meta": {
+      "i18n": null,
+      "description": "Extract YouTube video metadata, channel info, and video search results.",
+      "manifest": {
+        "title": "🎬 YouTube Metadata, Captions & Video Analyzer",
+        "author": "Boylenet Fleet",
+        "version": "2.0.0",
+        "description": "Extract YouTube video metadata, channel info, and video search results."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "fa7541a3-88c1-4910-966c-9a7e55d3e31f",
+        "resource_type": "tool",
+        "resource_id": "tk_11_youtube_media_transcripts",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356271
+      }
+    ],
+    "updated_at": 1792356271,
+    "created_at": 1792355034,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "youtube_analyze",
+        "description": "Analyze a YouTube video URL or search YouTube videos by topic.",
+        "parameters": {
+          "properties": {
+            "url": {
+              "default": "",
+              "description": "Full YouTube video URL.",
+              "type": "string"
+            },
+            "query": {
+              "default": "",
+              "description": "Search query if URL is not provided.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "10d829ae-7924-4c44-8e26-2a5566a48b28",
+    "id": "tk_12_hackernews_reddit_github_trending",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "🔥 HackerNews, Reddit & GitHub Trending Pulse",
+    "meta": {
+      "i18n": null,
+      "description": "Fetch live HackerNews front-page stories and GitHub trending open-source repositories.",
+      "manifest": {
+        "title": "🔥 HackerNews, Reddit & GitHub Trending Pulse",
+        "author": "Boylenet Fleet",
+        "version": "2.0.0",
+        "description": "Fetch live HackerNews front-page stories and GitHub trending open-source repositories."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "036ad136-c410-4924-a9e8-437efa3ae021",
+        "resource_type": "tool",
+        "resource_id": "tk_12_hackernews_reddit_github_trending",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356271
+      }
+    ],
+    "updated_at": 1792356271,
+    "created_at": 1792355034,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "tech_pulse_trending",
+        "description": "Fetch live HackerNews front-page stories or GitHub trending repositories.",
+        "parameters": {
+          "properties": {
+            "source": {
+              "default": "hackernews",
+              "description": "'hackernews' or 'github'.",
+              "type": "string"
+            },
+            "query": {
+              "default": "",
+              "description": "Optional keyword filter.",
+              "type": "string"
+            },
+            "limit": {
+              "default": 8,
+              "description": "Max items to return (default 8).",
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "6164e9ec-f0de-4ac2-95f7-d0e0742a5f18",
+    "id": "tk_13_python_data_science_charts",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "📊 Python Math/Stats Sandbox & SVG/PNG Chart Renderer",
+    "meta": {
+      "i18n": null,
+      "description": "Execute Python statistics calculations and render SVG bar/line charts to disk.",
+      "manifest": {
+        "title": "📊 Python Math/Stats Sandbox & SVG/PNG Chart Renderer",
+        "author": "Boylenet Fleet",
+        "version": "2.0.0",
+        "description": "Execute Python statistics calculations and render SVG bar/line charts to disk."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "53f310ec-adb0-4e21-8d67-094f3eb29df1",
+        "resource_type": "tool",
+        "resource_id": "tk_13_python_data_science_charts",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356271
+      }
+    ],
+    "updated_at": 1792356271,
+    "created_at": 1792355034,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "python_data_science_chart",
+        "description": "Run statistical analysis and render a crisp SVG chart.",
+        "parameters": {
+          "properties": {
+            "title": {
+              "default": "Boylenet Telemetry",
+              "description": "Chart title.",
+              "type": "string"
+            },
+            "labels_csv": {
+              "default": "A,B,C",
+              "description": "Comma-separated category labels.",
+              "type": "string"
+            },
+            "values_csv": {
+              "default": "10,25,40",
+              "description": "Comma-separated numeric values.",
+              "type": "string"
+            },
+            "python_code": {
+              "default": "",
+              "description": "Optional Python math/stats code to execute.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "f326052a-9745-4985-9e23-aa066f146a37",
+    "id": "tk_14_mermaid_architecture_diagrams",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "📐 Mermaid, PlantUML & Architecture SVG Diagram Generator",
+    "meta": {
+      "i18n": null,
+      "description": "Generate clean SVG architecture diagrams and system flowcharts from component lists.",
+      "manifest": {
+        "title": "📐 Mermaid, PlantUML & Architecture SVG Diagram Generator",
+        "author": "Boylenet Fleet",
+        "version": "2.0.0",
+        "description": "Generate clean SVG architecture diagrams and system flowcharts from component lists."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "1e53aae8-50d5-438b-a90c-ab3f68a7e124",
+        "resource_type": "tool",
+        "resource_id": "tk_14_mermaid_architecture_diagrams",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356271
+      }
+    ],
+    "updated_at": 1792356271,
+    "created_at": 1792355034,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "render_architecture_diagram",
+        "description": "Render a crisp SVG architecture diagram from comma-separated component nodes.",
+        "parameters": {
+          "properties": {
+            "title": {
+              "default": "System Architecture",
+              "description": "Diagram heading.",
+              "type": "string"
+            },
+            "nodes_csv": {
+              "default": "OpenWebUI,Gateway :4079,LiteLLM :4000,Qdrant .125",
+              "description": "Comma-separated node labels.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "09bbc95f-ec45-46c4-9872-60a56e5163be",
+    "id": "tk_15_sql_postgres_sqlite_explorer",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "🗄️ Multi-Database SQL Explorer: Postgres .164/.228 & SQLite",
+    "meta": {
+      "i18n": null,
+      "description": "Execute SQL queries against PostgreSQL (ai_mesh, litellm, boylenet_memory) or local SQLite databases.",
+      "manifest": {
+        "title": "🗄️ Multi-Database SQL Explorer: Postgres .164/.228 & SQLite",
+        "author": "Boylenet Fleet",
+        "version": "2.0.0",
+        "description": "Execute SQL queries against PostgreSQL (ai_mesh, litellm, boylenet_memory) or local SQLite databases."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "2918bc74-a1b7-4924-81bb-91f443cc2188",
+        "resource_type": "tool",
+        "resource_id": "tk_15_sql_postgres_sqlite_explorer",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356271
+      }
+    ],
+    "updated_at": 1792356271,
+    "created_at": 1792355034,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "sql_database_query",
+        "description": "Execute a SQL query against PostgreSQL (ai_mesh, litellm, boylenet_memory) or SQLite.",
+        "parameters": {
+          "properties": {
+            "sql": {
+              "description": "SQL query string.",
+              "type": "string"
+            },
+            "engine": {
+              "default": "postgres",
+              "description": "'postgres' or 'sqlite'.",
+              "type": "string"
+            },
+            "database": {
+              "default": "ai_mesh",
+              "description": "PostgreSQL database name (default 'ai_mesh').",
+              "type": "string"
+            }
+          },
+          "required": [
+            "sql"
+          ],
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "ab394249-ccdf-4c50-9d90-22c3512f9ad4",
+    "id": "tk_16_network_dns_ssl_recon",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "🛡️ Network Diagnostics: Dig, Ping, Port Probe, TLS Cert & HTTP Headers",
+    "meta": {
+      "i18n": null,
+      "description": "Run DNS resolution, TCP port reachability, latency measurement, and ICMP ping across Boylenet.",
+      "manifest": {
+        "title": "🛡️ Network Diagnostics: Dig, Ping, Port Probe, TLS Cert & HTTP Headers",
+        "author": "Boylenet Fleet",
+        "version": "2.0.0",
+        "description": "Run DNS resolution, TCP port reachability, latency measurement, and ICMP ping across Boylenet."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "490e848a-974b-4013-b704-70d3d2a5df80",
+        "resource_type": "tool",
+        "resource_id": "tk_16_network_dns_ssl_recon",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356271
+      }
+    ],
+    "updated_at": 1792356271,
+    "created_at": 1792355034,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "network_dns_ssl_recon",
+        "description": "Run DNS lookup, TCP port probe, and ping diagnostics against a host or IP.",
+        "parameters": {
+          "properties": {
+            "target": {
+              "default": "10.0.70.164",
+              "description": "Hostname or IPv4 address.",
+              "type": "string"
+            },
+            "port": {
+              "default": 8090,
+              "description": "TCP port number to test.",
+              "type": "integer"
+            },
+            "action": {
+              "default": "all",
+              "description": "'all', 'dns', 'tcp', or 'ping'.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "fb6ada06-88b7-4382-9606-a603dd93c9f0",
+    "id": "tk_17_unifi_25gbe_fabric_inspector",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "📡 UniFi UDM-Pro 398 DNS Records, VLAN 70/75 RoCE & Switch Matrix",
+    "meta": {
+      "i18n": null,
+      "description": "Inspect Boylenet UniFi 25GbE/10GbE fabric interfaces, VLAN 10/70/75 topology, and DNS records.",
+      "manifest": {
+        "title": "📡 UniFi UDM-Pro 398 DNS Records, VLAN 70/75 RoCE & Switch Matrix",
+        "author": "Boylenet Fleet",
+        "version": "2.0.0",
+        "description": "Inspect Boylenet UniFi 25GbE/10GbE fabric interfaces, VLAN 10/70/75 topology, and DNS records."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "a85548ce-6f69-48fa-8a41-70087de0c8c3",
+        "resource_type": "tool",
+        "resource_id": "tk_17_unifi_25gbe_fabric_inspector",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356271
+      }
+    ],
+    "updated_at": 1792356271,
+    "created_at": 1792355034,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "unifi_fabric_inspect",
+        "description": "Inspect UniFi 25GbE VLAN 10/70/75 network interfaces and Boylenet DNS host records.",
+        "parameters": {
+          "properties": {
+            "query": {
+              "default": "boylenet",
+              "description": "Optional hostname or IP filter.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "565a9f65-4dfd-4a9d-8bc5-495211d22bf9",
+    "id": "tk_18_vmware_esxi_vsan_controller",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "🖥️ VMware ESXi 1..4, vSAN 107TB & Ephemeral Clone Inspector",
+    "meta": {
+      "i18n": null,
+      "description": "Inspect VMware ESXi hypervisors, vCenter .110, vSAN datastore, and ephemeral VM clones.",
+      "manifest": {
+        "title": "🖥️ VMware ESXi 1..4, vSAN 107TB & Ephemeral Clone Inspector",
+        "author": "Boylenet Fleet",
+        "version": "2.0.0",
+        "description": "Inspect VMware ESXi hypervisors, vCenter .110, vSAN datastore, and ephemeral VM clones."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "e9f17672-4020-4a1b-8f7e-45ea25dfe486",
+        "resource_type": "tool",
+        "resource_id": "tk_18_vmware_esxi_vsan_controller",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356271
+      }
+    ],
+    "updated_at": 1792356271,
+    "created_at": 1792355034,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "vmware_esxi_vsan_control",
+        "description": "Query VMware vCenter/ESXi virtual machines and cold spares.",
+        "parameters": {
+          "properties": {
+            "action": {
+              "default": "vm_list",
+              "description": "'vm_list' or 'vm_info'.",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "1cb6d41e-57ed-4d9b-8c49-4704fcfad8af",
+    "id": "tk_19_docker_systemd_cluster_ops",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "🐳 Docker Container & Systemd Service Health Across 27 Nodes",
+    "meta": {
+      "i18n": null,
+      "description": "Inspect running Docker containers and bd-* systemd services across the Boylenet cluster.",
+      "manifest": {
+        "title": "🐳 Docker Container & Systemd Service Health Across 27 Nodes",
+        "author": "Boylenet Fleet",
+        "version": "2.0.0",
+        "description": "Inspect running Docker containers and bd-* systemd services across the Boylenet cluster."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "5e4d1527-343b-4d16-8ec9-8fe51c411dd5",
+        "resource_type": "tool",
+        "resource_id": "tk_19_docker_systemd_cluster_ops",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356271
+      }
+    ],
+    "updated_at": 1792356271,
+    "created_at": 1792355034,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "docker_systemd_cluster_ops",
+        "description": "List running Docker containers and systemd services or inspect a specific service.",
+        "parameters": {
+          "properties": {
+            "service": {
+              "default": "",
+              "description": "Optional systemd unit name (e.g. 'bd-openwebui-tool-gateway.service').",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "17aedfdf-3ce9-481b-8afa-49a4e857aaa9",
+    "id": "tk_20_gpu_vram_vault_orchestrator",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "⚡ 4x Tesla T4 GPU Telemetry & 86-Model Vault Switcher :4010",
+    "meta": {
+      "i18n": null,
+      "description": "Query the 4-GPU Mode Orchestrator (:4010), browse the 86-model vault catalog, or hot-swap GPU modes.",
+      "manifest": {
+        "title": "⚡ 4x Tesla T4 GPU Telemetry & 86-Model Vault Switcher :4010",
+        "author": "Boylenet Fleet",
+        "version": "2.0.0",
+        "description": "Query the 4-GPU Mode Orchestrator (:4010), browse the 86-model vault catalog, or hot-swap GPU modes."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "b4551e99-f0ba-4c97-b70a-940e26f47cd5",
+        "resource_type": "tool",
+        "resource_id": "tk_20_gpu_vram_vault_orchestrator",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356271
+      }
+    ],
+    "updated_at": 1792356271,
+    "created_at": 1792355034,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "gpu_vram_vault_status",
+        "description": "Inspect 4-GPU Mode Orchestrator (:4010) health, 86-model catalog, or switch GPU mode.",
+        "parameters": {
+          "properties": {
+            "action": {
+              "default": "status",
+              "description": "'status', 'catalog', or 'switch'.",
+              "type": "string"
+            },
+            "mode": {
+              "default": "",
+              "description": "Mode name when action='switch' ('default', 'coding', 'reasoning', 'swarm').",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "f82e6fca-2149-4522-9cc5-c866dee5e016",
+    "id": "tk_31_bd_knowledge_base_oracle",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "31_bd_knowledge_base_oracle — Master BD KB Instant Search & Fact Verifier",
+    "meta": {
+      "i18n": null,
+      "description": "Search the authoritative 6-volume BD KB (BulkDownloader, 27-Node Boylenet Cluster, 86-Model Vault, Rules 1-86, O1740, CI Taxonomy & 50 Toolkits).",
+      "manifest": {
+        "title": "31_bd_knowledge_base_oracle — Master BD KB Instant Search & Fact Verifier",
+        "author": "Boylenet Sovereign AI Architecture (Agent-99)",
+        "version": "2.5.0",
+        "description": "Search the authoritative 6-volume BD KB (BulkDownloader, 27-Node Boylenet Cluster, 86-Model Vault, Rules 1-86, O1740, CI Taxonomy & 50 Toolkits)."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "875186ec-7eda-4e26-9f52-8a69b6abbe61",
+        "resource_type": "tool",
+        "resource_id": "tk_31_bd_knowledge_base_oracle",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792355469
+      }
+    ],
+    "updated_at": 1792355469,
+    "created_at": 1792355309,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "bd_kb_search",
+        "description": "Query the Master BD KB across all 6 reference volumes and return ranked citations.",
+        "parameters": {
+          "properties": {
+            "query": {
+              "type": "string"
+            },
+            "book": {
+              "default": "all",
+              "type": "string"
+            },
+            "top_k": {
+              "default": 5,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "query"
+          ],
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "e26c6e8f-091f-4437-b4eb-ac7db78a765b",
+    "id": "tk_32_fleet_law_and_rule_auditor",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "32_fleet_law_and_rule_auditor — Fleet Rules 1-86 Lookup & Compliance Verifier",
+    "meta": {
+      "i18n": null,
+      "description": "Inspect Fleet Rules 1-86, Protocols A-F, Rule 22 sandbox paths, and verify rule compliance.",
+      "manifest": {
+        "title": "32_fleet_law_and_rule_auditor — Fleet Rules 1-86 Lookup & Compliance Verifier",
+        "author": "Boylenet Sovereign AI Architecture (Agent-99)",
+        "version": "2.5.0",
+        "description": "Inspect Fleet Rules 1-86, Protocols A-F, Rule 22 sandbox paths, and verify rule compliance."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "309a955e-b75a-41dd-bdad-3931aff0d52b",
+        "resource_type": "tool",
+        "resource_id": "tk_32_fleet_law_and_rule_auditor",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792355469
+      }
+    ],
+    "updated_at": 1792355469,
+    "created_at": 1792355309,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "audit_fleet_rule",
+        "description": "Look up exact Fleet Law rules (1-86) and verify compliance invariants.",
+        "parameters": {
+          "properties": {
+            "rule_number": {
+              "default": "",
+              "type": "string"
+            },
+            "query": {
+              "default": "",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "65db9bec-0f42-4784-8152-39421058a243",
+    "id": "tk_33_o1740_pool_and_seat_router",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "33_o1740_pool_and_seat_router — Live POOL_STATE.tsv & O1740 Dynamic Capability Router",
+    "meta": {
+      "i18n": null,
+      "description": "Inspect live POOL_STATE.tsv and resolve optimal O1740 pool binding for Command Squad, Heavy Lifters, or Lightweight Investigators.",
+      "manifest": {
+        "title": "33_o1740_pool_and_seat_router — Live POOL_STATE.tsv & O1740 Dynamic Capability Router",
+        "author": "Boylenet Sovereign AI Architecture (Agent-99)",
+        "version": "2.5.0",
+        "description": "Inspect live POOL_STATE.tsv and resolve optimal O1740 pool binding for Command Squad, Heavy Lifters, or Lightweight Investigators."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "bca09644-2f4b-4b29-891c-6bb896c155fa",
+        "resource_type": "tool",
+        "resource_id": "tk_33_o1740_pool_and_seat_router",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792355469
+      }
+    ],
+    "updated_at": 1792355469,
+    "created_at": 1792355309,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "resolve_o1740_pool",
+        "description": "Resolve dynamic pool assignment from /home/mboyle/bd-persist/POOL_STATE.tsv per O1740.",
+        "parameters": {
+          "properties": {
+            "role_tier": {
+              "default": "heavy_lifter",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "71fc2948-0fbd-4c1e-924f-262c5d598a47",
+    "id": "tk_34_hivemind_persistent_memory_bank",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "34_hivemind_persistent_memory_bank — Cross-Session Fact & Lesson Memory Store/Recall",
+    "meta": {
+      "i18n": null,
+      "description": "Recall or store persistent engineering facts, lessons, and architectural decisions in the Boylenet Hivemind Memory Bank.",
+      "manifest": {
+        "title": "34_hivemind_persistent_memory_bank — Cross-Session Fact & Lesson Memory Store/Recall",
+        "author": "Boylenet Sovereign AI Architecture (Agent-99)",
+        "version": "2.5.0",
+        "description": "Recall or store persistent engineering facts, lessons, and architectural decisions in the Boylenet Hivemind Memory Bank."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "387c421d-77ec-4316-af0d-0b08c8efd2f3",
+        "resource_type": "tool",
+        "resource_id": "tk_34_hivemind_persistent_memory_bank",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792355469
+      }
+    ],
+    "updated_at": 1792355469,
+    "created_at": 1792355309,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "hivemind_memory",
+        "description": "Recall, store, or check status of persistent Hivemind cross-session memory.",
+        "parameters": {
+          "properties": {
+            "action": {
+              "default": "recall",
+              "type": "string"
+            },
+            "query": {
+              "default": "",
+              "type": "string"
+            },
+            "content": {
+              "default": "",
+              "type": "string"
+            },
+            "tags": {
+              "default": "boylenet,bdkb",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "281f019d-0a1a-408b-ba52-24a8aa8b7073",
+    "id": "tk_35_caveman_token_compressor",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "35_caveman_token_compressor — Ultra-Dense Prompt/Context Compression & TOON Codec",
+    "meta": {
+      "i18n": null,
+      "description": "Compress long prompts, logs, or markdown docs into high-density Caveman/TOON format while preserving all technical coordinates.",
+      "manifest": {
+        "title": "35_caveman_token_compressor — Ultra-Dense Prompt/Context Compression & TOON Codec",
+        "author": "Boylenet Sovereign AI Architecture (Agent-99)",
+        "version": "2.5.0",
+        "description": "Compress long prompts, logs, or markdown docs into high-density Caveman/TOON format while preserving all technical coordinates."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "984123d7-61ad-4bd4-9dce-698cca0bcf74",
+        "resource_type": "tool",
+        "resource_id": "tk_35_caveman_token_compressor",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792355469
+      }
+    ],
+    "updated_at": 1792355469,
+    "created_at": 1792355309,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "compress_context",
+        "description": "Compress text into Caveman ultra-dense representation and report token savings.",
+        "parameters": {
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "mode": {
+              "default": "compress",
+              "type": "string"
+            }
+          },
+          "required": [
+            "text"
+          ],
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "acb09332-1d9d-4334-8990-2072f4e9b778",
+    "id": "tk_36_bd_bus_wal_and_smt_consensus",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "36_bd_bus_wal_and_smt_consensus — Cross-Pool Event Bus WAL & JSON Consensus Evaluator",
+    "meta": {
+      "i18n": null,
+      "description": "Read/publish cross-pool bd-bus WAL events and evaluate Rule 76 Protocol B BOARD/REFUTE JSON consensus.",
+      "manifest": {
+        "title": "36_bd_bus_wal_and_smt_consensus — Cross-Pool Event Bus WAL & JSON Consensus Evaluator",
+        "author": "Boylenet Sovereign AI Architecture (Agent-99)",
+        "version": "2.5.0",
+        "description": "Read/publish cross-pool bd-bus WAL events and evaluate Rule 76 Protocol B BOARD/REFUTE JSON consensus."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "2a0a0a65-bba8-43bc-8a21-e46bdc2848b0",
+        "resource_type": "tool",
+        "resource_id": "tk_36_bd_bus_wal_and_smt_consensus",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792355469
+      }
+    ],
+    "updated_at": 1792355469,
+    "created_at": 1792355309,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "bus_and_consensus",
+        "description": "Read/publish bd-bus WAL messages or evaluate SMT consensus invariants.",
+        "parameters": {
+          "properties": {
+            "action": {
+              "default": "read",
+              "type": "string"
+            },
+            "topic": {
+              "default": "fleet-status",
+              "type": "string"
+            },
+            "message": {
+              "default": "",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "758786c3-9147-4205-84bf-477faf5a4402",
+    "id": "tk_37_cut_train_and_worktree_inspector",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "37_cut_train_and_worktree_inspector — Cut Train Status, Scratchpad Worktrees & Gate Auditor",
+    "meta": {
+      "i18n": null,
+      "description": "Inspect BulkDownloader cut train status, Rule 83 persistent worktrees in bd-local-wt and bd-cuts, and gate receipts.",
+      "manifest": {
+        "title": "37_cut_train_and_worktree_inspector — Cut Train Status, Scratchpad Worktrees & Gate Auditor",
+        "author": "Boylenet Sovereign AI Architecture (Agent-99)",
+        "version": "2.5.0",
+        "description": "Inspect BulkDownloader cut train status, Rule 83 persistent worktrees in bd-local-wt and bd-cuts, and gate receipts."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "a7254f75-adf3-4c93-9254-b5015f4df048",
+        "resource_type": "tool",
+        "resource_id": "tk_37_cut_train_and_worktree_inspector",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792355469
+      }
+    ],
+    "updated_at": 1792355469,
+    "created_at": 1792355309,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "inspect_worktrees_and_cuts",
+        "description": "List active Git worktrees in bd-local-wt / bd-cuts and verify Rule 22/83 hygiene.",
+        "parameters": {
+          "properties": {
+            "target": {
+              "default": "all",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "f40b9b11-f105-42e4-9cd0-97cf9f5cffbe",
+    "id": "tk_38_langfuse_and_litellm_telemetry",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "38_langfuse_and_litellm_telemetry — LiteLLM :4000 Spend, Latency & Langfuse Trace Inspector",
+    "meta": {
+      "i18n": null,
+      "description": "Inspect live LiteLLM (:4000) model catalog, health, spend/latency metrics, and Langfuse (:3091) telemetry status.",
+      "manifest": {
+        "title": "38_langfuse_and_litellm_telemetry — LiteLLM :4000 Spend, Latency & Langfuse Trace Inspector",
+        "author": "Boylenet Sovereign AI Architecture (Agent-99)",
+        "version": "2.5.0",
+        "description": "Inspect live LiteLLM (:4000) model catalog, health, spend/latency metrics, and Langfuse (:3091) telemetry status."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "05694da2-c976-42a3-95be-b22532fa098a",
+        "resource_type": "tool",
+        "resource_id": "tk_38_langfuse_and_litellm_telemetry",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792355469
+      }
+    ],
+    "updated_at": 1792355469,
+    "created_at": 1792355310,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "inspect_llm_telemetry",
+        "description": "Query LiteLLM (:4000) and Langfuse (:3091) live health and model routing telemetry.",
+        "parameters": {
+          "properties": {
+            "view": {
+              "default": "summary",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "34787cb5-ee3a-436a-a422-4b5a3f74a542",
+    "id": "tk_39_prometheus_grafana_loki_observability",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "39_prometheus_grafana_loki_observability — Cluster Metrics (PromQL) & Log Query Engine",
+    "meta": {
+      "i18n": null,
+      "description": "Execute live PromQL queries against Prometheus (10.0.70.168:9090) and inspect Grafana/Loki observability across 27 nodes.",
+      "manifest": {
+        "title": "39_prometheus_grafana_loki_observability — Cluster Metrics (PromQL) & Log Query Engine",
+        "author": "Boylenet Sovereign AI Architecture (Agent-99)",
+        "version": "2.5.0",
+        "description": "Execute live PromQL queries against Prometheus (10.0.70.168:9090) and inspect Grafana/Loki observability across 27 nodes."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "a12fa5ac-3b92-4804-b788-55407bbb97af",
+        "resource_type": "tool",
+        "resource_id": "tk_39_prometheus_grafana_loki_observability",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792355469
+      }
+    ],
+    "updated_at": 1792355469,
+    "created_at": 1792355310,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "query_prometheus_metrics",
+        "description": "Run a PromQL query against Prometheus on mon-core01 (10.0.70.168:9090).",
+        "parameters": {
+          "properties": {
+            "promql": {
+              "default": "up",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "7145143f-e9f1-4d57-b333-04eab4b7fd34",
+    "id": "tk_40_nfs_storage_and_blob_cas_manager",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "40_nfs_storage_and_blob_cas_manager — NFS Storage, /var/tmp/bd-blobs CAS & Disk Analyzer",
+    "meta": {
+      "i18n": null,
+      "description": "Inspect Rule 80 /var/tmp/bd-blobs/<sha256>.log CAS pointers, store/dereference blobs, and check NVMe/NFS/ramdisk capacity.",
+      "manifest": {
+        "title": "40_nfs_storage_and_blob_cas_manager — NFS Storage, /var/tmp/bd-blobs CAS & Disk Analyzer",
+        "author": "Boylenet Sovereign AI Architecture (Agent-99)",
+        "version": "2.5.0",
+        "description": "Inspect Rule 80 /var/tmp/bd-blobs/<sha256>.log CAS pointers, store/dereference blobs, and check NVMe/NFS/ramdisk capacity."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "5ed02a04-17bd-428c-bb43-36c8284982d3",
+        "resource_type": "tool",
+        "resource_id": "tk_40_nfs_storage_and_blob_cas_manager",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792355469
+      }
+    ],
+    "updated_at": 1792355469,
+    "created_at": 1792355310,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "manage_blob_cas_and_storage",
+        "description": "Inspect disk mounts or read/write Rule 80 /var/tmp/bd-blobs CAS objects.",
+        "parameters": {
+          "properties": {
+            "action": {
+              "default": "status",
+              "type": "string"
+            },
+            "sha256": {
+              "default": "",
+              "type": "string"
+            },
+            "content": {
+              "default": "",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "76117323-c06c-49b4-84ba-46f3e7aae542",
+    "id": "tk_41_redis_state_and_cache_inspector",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "41_redis_state_and_cache_inspector — Redis Cache & Queue Health Inspector",
+    "meta": {
+      "i18n": null,
+      "description": "Inspect Redis cache endpoints on .164 and db-redis01 (.172) for queue depth, key patterns, and latency.",
+      "manifest": {
+        "title": "41_redis_state_and_cache_inspector — Redis Cache & Queue Health Inspector",
+        "author": "Boylenet Sovereign AI Architecture (Agent-99)",
+        "version": "2.5.0",
+        "description": "Inspect Redis cache endpoints on .164 and db-redis01 (.172) for queue depth, key patterns, and latency."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "fc18d811-6b98-42c0-9f29-daf543335890",
+        "resource_type": "tool",
+        "resource_id": "tk_41_redis_state_and_cache_inspector",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792355469
+      }
+    ],
+    "updated_at": 1792355469,
+    "created_at": 1792355310,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "inspect_redis_cache",
+        "description": "Check Redis PING and sample keys on Controller or db-redis01.",
+        "parameters": {
+          "properties": {
+            "host": {
+              "default": "127.0.0.1",
+              "type": "string"
+            },
+            "port": {
+              "default": 6379,
+              "type": "integer"
+            },
+            "pattern": {
+              "default": "*",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "fa1ba6e4-ec89-4de4-a92c-e926244f7a29",
+    "id": "tk_42_ssh_27node_parallel_fabric_runner",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "42_ssh_27node_parallel_fabric_runner — Safe Read-Only Parallel Command Runner Across 27 Nodes",
+    "meta": {
+      "i18n": null,
+      "description": "Run read-only diagnostic commands (uptime, free -h, df -h, nvidia-smi, hostname) across Boylenet cluster nodes.",
+      "manifest": {
+        "title": "42_ssh_27node_parallel_fabric_runner — Safe Read-Only Parallel Command Runner Across 27 Nodes",
+        "author": "Boylenet Sovereign AI Architecture (Agent-99)",
+        "version": "2.5.0",
+        "description": "Run read-only diagnostic commands (uptime, free -h, df -h, nvidia-smi, hostname) across Boylenet cluster nodes."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "9d23cf5c-7be9-45f7-8065-af5517f5d301",
+        "resource_type": "tool",
+        "resource_id": "tk_42_ssh_27node_parallel_fabric_runner",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792355469
+      }
+    ],
+    "updated_at": 1792355469,
+    "created_at": 1792355310,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "run_cluster_readonly_probe",
+        "description": "Execute a safe read-only probe across selected Boylenet cluster nodes.",
+        "parameters": {
+          "properties": {
+            "nodes": {
+              "default": "10.0.70.164,10.0.70.72,10.0.70.83,10.0.70.125",
+              "type": "string"
+            },
+            "command": {
+              "default": "uptime",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "03315b8a-7d8e-4451-af18-605ba6a587cf",
+    "id": "tk_43_systemd_and_daemon_healer",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "43_systemd_and_daemon_healer — Fleet Daemon Health & Service Inspector",
+    "meta": {
+      "i18n": null,
+      "description": "Check systemd status and recent journal logs for critical Boylenet services (litellm, qdrant-portal, docker, open-webui).",
+      "manifest": {
+        "title": "43_systemd_and_daemon_healer — Fleet Daemon Health & Service Inspector",
+        "author": "Boylenet Sovereign AI Architecture (Agent-99)",
+        "version": "2.5.0",
+        "description": "Check systemd status and recent journal logs for critical Boylenet services (litellm, qdrant-portal, docker, open-webui)."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "22f9e079-88a4-4358-8f9e-f73652c28a5f",
+        "resource_type": "tool",
+        "resource_id": "tk_43_systemd_and_daemon_healer",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792355469
+      }
+    ],
+    "updated_at": 1792355469,
+    "created_at": 1792355310,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "inspect_systemd_daemons",
+        "description": "Inspect status of Boylenet systemd units and daemons.",
+        "parameters": {
+          "properties": {
+            "service": {
+              "default": "all",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "b2aefe39-7334-47e7-a626-d8748a77dc4d",
+    "id": "tk_44_git_log_blame_and_diff_detective",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "44_git_log_blame_and_diff_detective — Deep Git History, Pickaxe Search & Blame Inspector",
+    "meta": {
+      "i18n": null,
+      "description": "Perform read-only Git log, pickaxe (-S) search, show, or diff against declared base in BulkDownloader.",
+      "manifest": {
+        "title": "44_git_log_blame_and_diff_detective — Deep Git History, Pickaxe Search & Blame Inspector",
+        "author": "Boylenet Sovereign AI Architecture (Agent-99)",
+        "version": "2.5.0",
+        "description": "Perform read-only Git log, pickaxe (-S) search, show, or diff against declared base in BulkDownloader."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "22fa9844-8add-45b2-ae8b-acca1869a847",
+        "resource_type": "tool",
+        "resource_id": "tk_44_git_log_blame_and_diff_detective",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792355469
+      }
+    ],
+    "updated_at": 1792355469,
+    "created_at": 1792355310,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "git_detective",
+        "description": "Run read-only git log, pickaxe, show, or diff inspection.",
+        "parameters": {
+          "properties": {
+            "repo_path": {
+              "default": "/home/mboyle/BulkDownloader",
+              "type": "string"
+            },
+            "mode": {
+              "default": "log",
+              "type": "string"
+            },
+            "target": {
+              "default": "HEAD",
+              "type": "string"
+            },
+            "limit": {
+              "default": 10,
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "3d453426-25bd-4e92-84cd-80c0790ef42b",
+    "id": "tk_45_json_yaml_toml_schema_validator",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "45_json_yaml_toml_schema_validator — Config Syntax, JSON Schema & OpenAPI 3.1 Validator",
+    "meta": {
+      "i18n": null,
+      "description": "Validate JSON, YAML, or TOML payloads and verify OpenAPI 3.1 structural compliance.",
+      "manifest": {
+        "title": "45_json_yaml_toml_schema_validator — Config Syntax, JSON Schema & OpenAPI 3.1 Validator",
+        "author": "Boylenet Sovereign AI Architecture (Agent-99)",
+        "version": "2.5.0",
+        "description": "Validate JSON, YAML, or TOML payloads and verify OpenAPI 3.1 structural compliance."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "8688f59e-90f4-434f-8b78-bbaa4d0ed5df",
+        "resource_type": "tool",
+        "resource_id": "tk_45_json_yaml_toml_schema_validator",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792355469
+      }
+    ],
+    "updated_at": 1792355469,
+    "created_at": 1792355310,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "validate_config_payload",
+        "description": "Parse and validate JSON, YAML, or TOML configuration content.",
+        "parameters": {
+          "properties": {
+            "content": {
+              "type": "string"
+            },
+            "format": {
+              "default": "json",
+              "type": "string"
+            }
+          },
+          "required": [
+            "content"
+          ],
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "30963331-21c7-4aad-9b56-547014c4a51e",
+    "id": "tk_46_regex_and_jq_data_transformer",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "46_regex_and_jq_data_transformer — High-Speed Regex Extraction & JSON/JQ Transformer",
+    "meta": {
+      "i18n": null,
+      "description": "Run Python regex extraction or jq transformation over structured or unstructured text.",
+      "manifest": {
+        "title": "46_regex_and_jq_data_transformer — High-Speed Regex Extraction & JSON/JQ Transformer",
+        "author": "Boylenet Sovereign AI Architecture (Agent-99)",
+        "version": "2.5.0",
+        "description": "Run Python regex extraction or jq transformation over structured or unstructured text."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "5dd12efd-fbc6-4a55-a7c0-6eeca7426960",
+        "resource_type": "tool",
+        "resource_id": "tk_46_regex_and_jq_data_transformer",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792355469
+      }
+    ],
+    "updated_at": 1792355469,
+    "created_at": 1792355310,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "transform_text_or_json",
+        "description": "Apply regex or jq expressions to extract structured fields.",
+        "parameters": {
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "pattern": {
+              "default": "",
+              "type": "string"
+            },
+            "jq_expr": {
+              "default": "",
+              "type": "string"
+            }
+          },
+          "required": [
+            "text"
+          ],
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "e45b0dda-fefe-4a8e-a693-026ad54b256a",
+    "id": "tk_47_cryptography_hash_jwt_and_tls_inspector",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "47_cryptography_hash_jwt_and_tls_inspector — SHA256/HMAC/Base64, JWT Decoder & TLS Inspector",
+    "meta": {
+      "i18n": null,
+      "description": "Compute SHA-256/SHA-512 hashes, decode JWT headers/claims, or inspect TLS certificates.",
+      "manifest": {
+        "title": "47_cryptography_hash_jwt_and_tls_inspector — SHA256/HMAC/Base64, JWT Decoder & TLS Inspector",
+        "author": "Boylenet Sovereign AI Architecture (Agent-99)",
+        "version": "2.5.0",
+        "description": "Compute SHA-256/SHA-512 hashes, decode JWT headers/claims, or inspect TLS certificates."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "21095849-5169-4002-bf58-1ddd23b95f11",
+        "resource_type": "tool",
+        "resource_id": "tk_47_cryptography_hash_jwt_and_tls_inspector",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792355469
+      }
+    ],
+    "updated_at": 1792355469,
+    "created_at": 1792355310,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "crypto_jwt_tls_inspect",
+        "description": "Compute cryptographic digests, decode JWTs, or inspect TLS handshakes.",
+        "parameters": {
+          "properties": {
+            "mode": {
+              "default": "sha256",
+              "type": "string"
+            },
+            "data": {
+              "default": "",
+              "type": "string"
+            },
+            "host": {
+              "default": "",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "5145dd63-9e39-420f-b4c8-9b4c159f8651",
+    "id": "tk_48_model_arena_and_speed_benchmarker",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "48_model_arena_and_speed_benchmarker — Side-by-Side Local Model Latency & Tok/s Benchmarker",
+    "meta": {
+      "i18n": null,
+      "description": "Benchmark latency and tokens/sec across local and cloud models on LiteLLM (:4000).",
+      "manifest": {
+        "title": "48_model_arena_and_speed_benchmarker — Side-by-Side Local Model Latency & Tok/s Benchmarker",
+        "author": "Boylenet Sovereign AI Architecture (Agent-99)",
+        "version": "2.5.0",
+        "description": "Benchmark latency and tokens/sec across local and cloud models on LiteLLM (:4000)."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "0e456400-48fd-4b50-bc20-5c3b48442083",
+        "resource_type": "tool",
+        "resource_id": "tk_48_model_arena_and_speed_benchmarker",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792355469
+      }
+    ],
+    "updated_at": 1792355469,
+    "created_at": 1792355310,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "benchmark_models",
+        "description": "Run a side-by-side latency and throughput benchmark across LiteLLM models.",
+        "parameters": {
+          "properties": {
+            "prompt": {
+              "default": "Reply in one sentence confirming your model identity and node.",
+              "type": "string"
+            },
+            "models": {
+              "default": "local-164-32b-coder,vault-qwen3-coder-30b-a3b",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "fd756c81-ad9c-4eca-b2ef-7e41c26b1956",
+    "id": "tk_49_prompt_architect_and_skill_synthesizer",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "49_prompt_architect_and_skill_synthesizer — System Prompt & SKILL.md Generator",
+    "meta": {
+      "i18n": null,
+      "description": "Synthesize structured Boylenet SKILL.md files and high-precision system prompts grounded in BD KB.",
+      "manifest": {
+        "title": "49_prompt_architect_and_skill_synthesizer — System Prompt & SKILL.md Generator",
+        "author": "Boylenet Sovereign AI Architecture (Agent-99)",
+        "version": "2.5.0",
+        "description": "Synthesize structured Boylenet SKILL.md files and high-precision system prompts grounded in BD KB."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "083d6ebc-9fb1-4087-a0cc-7ddce5fd9be4",
+        "resource_type": "tool",
+        "resource_id": "tk_49_prompt_architect_and_skill_synthesizer",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792355469
+      }
+    ],
+    "updated_at": 1792355469,
+    "created_at": 1792355310,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "synthesize_skill_or_prompt",
+        "description": "Generate a ready-to-use SKILL.md template and system prompt grounded in BD KB.",
+        "parameters": {
+          "properties": {
+            "task_name": {
+              "type": "string"
+            },
+            "domain": {
+              "default": "boylenet-engineering",
+              "type": "string"
+            }
+          },
+          "required": [
+            "task_name"
+          ],
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": "0e91d928-8f3f-42ce-8b68-cd1cf92bc7b0",
+    "id": "tk_50_boylenet_doctor_and_self_healer",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "50_boylenet_doctor_and_self_healer — One-Click End-to-End Cluster, Airgap, RAG, Pipelines & UI Doctor",
+    "meta": {
+      "i18n": null,
+      "description": "Run a comprehensive end-to-end diagnostic across LiteLLM (:4000), Gateway/Pipelines (:4079), Qdrant (:6333), SearXNG (:8888), Voice (:4093), and both OpenWebUI nodes.",
+      "manifest": {
+        "title": "50_boylenet_doctor_and_self_healer — One-Click End-to-End Cluster, Airgap, RAG, Pipelines & UI Doctor",
+        "author": "Boylenet Sovereign AI Architecture (Agent-99)",
+        "version": "2.5.0",
+        "description": "Run a comprehensive end-to-end diagnostic across LiteLLM (:4000), Gateway/Pipelines (:4079), Qdrant (:6333), SearXNG (:8888), Voice (:4093), and both OpenWebUI nodes."
+      },
+      "has_user_valves": false
+    },
+    "access_grants": [
+      {
+        "id": "aec54426-ca8b-4a3d-81e4-96c5dab87b06",
+        "resource_type": "tool",
+        "resource_id": "tk_50_boylenet_doctor_and_self_healer",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792355469
+      }
+    ],
+    "updated_at": 1792355469,
+    "created_at": 1792355310,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    },
+    "content": null,
+    "specs": [
+      {
+        "name": "run_boylenet_doctor",
+        "description": "Verify end-to-end health of all Boylenet AI endpoints, BD KB, Qdrant, Pipelines, and UIs.",
+        "parameters": {
+          "properties": {
+            "deep": {
+              "default": true,
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        }
+      }
+    ],
+    "has_user_valves": false
+  },
+  {
+    "version_id": null,
+    "id": "server:boylenet-core-mcp-gateway",
+    "user_id": "server:boylenet-core-mcp-gateway",
+    "name": "1. Boylenet Core Agent, Git, File & 14-Server MCP Gateway (:4079)",
+    "meta": {
+      "i18n": null,
+      "description": "13 OpenAPI endpoints bridging File/Grep/Shell, Git/Gitea, 14 MCP servers (99 tools), 128 Skills, and Qdrant RAG.",
+      "manifest": {},
+      "has_user_valves": false
+    },
+    "access_grants": [],
+    "updated_at": 1792356667,
+    "created_at": 1792356667,
+    "user": null
+  },
+  {
+    "version_id": null,
+    "id": "server:boylenet-web-osint-suite",
+    "user_id": "server:boylenet-web-osint-suite",
+    "name": "2. Boylenet Web Search (SearXNG), ArXiv, Wikipedia, YouTube & CDP Oracle Suite",
+    "meta": {
+      "i18n": null,
+      "description": "8 OpenAPI endpoints for SearXNG, URL Markdown reader, Chrome CDP Oracles (.137/.181), ArXiv, Wikipedia, YouTube, and HN/GitHub trending.",
+      "manifest": {},
+      "has_user_valves": false
+    },
+    "access_grants": [],
+    "updated_at": 1792356667,
+    "created_at": 1792356667,
+    "user": null
+  },
+  {
+    "version_id": null,
+    "id": "server:boylenet-data-science-suite",
+    "user_id": "server:boylenet-data-science-suite",
+    "name": "3. Boylenet Data Science, SVG Chart/Diagram Renderer, SQL & AST/Linter Suite",
+    "meta": {
+      "i18n": null,
+      "description": "6 OpenAPI endpoints for Python stats/charts, architecture SVG diagrams, PostgreSQL/SQLite, document conversion, AST slicing, and Ruff/Mypy.",
+      "manifest": {},
+      "has_user_valves": false
+    },
+    "access_grants": [],
+    "updated_at": 1792356667,
+    "created_at": 1792356667,
+    "user": null
+  },
+  {
+    "version_id": null,
+    "id": "server:boylenet-devops-infra-suite",
+    "user_id": "server:boylenet-devops-infra-suite",
+    "name": "4. Boylenet 27-Node DevOps, VMware ESXi/vSAN, UniFi 25GbE, Docker & Cyber Suite",
+    "meta": {
+      "i18n": null,
+      "description": "9 OpenAPI endpoints for 27-node cluster telemetry, WAN airgap, UniFi 25GbE, VMware ESXi/vSAN, Docker/systemd, 4x T4 GPU Vault, CI Doctor, and CVE audit.",
+      "manifest": {},
+      "has_user_valves": false
+    },
+    "access_grants": [],
+    "updated_at": 1792356667,
+    "created_at": 1792356667,
+    "user": null
+  },
+  {
+    "version_id": null,
+    "id": "server:boylenet-media-ai-suite",
+    "user_id": "server:boylenet-media-ai-suite",
+    "name": "5. Boylenet Local 1080p Image Studio, Voice TTS/STT & Subagent Swarm Dispatcher",
+    "meta": {
+      "i18n": null,
+      "description": "3 OpenAPI endpoints for local 1024x1024 PNG generation, Jarvis TTS/STT, multi-harness subagent spawning, and O1740 Cloud Burst Quota routing.",
+      "manifest": {},
+      "has_user_valves": false
+    },
+    "access_grants": [],
+    "updated_at": 1792356667,
+    "created_at": 1792356667,
+    "user": null
+  }
+]

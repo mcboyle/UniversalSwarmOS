@@ -1,0 +1,160 @@
+#!/usr/bin/env python3
+"""bd-local-token-estimator: Estimate token counts of files/prompts, check GEMINI.md
+Context Guard ceilings (<=150k workers/lens, <=250k PM/integrator), and recommend
+the optimal local GPU tier (tier2 16k, tier1 32k, qwythos-9b 1M).
+"""
+import argparse
+import json
+import math
+import re
+import sys
+from pathlib import Path
+
+CEILINGS = {
+    "worker": 150_000,
+    "workers": 150_000,
+    "lens": 150_000,
+    "workers/lens": 150_000,
+    "pm": 250_000,
+    "integrator": 250_000,
+    "pm/integrator": 250_000,
+}
+
+GPU_TIERS = [
+    {"tier": "tier2", "window": 16_384, "label": "16k"},
+    {"tier": "tier1", "window": 32_768, "label": "32k"},
+    {"tier": "qwythos-9b", "window": 1_000_000, "label": "1M"},
+]
+
+
+def estimate_tokens(text: str) -> tuple[int, str]:
+    if not text:
+        return 0, "heuristic"
+    try:
+        import tiktoken  # type: ignore
+        enc = tiktoken.get_encoding("cl100k_base")
+        return len(enc.encode(text, disallowed_special=())), "tiktoken:cl100k_base"
+    except Exception:
+        # Hybrid char/token heuristic calibrated for code + markdown
+        chars = len(text)
+        words = len(re.findall(r"\S+", text))
+        punct = len(re.findall(r"[^\w\s]", text))
+        est = max(math.ceil(chars / 4.0), int(words * 1.15 + punct * 0.35))
+        return est, "heuristic:char4+lex"
+
+
+def recommend_gpu_tier(tokens: int) -> dict:
+    for entry in GPU_TIERS:
+        if tokens <= entry["window"]:
+            return {
+                "recommended_tier": entry["tier"],
+                "window_label": entry["label"],
+                "window_tokens": entry["window"],
+                "fits_local": True,
+            }
+    return {
+        "recommended_tier": "qwythos-9b",
+        "window_label": "1M",
+        "window_tokens": 1_000_000,
+        "fits_local": False,
+    }
+
+
+def check_ceilings(tokens: int, role: str) -> dict:
+    worker_limit = 150_000
+    pm_limit = 250_000
+    norm_role = role.lower().strip()
+    role_limit = CEILINGS.get(norm_role, worker_limit)
+    return {
+        "role": norm_role,
+        "role_ceiling": role_limit,
+        "role_ok": tokens <= role_limit,
+        "role_utilization_pct": round((tokens / role_limit) * 100.0, 2),
+        "workers_lens_ceiling": worker_limit,
+        "workers_lens_ok": tokens <= worker_limit,
+        "pm_integrator_ceiling": pm_limit,
+        "pm_integrator_ok": tokens <= pm_limit,
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Estimate tokens, check GEMINI.md Context Guard ceilings, and recommend local GPU tier."
+    )
+    parser.add_argument("inputs", nargs="*", help="File paths or literal strings to estimate")
+    parser.add_argument("-t", "--text", help="Direct prompt/text string to estimate")
+    parser.add_argument(
+        "-r",
+        "--role",
+        default="workers/lens",
+        choices=sorted(CEILINGS.keys()),
+        help="Context Guard role ceiling to enforce (default: workers/lens <=150k)",
+    )
+    parser.add_argument("--json", action="store_true", help="Emit JSON output")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Exit non-zero if estimated tokens exceed the selected role ceiling",
+    )
+    args = parser.parse_args()
+
+    sources = []
+    chunks = []
+
+    if args.text is not None:
+        chunks.append(args.text)
+        sources.append("<text>")
+
+    for item in args.inputs:
+        p = Path(item)
+        if p.exists() and p.is_file():
+            chunks.append(p.read_text(encoding="utf-8", errors="replace"))
+            sources.append(str(p))
+        else:
+            chunks.append(item)
+            sources.append("<arg>")
+
+    if not chunks and not sys.stdin.isatty():
+        chunks.append(sys.stdin.read())
+        sources.append("<stdin>")
+
+    combined = "\n".join(chunks)
+    tokens, method = estimate_tokens(combined)
+    guard = check_ceilings(tokens, args.role)
+    tier_info = recommend_gpu_tier(tokens)
+
+    payload = {
+        "sources": sources,
+        "bytes": len(combined.encode("utf-8", errors="replace")),
+        "lines": combined.count("\n") + (1 if combined and not combined.endswith("\n") else 0),
+        "estimated_tokens": tokens,
+        "estimator": method,
+        "context_guard": guard,
+        "gpu_routing": tier_info,
+        "tiers_reference": {
+            "tier2": "16k",
+            "tier1": "32k",
+            "qwythos-9b": "1M",
+        },
+    }
+
+    if args.json:
+        print(json.dumps(payload))
+    else:
+        status = "OK" if guard["role_ok"] else "OVER_CEILING"
+        w_status = "PASS" if guard["workers_lens_ok"] else "EXCEEDED"
+        pm_status = "PASS" if guard["pm_integrator_ok"] else "EXCEEDED"
+        print(
+            f"TOKENS={tokens} ({method}) | "
+            f"GUARD[{guard['role']}<={guard['role_ceiling']}]={status} ({guard['role_utilization_pct']}%) | "
+            f"CEILINGS[workers/lens<=150k:{w_status}, pm/integrator<=250k:{pm_status}] | "
+            f"RECOMMENDED_TIER={tier_info['recommended_tier']} ({tier_info['window_label']})"
+        )
+
+    if args.strict and not guard["role_ok"]:
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

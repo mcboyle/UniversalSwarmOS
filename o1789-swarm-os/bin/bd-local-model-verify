@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# bd-local-model-verify -- Inspect .gguf models on 10.0.70.72 and 10.0.70.83 (/opt/models)
+# Verifies first 4 magic bytes (GGUF = 0x47475546) and .aria2 state (COMPLETE vs IN_PROGRESS).
+set -eo pipefail
+
+NODES=("10.0.70.72" "10.0.70.83")
+
+REMOTE_SCRIPT='
+set -eo pipefail
+MODEL_DIR="/opt/models"
+if [[ ! -d "$MODEL_DIR" ]]; then
+    echo "MISSING_DIR|0B|NONE|NONE|MISSING"
+    exit 0
+fi
+mapfile -t files < <(find "$MODEL_DIR" -maxdepth 3 -type f -name "*.gguf" 2>/dev/null | sort)
+if [[ ${#files[@]} -eq 0 ]]; then
+    echo "NONE_FOUND|0B|NONE|NONE|EMPTY"
+    exit 0
+fi
+for f in "${files[@]}"; do
+    rel="${f#${MODEL_DIR}/}"
+    size_b=$(stat -c "%s" "$f" 2>/dev/null || echo 0)
+    size_h=$(numfmt --to=iec --suffix=B "$size_b" 2>/dev/null || echo "${size_b}B")
+    magic_hex=$(dd if="$f" bs=1 count=4 2>/dev/null | od -An -tx1 | tr -d " \n")
+    if [[ "$magic_hex" == "47475546" ]]; then
+        magic="GGUF"
+    else
+        magic="BAD"
+    fi
+    if [[ -f "${f}.aria2" ]]; then
+        dl_state="IN_PROGRESS"
+    else
+        dl_state="COMPLETE"
+    fi
+    if [[ "$magic" == "GGUF" && "$dl_state" == "COMPLETE" ]]; then
+        integrity="VERIFIED"
+    elif [[ "$magic" == "GGUF" && "$dl_state" == "IN_PROGRESS" ]]; then
+        integrity="PARTIAL"
+    else
+        integrity="CORRUPT"
+    fi
+    echo "${rel}|${size_h}|${magic}|${dl_state}|${integrity}"
+done
+'
+
+printf "%-12s | %-56s | %-9s | %-6s | %-11s | %-9s\n" "NODE" "FILE" "SIZE" "MAGIC" "DL_STATE" "INTEGRITY"
+printf "%-12s-+-%-56s-+-%-9s-+-%-6s-+-%-11s-+-%-9s\n" "------------" "--------------------------------------------------------" "---------" "------" "-----------" "---------"
+
+for node in "${NODES[@]}"; do
+    while IFS='|' read -r fname size_h magic dl_state integrity; do
+        [[ -z "$fname" ]] && continue
+        printf "%-12s | %-56s | %-9s | %-6s | %-11s | %-9s\n" "$node" "$fname" "$size_h" "$magic" "$dl_state" "$integrity"
+    done < <(ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=5 "$node" bash -s <<< "$REMOTE_SCRIPT")
+done

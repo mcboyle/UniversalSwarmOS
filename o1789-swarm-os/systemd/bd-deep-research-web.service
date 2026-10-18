@@ -1,0 +1,16 @@
+[Unit]
+Description=Boylenet Deep Research & Dual-Oracle Citation Studio Web UI (:4094)
+After=network.target
+
+[Service]
+Type=simple
+User=mboyle
+WorkingDirectory=/home/mboyle
+Environment="HOME=/home/mboyle"
+Environment="BD_DEEP_RESEARCH_PORT=4094"
+ExecStart=/usr/bin/python3 /home/mboyle/bin/bd-deep-research-web.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

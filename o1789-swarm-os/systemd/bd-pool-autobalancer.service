@@ -1,0 +1,15 @@
+[Unit]
+Description=Boylenet Autonomous Cross-Pool Quota Load-Balancer & Failover Daemon (O1740 / O1789)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mboyle
+WorkingDirectory=/home/mboyle
+ExecStart=/usr/bin/python3 /home/mboyle/bin/bd-pool-autobalancer --daemon --interval 30
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

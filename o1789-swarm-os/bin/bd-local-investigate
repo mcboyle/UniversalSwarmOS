@@ -1,0 +1,156 @@
+#!/usr/bin/env python3
+"""
+bd-local-investigate: Local GPU Cluster implementation of `investigate-first` skill.
+Endpoint: http://10.0.70.164:4010/v1/chat/completions (model: tier1)
+Enforces:
+  1. GEMINI.md Measurement Law: FOUND n / FOUND NONE / COULD NOT LOOK (UNKNOWN != permission),
+     PROVE PROBE CAN SAY YES, NAME DENOMINATOR from filesystem, DIFF INDEX AGAINST DECLARED BASE.
+  2. Argon-4 Zero-Fabrication: strict separation of Observed Facts vs Inferred Hypotheses,
+     evidence-ranked hypotheses, zero unverified file/line/metric fabrication.
+  3. investigate-first discipline: diagnose ambiguous failures before editing, rank hypotheses
+     by evidence, and specify minimal discriminating probe.
+"""
+import argparse
+import json
+import os
+import re
+import sys
+import urllib.request
+import urllib.error
+
+DEFAULT_URL = os.environ.get("BD_LOCAL_LLM_URL", "http://10.0.70.164:4010/v1/chat/completions")
+DEFAULT_MODEL = os.environ.get("BD_LOCAL_LLM_MODEL", "tier1")
+DEFAULT_API_KEY = os.environ.get("BD_LOCAL_LLM_KEY", os.environ.get("LITELLM_API_KEY", "sk-local"))
+
+SYSTEM_PROMPT = """You are a diagnostic investigator executing the `investigate-first` skill under strict Argon-4 Zero-Fabrication and GEMINI.md Measurement Law invariants.
+
+MANDATORY INVARIANTS:
+1. GEMINI.md MEASUREMENT LAW:
+   - Every measurement or probe status MUST be explicitly classified as one of:
+     `FOUND n` (where n is an exact integer count), `FOUND NONE` (0 matches after verified probe), or `COULD NOT LOOK` (with exact reason).
+   - `UNKNOWN != permission`: Missing or unmeasured state NEVER grants permission to mutate or assume green.
+   - `PROVE PROBE CAN SAY YES`: State how the diagnostic probe is verified to detect positive hits.
+   - `NAME DENOMINATOR`: Explicitly state the filesystem or population denominator (or `COULD NOT LOOK` if no filesystem snapshot was supplied).
+   - `DIFF INDEX AGAINST DECLARED BASE`: Never compare implicitly against floating HEAD without naming the declared base.
+
+2. ARGON-4 ZERO-FABRICATION:
+   - NEVER fabricate file paths, line numbers, stack traces, commit SHAs, or test counts not present in the input.
+   - Strictly separate OBSERVED FACTS (verbatim from input) from INFERRED HYPOTHESES.
+   - If evidence is absent from input, output `COULD NOT LOOK` rather than guessing.
+
+3. INVESTIGATE-FIRST OUTPUT CONTRACT:
+   Output concise markdown with these exact sections:
+   - `MEASUREMENT_STATUS`: Must include `FOUND <n>`, `FOUND NONE`, or `COULD NOT LOOK`, plus `DENOMINATOR` and `UNKNOWN != permission` check.
+   - `OBSERVED_FACTS`: Bullet list of strictly provided facts only (Argon-4 zero-fabrication).
+   - `RANKED_HYPOTHESES`: H1..Hk ranked by evidence strength, citing supporting/refuting facts.
+   - `DISCRIMINATING_PROBE`: Single minimal read-only probe command that proves/refutes H1 and proves the probe can say YES.
+"""
+
+
+def enforce_measurement_contract(text: str, query: str) -> str:
+    has_token = bool(re.search(r"\b(FOUND\s+\d+|FOUND\s+NONE|COULD\s+NOT\s+LOOK)\b", text))
+    has_unknown_law = "UNKNOWN != permission" in text
+    if has_token and has_unknown_law:
+        return text
+    header = [
+        "MEASUREMENT_STATUS: COULD NOT LOOK (offline/unprobed input context) | FOUND 0 verified filesystem probes in prompt | UNKNOWN != permission enforced.",
+        f"QUERY_DIGEST: {query.strip()[:160]}",
+        ""
+    ]
+    return "\n".join(header) + text
+
+
+def fallback_investigate(query: str, reason: str) -> str:
+    lines = [l.strip() for l in query.splitlines() if l.strip()]
+    fact_count = len(lines)
+    measurement = f"FOUND {fact_count}" if fact_count > 0 else "FOUND NONE"
+    return (
+        f"### MEASUREMENT_STATUS\n"
+        f"- Status: `{measurement}` input evidence lines (`COULD NOT LOOK` on unprovided filesystem paths; cluster note: {reason})\n"
+        f"- Invariant: `UNKNOWN != permission` | `PROVE PROBE CAN SAY YES` | `NAME DENOMINATOR from filesystem`\n\n"
+        f"### OBSERVED_FACTS (Argon-4 Zero-Fabrication)\n"
+        + ("\n".join(f"- {l[:200]}" for l in lines[:5]) if lines else "- No input facts provided (`FOUND NONE`).")
+        + "\n\n### RANKED_HYPOTHESES\n"
+        "- **H1 (Primary - Input-bounded symptom)**: Failure originates in the narrowest component named in the observed symptom above. (Confidence: Medium; requires filesystem denominator check).\n"
+        "- **H2 (Secondary - Environment/State drift)**: Stale state or unmeasured config delta against declared base (`UNKNOWN != permission`).\n\n"
+        "### DISCRIMINATING_PROBE\n"
+        "- Run read-only bounded `rg -n` / `git diff <declared-base>` against the target module, first proving the probe matches a known symbol (`PROVE PROBE CAN SAY YES`) and naming the file denominator (`find <dir> -type f | wc -l`)."
+    )
+
+
+def call_cluster(query: str, url: str, model: str, timeout: float) -> tuple[str, str]:
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": query},
+        ],
+        "temperature": 0.0,
+        "max_tokens": 512,
+    }
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {DEFAULT_API_KEY}",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+            content = body["choices"][0]["message"]["content"].strip()
+            return enforce_measurement_contract(content, query), "cluster:tier1"
+    except Exception as exc:
+        return fallback_investigate(query, f"{type(exc).__name__}: {exc}"), "local-fallback"
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Local GPU cluster investigate-first diagnostic tool.")
+    parser.add_argument("query", nargs="*", help="Symptom, failure log, or diagnostic question.")
+    parser.add_argument("-f", "--file", help="Optional file path to read symptom/context from.")
+    parser.add_argument("--url", default=DEFAULT_URL, help="Chat completions endpoint URL.")
+    parser.add_argument("--model", default=DEFAULT_MODEL, help="Model tier name (default: tier1).")
+    parser.add_argument("--timeout", type=float, default=12.0, help="HTTP timeout in seconds.")
+    parser.add_argument("--json", action="store_true", help="Emit JSON output with measurement metadata.")
+    args = parser.parse_args()
+
+    chunks = []
+    if args.query:
+        chunks.append(" ".join(args.query))
+    if args.file:
+        if os.path.exists(args.file):
+            with open(args.file, "r", encoding="utf-8", errors="replace") as fh:
+                chunks.append(f"[FILE {args.file}]\n" + fh.read()[:4000])
+        else:
+            chunks.append(f"[FILE {args.file}: COULD NOT LOOK (missing file)]")
+    if not chunks and not sys.stdin.isatty():
+        chunks.append(sys.stdin.read()[:4000])
+
+    prompt = "\n\n".join(c for c in chunks if c.strip()).strip()
+    if not prompt:
+        prompt = "Diagnose ambiguous test failure with zero provided logs."
+
+    report, backend = call_cluster(prompt, args.url, args.model, args.timeout)
+
+    if args.json:
+        out = {
+            "tool": "bd-local-investigate",
+            "skill": "investigate-first",
+            "endpoint": args.url,
+            "model": args.model,
+            "backend": backend,
+            "measurement_law": "FOUND n / FOUND NONE / COULD NOT LOOK (UNKNOWN != permission)",
+            "argon4_zero_fabrication": True,
+            "report": report,
+        }
+        print(json.dumps(out, indent=2))
+    else:
+        print(report)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

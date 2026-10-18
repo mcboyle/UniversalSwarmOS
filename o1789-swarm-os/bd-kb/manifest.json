@@ -1,0 +1,58 @@
+{
+  "schema": "boylenet.bd-kb.manifest.v1",
+  "updated_at": "2026-10-18T20:51:16Z",
+  "campaign": "O1789",
+  "total_volumes": 6,
+  "qdrant_collection": {
+    "url": "http://10.0.70.125:6333/collections/bd_master_kb",
+    "dimensions": 1024,
+    "embedding_model": "hybrid-bge-m3-384d-plus-lexical-640d",
+    "chunks_indexed": 28
+  },
+  "openwebui_knowledge_collections": [
+    "bd-kb-master",
+    "bd-kb-bulkdownloader",
+    "bd-kb-cluster-infra",
+    "bd-kb-86-models",
+    "bd-kb-fleet-law",
+    "bd-kb-ci-and-uis"
+  ],
+  "volumes": [
+    {
+      "filename": "00-BD-KB-MASTER-ENCYCLOPEDIA.md",
+      "size_bytes": 8819,
+      "sha256": "622aea9100200aefb8d1afacad05ebeefeeb1e77a575a2b390d078a9cd8c6190",
+      "lines": 105
+    },
+    {
+      "filename": "01-BULKDOWNLOADER-ARCHITECTURE-AND-CONTRACTS.md",
+      "size_bytes": 6459,
+      "sha256": "0c83b238046f7e02ad70296f5fb57f0f823b36c65ec3bb6c03522a2a53eebf08",
+      "lines": 85
+    },
+    {
+      "filename": "02-BOYLENET-27NODE-CLUSTER-12U-RACK-VSAN-25GBE.md",
+      "size_bytes": 7369,
+      "sha256": "610eb853c149b72326d030e7c1493fcb64705a20aaa7707b2f2e97870302e76b",
+      "lines": 67
+    },
+    {
+      "filename": "03-86-MODEL-VAULT-BENCHMARKS-AND-AIRGAP.md",
+      "size_bytes": 10507,
+      "sha256": "36987413f6165cec84940dfd77ad01af27741620b3dc81efa43f8bf8dd978e5e",
+      "lines": 97
+    },
+    {
+      "filename": "04-FLEET-LAW-RULES-1-86-AND-O1740-ROUTING.md",
+      "size_bytes": 7605,
+      "sha256": "5b2b9c01d3a509b7319e6f3ce7ee831a5c52716a7ebe400bbde1c543e469bdd7",
+      "lines": 67
+    },
+    {
+      "filename": "05-CI-TAXONOMY-RECOVERY-AND-MCP-TOOLS.md",
+      "size_bytes": 9818,
+      "sha256": "44f7d36ab82fa345d7b84acb7acbd4ffaf632d736a7dd6c77ff3d825f82d3e5e",
+      "lines": 83
+    }
+  ]
+}

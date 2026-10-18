@@ -1,0 +1,17 @@
+[Unit]
+Description=Boylenet 86-Model AI Vault Storefront (:4084 / http://models.boylenet.themfboyles.com)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mboyle
+WorkingDirectory=/home/mboyle
+Environment="HOME=/home/mboyle"
+Environment="BD_STOREFRONT_PORT=4084"
+ExecStart=/usr/bin/python3 /home/mboyle/bin/bd-model-storefront.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

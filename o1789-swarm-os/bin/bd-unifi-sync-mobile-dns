@@ -1,0 +1,133 @@
+#!/usr/bin/env python3
+"""
+bd-unifi-sync-mobile-dns — Copy all static DNS records from BoyleNetwork (Boylenet) to Boylenet Mobile.
+Supports:
+  1. Site Manager Cloud Connector API (https://api.ui.com/v1/connector/consoles/<mobile_cid>/proxy/network/...)
+     using UNIFI_API_KEY from /home/mboyle/.config/bd/unifi.env (once Boylenet Mobile is checked on that key in unifi.ui.com)
+     or --api-key <SITE_MANAGER_KEY>.
+  2. Direct Local Gateway API on Boylenet Mobile (https://10.96.112.1/proxy/network/v2/api/site/default/static-dns)
+     using --mobile-key <LOCAL_MOBILE_API_KEY> or UNIFI_MOBILE_API_KEY in /home/mboyle/.config/bd/unifi.env.
+"""
+import argparse
+import json
+import os
+import ssl
+import sys
+import urllib.request
+
+BOYLENET_CID = "602232292CA100000000069BFAAB0000000006EB9D760000000062F4D112:2071288107"
+MOBILE_CID = "A89C6C8AEFA000000000099DD57C000000000A256466000000006918166F:1807308004"
+MOBILE_LAN_IP = "10.96.112.1"
+
+
+def load_env() -> dict:
+    env = {}
+    path = "/home/mboyle/.config/bd/unifi.env"
+    if os.path.exists(path):
+        with open(path) as f:
+            for line in f:
+                if "=" in line and not line.startswith("#"):
+                    k, v = line.strip().split("=", 1)
+                    env[k.strip()] = v.strip("\"'")
+    return env
+
+
+def api_req(url: str, api_key: str, method: str = "GET", payload: dict | None = None, verify_ssl: bool = True):
+    ctx = ssl.create_default_context()
+    if not verify_ssl:
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    headers = {"X-API-KEY": api_key, "Accept": "application/json"}
+    data = None
+    if payload is not None:
+        data = json.dumps(payload).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(url, data=data, method=method, headers=headers)
+    with urllib.request.urlopen(req, context=ctx, timeout=20) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Sync all static DNS records from Boylenet to Boylenet Mobile")
+    ap.add_argument("--api-key", default="", help="UniFi Site Manager API Key")
+    ap.add_argument("--mobile-key", default="", help="Local API Key generated on Boylenet Mobile (10.96.112.1)")
+    ap.add_argument("--export-json", default="/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/boylenet_static_dns_398.json")
+    args = ap.parse_args()
+
+    env = load_env()
+    src_key = args.api_key or env.get("UNIFI_API_KEY", "")
+    mob_key = args.mobile_key or env.get("UNIFI_MOBILE_API_KEY", "") or src_key
+
+    src_url = f"https://api.ui.com/v1/connector/consoles/{BOYLENET_CID}/proxy/network/v2/api/site/default/static-dns"
+    src_records = api_req(src_url, src_key)
+    os.makedirs(os.path.dirname(args.export_json), exist_ok=True)
+    with open(args.export_json, "w") as f:
+        json.dump(src_records, f, indent=2)
+    print(f"[OK] Exported {len(src_records)} static DNS records from Boylenet -> {args.export_json}")
+
+    # Try Cloud Connector for Boylenet Mobile first, then direct 10.96.112.1
+    targets = [
+        (f"https://api.ui.com/v1/connector/consoles/{MOBILE_CID}/proxy/network/v2/api/site/default/static-dns", mob_key, True, "Cloud Connector (api.ui.com)"),
+        (f"https://{MOBILE_LAN_IP}/proxy/network/v2/api/site/default/static-dns", mob_key, False, f"Direct Site Magic Gateway ({MOBILE_LAN_IP})"),
+    ]
+
+    dst_url = ""
+    dst_key = ""
+    dst_verify = True
+    existing_map = {}
+
+    for url, key, verify, label in targets:
+        try:
+            rows = api_req(url, key, verify_ssl=verify)
+            existing_map = {r.get("key"): r for r in rows if isinstance(r, dict)}
+            dst_url, dst_key, dst_verify = url, key, verify
+            print(f"[OK] Connected to Boylenet Mobile via {label} ({len(existing_map)} existing records)")
+            break
+        except Exception as e:
+            body = e.read().decode() if hasattr(e, "read") else str(e)
+            print(f"[WARN] {label} returned: {getattr(e, 'code', '')} {body[:160]}")
+
+    if not dst_url:
+        print(
+            "\n[ACTION NEEDED] The current UNIFI_API_KEY in ~/.config/bd/unifi.env is scoped only to 'BoyleNetwork' (HTTP 403 on 'Boylenet Mobile').\n"
+            "To complete the push of all 398 records to Boylenet Mobile:\n"
+            "  Option A: In https://unifi.ui.com -> Settings -> API Keys, enable 'Boylenet Mobile' on your API key and re-run: bd-unifi-sync-mobile-dns\n"
+            "  Option B: In Boylenet Mobile (https://10.96.112.1 -> Control Plane -> Integrations), generate a local API key and run:\n"
+            "            bd-unifi-sync-mobile-dns --mobile-key <KEY>"
+        )
+        return 2
+
+    added = 0
+    updated = 0
+    for rec in src_records:
+        key_name = rec.get("key")
+        val = rec.get("value")
+        rtype = rec.get("record_type", "A")
+        if not key_name or not val:
+            continue
+        payload = {
+            "enabled": bool(rec.get("enabled", True)),
+            "key": key_name,
+            "record_type": rtype,
+            "value": val,
+            "ttl": int(rec.get("ttl", 0) or 0),
+            "port": int(rec.get("port", 0) or 0),
+            "priority": int(rec.get("priority", 0) or 0),
+            "weight": int(rec.get("weight", 0) or 0),
+        }
+        if key_name not in existing_map:
+            api_req(dst_url, dst_key, method="POST", payload=payload, verify_ssl=dst_verify)
+            added += 1
+        elif existing_map[key_name].get("value") != val:
+            rid = existing_map[key_name].get("_id")
+            if rid:
+                payload["_id"] = rid
+                api_req(f"{dst_url}/{rid}", dst_key, method="PUT", payload=payload, verify_ssl=dst_verify)
+                updated += 1
+
+    print(f"[DONE] Boylenet Mobile DNS Sync Complete: added={added}, updated={updated}, total={len(src_records)}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

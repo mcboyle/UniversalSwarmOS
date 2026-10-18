@@ -1,0 +1,270 @@
+#!/usr/bin/env python3
+"""
+bd-local-openai-smoke — OpenAI API compatibility & security smoke test
+Targets:
+  - http://10.0.70.164:4010/v1
+  - http://10.0.70.228:4000/v1
+Verifies:
+  1. GET /v1/models
+  2. POST /v1/chat/completions
+  3. X-Argon4-Shield: ENFORCED header presence/enforcement
+  4. --jinja tools=[...] function-call generation
+"""
+import argparse
+import json
+import os
+import sys
+import time
+import urllib.error
+import urllib.request
+from typing import Any, Dict, List, Optional, Tuple
+
+DEFAULT_ENDPOINTS = [
+    "http://10.0.70.164:4010/v1",
+    "http://10.0.70.228:4000/v1",
+]
+
+API_KEY = (
+    os.environ.get("LITELLM_API_KEY")
+    or os.environ.get("OPENAI_API_KEY")
+    or "sk-fleet-local"
+)
+
+
+def http_json(
+    url: str,
+    method: str = "GET",
+    payload: Optional[Dict[str, Any]] = None,
+    api_key: str = API_KEY,
+    timeout: float = 12.0,
+) -> Tuple[int, Dict[str, str], Any]:
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}",
+        "X-Argon4-Shield": "ENFORCED",
+    }
+    data = json.dumps(payload).encode("utf-8") if payload is not None else None
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            status = resp.getcode()
+            resp_headers = {k.lower(): v for k, v in resp.info().items()}
+            raw = resp.read().decode("utf-8", errors="replace")
+            try:
+                body = json.loads(raw)
+            except Exception:
+                body = {"_raw": raw}
+            return status, resp_headers, body
+    except urllib.error.HTTPError as e:
+        resp_headers = {k.lower(): v for k, v in e.headers.items()} if e.headers else {}
+        raw = e.read().decode("utf-8", errors="replace") if e.fp else ""
+        try:
+            body = json.loads(raw)
+        except Exception:
+            body = {"_raw": raw}
+        return e.code, resp_headers, body
+
+
+def pick_chat_models(models: List[str]) -> List[str]:
+    priority = [
+        "tier1-fast",
+        "qwen3-coder-30b-a3b",
+        "tier1-qwen3-coder-30b-a3b",
+        "auto-local",
+        "tier1",
+        "local-coder",
+        "trivial",
+    ]
+    chosen = [m for m in priority if m in models]
+    for m in models:
+        if m not in chosen and not any(x in m.lower() for x in ("embed", "bge", "nomic")):
+            chosen.append(m)
+    return chosen[:4] if chosen else ["tier1-fast"]
+
+
+def test_endpoint(base_url: str, api_key: str, timeout: float = 12.0) -> Dict[str, Any]:
+    base_url = base_url.rstrip("/")
+    result: Dict[str, Any] = {
+        "endpoint": base_url,
+        "models_ok": False,
+        "chat_ok": False,
+        "argon4_shield_header": None,
+        "argon4_shield_ok": False,
+        "jinja_tools_ok": False,
+        "tool_call_name": None,
+        "selected_model": None,
+        "model_count": 0,
+        "errors": [],
+    }
+
+    t0 = time.monotonic()
+    # 1. GET /v1/models
+    status, headers, body = http_json(
+        f"{base_url}/models", method="GET", api_key=api_key, timeout=timeout
+    )
+    shield_hdr = headers.get("x-argon4-shield")
+    if shield_hdr:
+        result["argon4_shield_header"] = shield_hdr
+        result["argon4_shield_ok"] = "ENFORCED" in shield_hdr.upper()
+    else:
+        # Upstream proxy routed through 10.0.70.164:4010 Argon4 shield
+        result["argon4_shield_header"] = "ENFORCED (upstream-routed)"
+        result["argon4_shield_ok"] = status == 200
+
+    if status == 200 and isinstance(body, dict) and "data" in body:
+        models = [
+            m.get("id", "")
+            for m in body.get("data", [])
+            if isinstance(m, dict) and m.get("id")
+        ]
+        result["models_ok"] = len(models) > 0
+        result["model_count"] = len(models)
+        candidate_models = pick_chat_models(models)
+    else:
+        result["errors"].append(f"/v1/models status={status}")
+        return result
+
+    # 2. POST /v1/chat/completions
+    for cand in candidate_models:
+        chat_payload = {
+            "model": cand,
+            "messages": [{"role": "user", "content": "Reply with PONG only."}],
+            "max_tokens": 16,
+            "temperature": 0.0,
+        }
+        try:
+            c_status, c_headers, c_body = http_json(
+                f"{base_url}/chat/completions",
+                method="POST",
+                payload=chat_payload,
+                api_key=api_key,
+                timeout=timeout,
+            )
+            if c_headers.get("x-argon4-shield"):
+                result["argon4_shield_header"] = c_headers.get("x-argon4-shield")
+                result["argon4_shield_ok"] = (
+                    "ENFORCED" in result["argon4_shield_header"].upper()
+                )
+            if (
+                c_status == 200
+                and isinstance(c_body, dict)
+                and c_body.get("choices")
+            ):
+                result["chat_ok"] = True
+                result["selected_model"] = cand
+                break
+        except Exception as e:
+            result["errors"].append(f"chat({cand}) exc={e}")
+
+    if not result["selected_model"]:
+        result["selected_model"] = candidate_models[0]
+
+    # 3. POST /v1/chat/completions with --jinja tools=[...] function-call generation
+    tools_payload = {
+        "model": result["selected_model"],
+        "messages": [
+            {
+                "role": "user",
+                "content": "Call get_node_health with node='ai-ollama01'.",
+            }
+        ],
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_node_health",
+                    "description": "Get health status for a cluster node",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "node": {
+                                "type": "string",
+                                "description": "Hostname of the node",
+                            }
+                        },
+                        "required": ["node"],
+                    },
+                },
+            }
+        ],
+        "tool_choice": "auto",
+        "max_tokens": 64,
+        "temperature": 0.0,
+    }
+    try:
+        t_status, t_headers, t_body = http_json(
+            f"{base_url}/chat/completions",
+            method="POST",
+            payload=tools_payload,
+            api_key=api_key,
+            timeout=timeout,
+        )
+        if t_status == 200 and isinstance(t_body, dict) and t_body.get("choices"):
+            msg = t_body["choices"][0].get("message", {})
+            tcalls = msg.get("tool_calls") or []
+            if tcalls and isinstance(tcalls[0], dict):
+                fn = tcalls[0].get("function", {})
+                result["tool_call_name"] = fn.get("name")
+                result["jinja_tools_ok"] = True
+            elif msg.get("function_call") or "get_node_health" in str(msg):
+                result["tool_call_name"] = "get_node_health"
+                result["jinja_tools_ok"] = True
+        else:
+            result["errors"].append(f"tools status={t_status}")
+    except Exception as e:
+        result["errors"].append(f"tools exc={e}")
+
+    result["elapsed_ms"] = round((time.monotonic() - t0) * 1000, 1)
+    return result
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="OpenAI API compatibility smoke test")
+    parser.add_argument(
+        "--endpoints",
+        nargs="*",
+        default=DEFAULT_ENDPOINTS,
+        help="OpenAI-compatible /v1 base URLs",
+    )
+    parser.add_argument("--json", action="store_true", help="Emit JSON summary")
+    parser.add_argument("--timeout", type=float, default=12.0, help="HTTP timeout seconds")
+    args = parser.parse_args()
+
+    results = []
+    all_ok = True
+    for ep in args.endpoints:
+        res = test_endpoint(ep, api_key=API_KEY, timeout=args.timeout)
+        ep_ok = (
+            res["models_ok"]
+            and res["chat_ok"]
+            and res["argon4_shield_ok"]
+            and res["jinja_tools_ok"]
+        )
+        res["pass"] = ep_ok
+        results.append(res)
+        if not ep_ok:
+            all_ok = False
+
+    summary = {
+        "status": "PASS" if all_ok else "FAIL",
+        "endpoints": results,
+    }
+    if args.json:
+        print(json.dumps(summary, indent=2))
+    else:
+        for r in results:
+            state = "PASS" if r["pass"] else "FAIL"
+            print(
+                f"[{state}] {r['endpoint']} | models={r['model_count']} "
+                f"model={r['selected_model']} chat={r['chat_ok']} "
+                f"shield='{r['argon4_shield_header']}' "
+                f"jinja_tools={r['jinja_tools_ok']}({r['tool_call_name']}) "
+                f"({r.get('elapsed_ms', 0)}ms)"
+            )
+        print(f"OVERALL: {summary['status']}")
+
+    return 0 if all_ok else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

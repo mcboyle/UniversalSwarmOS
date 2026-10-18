@@ -1,0 +1,2 @@
+#!/bin/bash
+exec /home/mboyle/bin/bd-blob-ptr /usr/local/bin/bd-freshcheck "$@"

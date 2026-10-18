@@ -1,0 +1,399 @@
+http:
+  routers:
+    boylenet-dashy:
+      rule: Host(`dashy.boylenet.themfboyles.com`) || Host(`dashy`) || Host(`portal.boylenet.themfboyles.com`) || Host(`portal`) || Host(`dashboard.boylenet.themfboyles.com`) || Host(`dashboard`) || Host(`controller.boylenet.themfboyles.com`)
+      service: boylenet-dashy-svc
+      entryPoints:
+      - web
+    boylenet-jarvis:
+      rule: Host(`jarvis.boylenet.themfboyles.com`) || Host(`jarvis`) || Host(`cockpit.boylenet.themfboyles.com`) || Host(`cockpit`)
+      service: boylenet-jarvis-svc
+      entryPoints:
+      - web
+    boylenet-chat:
+      rule: Host(`chat.boylenet.themfboyles.com`) || Host(`chat`)
+      service: boylenet-chat-svc
+      entryPoints:
+      - web
+    boylenet-openwebui:
+      rule: Host(`openwebui.boylenet.themfboyles.com`) || Host(`openwebui`)
+      service: boylenet-openwebui-svc
+      entryPoints:
+      - web
+    boylenet-litellm:
+      rule: Host(`litellm.boylenet.themfboyles.com`) || Host(`litellm`)
+      service: boylenet-litellm-svc
+      entryPoints:
+      - web
+    boylenet-orchestrator:
+      rule: Host(`orchestrator.boylenet.themfboyles.com`) || Host(`orchestrator`)
+      service: boylenet-orchestrator-svc
+      entryPoints:
+      - web
+    boylenet-gitea:
+      rule: Host(`gitea.boylenet.themfboyles.com`) || Host(`gitea`) || Host(`git.boylenet.themfboyles.com`) || Host(`git`)
+      service: boylenet-gitea-svc
+      entryPoints:
+      - web
+    boylenet-grafana:
+      rule: Host(`grafana.boylenet.themfboyles.com`) || Host(`grafana`)
+      service: boylenet-grafana-svc
+      entryPoints:
+      - web
+    boylenet-prometheus:
+      rule: Host(`prometheus.boylenet.themfboyles.com`) || Host(`prometheus`)
+      service: boylenet-prometheus-svc
+      entryPoints:
+      - web
+    boylenet-alertmanager:
+      rule: Host(`alertmanager.boylenet.themfboyles.com`) || Host(`alertmanager`)
+      service: boylenet-alertmanager-svc
+      entryPoints:
+      - web
+    boylenet-minio:
+      rule: Host(`minio.boylenet.themfboyles.com`) || Host(`minio`)
+      service: boylenet-minio-svc
+      entryPoints:
+      - web
+    boylenet-cadvisor:
+      rule: Host(`cadvisor.boylenet.themfboyles.com`) || Host(`cadvisor`)
+      service: boylenet-cadvisor-svc
+      entryPoints:
+      - web
+    boylenet-devdocs:
+      rule: Host(`devdocs.boylenet.themfboyles.com`) || Host(`devdocs`)
+      service: boylenet-devdocs-svc
+      entryPoints:
+      - web
+    boylenet-searxng:
+      rule: Host(`searxng.boylenet.themfboyles.com`) || Host(`searxng`) || Host(`search.boylenet.themfboyles.com`) || Host(`search`)
+      service: boylenet-searxng-svc
+      entryPoints:
+      - web
+    boylenet-codeserver:
+      rule: Host(`codeserver.boylenet.themfboyles.com`) || Host(`codeserver`) || Host(`ide.boylenet.themfboyles.com`) || Host(`ide`)
+      service: boylenet-codeserver-svc
+      entryPoints:
+      - web
+    boylenet-verdaccio:
+      rule: Host(`verdaccio.boylenet.themfboyles.com`) || Host(`verdaccio`) || Host(`npm.boylenet.themfboyles.com`) || Host(`npm`)
+      service: boylenet-verdaccio-svc
+      entryPoints:
+      - web
+    boylenet-devpi:
+      rule: Host(`devpi.boylenet.themfboyles.com`) || Host(`devpi`) || Host(`pypi.boylenet.themfboyles.com`) || Host(`pypi`)
+      service: boylenet-devpi-svc
+      entryPoints:
+      - web
+    boylenet-acng:
+      rule: Host(`acng.boylenet.themfboyles.com`) || Host(`acng`) || Host(`apt.boylenet.themfboyles.com`) || Host(`apt`)
+      service: boylenet-acng-svc
+      entryPoints:
+      - web
+    boylenet-elastic:
+      rule: Host(`elastic.boylenet.themfboyles.com`) || Host(`elastic`)
+      service: boylenet-elastic-svc
+      entryPoints:
+      - web
+    boylenet-treesitter:
+      rule: Host(`treesitter.boylenet.themfboyles.com`) || Host(`treesitter`) || Host(`ast.boylenet.themfboyles.com`) || Host(`ast`)
+      service: boylenet-treesitter-svc
+      entryPoints:
+      - web
+    boylenet-novnc:
+      rule: Host(`novnc.boylenet.themfboyles.com`) || Host(`novnc`)
+      service: boylenet-novnc-svc
+      entryPoints:
+      - web
+    boylenet-langfuse:
+      rule: Host(`langfuse.boylenet.themfboyles.com`) || Host(`langfuse`)
+      service: boylenet-langfuse-svc
+      entryPoints:
+      - web
+    boylenet-qdrant:
+      rule: Host(`qdrant.boylenet.themfboyles.com`) || Host(`qdrant`)
+      service: boylenet-qdrant-svc
+      entryPoints:
+      - web
+    boylenet-ai-webui:
+      rule: Host(`ai-webui.boylenet.themfboyles.com`) || Host(`ai-webui`)
+      service: boylenet-ai-webui-svc
+      entryPoints:
+      - web
+    boylenet-opencode:
+      rule: Host(`opencode.boylenet.themfboyles.com`) || Host(`opencode`)
+      service: boylenet-opencode-svc
+      entryPoints:
+      - web
+    boylenet-openclaw:
+      rule: Host(`openclaw.boylenet.themfboyles.com`) || Host(`openclaw`)
+      service: boylenet-openclaw-svc
+      entryPoints:
+      - web
+    boylenet-harnesses:
+      rule: Host(`harnesses.boylenet.themfboyles.com`) || Host(`harnesses`) || Host(`hermes.boylenet.themfboyles.com`) || Host(`hermes`) || Host(`deepseek.boylenet.themfboyles.com`) || Host(`deepseek`) || Host(`openrouter.boylenet.themfboyles.com`) || Host(`openrouter`)
+      service: boylenet-harnesses-svc
+      entryPoints:
+      - web
+    boylenet-lobechat:
+      rule: Host(`lobechat.boylenet.themfboyles.com`) || Host(`lobechat`)
+      service: boylenet-lobechat-svc
+      entryPoints:
+      - web
+    boylenet-litellm-228:
+      rule: Host(`litellm-228.boylenet.themfboyles.com`) || Host(`litellm-228`)
+      service: boylenet-litellm-228-svc
+      entryPoints:
+      - web
+    boylenet-sentinel:
+      rule: Host(`sentinel.boylenet.themfboyles.com`) || Host(`sentinel`)
+      service: boylenet-sentinel-svc
+      entryPoints:
+      - web
+    boylenet-prereview:
+      rule: Host(`prereview.boylenet.themfboyles.com`) || Host(`prereview`)
+      service: boylenet-prereview-svc
+      entryPoints:
+      - web
+    boylenet-multimodal:
+      rule: Host(`voice.boylenet.themfboyles.com`) || Host(`voice`) || Host(`multimodal.boylenet.themfboyles.com`) || Host(`multimodal`)
+      service: boylenet-multimodal-svc
+      entryPoints:
+      - web
+    boylenet-research:
+      rule: Host(`research.boylenet.themfboyles.com`) || Host(`research`)
+      service: boylenet-research-svc
+      entryPoints:
+      - web
+    boylenet-hardware:
+      rule: Host(`hardware.boylenet.themfboyles.com`) || Host(`hardware`)
+      service: boylenet-hardware-svc
+      entryPoints:
+      - web
+    boylenet-cloud:
+      rule: Host(`cloud.boylenet.themfboyles.com`) || Host(`cloud`)
+      service: boylenet-cloud-svc
+      entryPoints:
+      - web
+    boylenet-vault:
+      rule: Host(`vault.boylenet.themfboyles.com`) || Host(`vault`)
+      service: boylenet-vault-svc
+      entryPoints:
+      - web
+    boylenet-ops:
+      rule: Host(`ops.boylenet.themfboyles.com`) || Host(`ops`)
+      service: boylenet-ops-svc
+      entryPoints:
+      - web
+    boylenet-mobile:
+      rule: Host(`mobile.boylenet.themfboyles.com`) || Host(`mobile`)
+      service: boylenet-mobile-svc
+      entryPoints:
+      - web
+    boylenet-topology:
+      rule: Host(`topology.boylenet.themfboyles.com`) || Host(`topology`)
+      service: boylenet-topology-svc
+      entryPoints:
+      - web
+    boylenet-os:
+      rule: Host(`os.boylenet.themfboyles.com`) || Host(`os`)
+      service: boylenet-os-svc
+      entryPoints:
+      - web
+    boylenet-models:
+      rule: Host(`models.boylenet.themfboyles.com`) || Host(`models`)
+      service: boylenet-models-svc
+      entryPoints:
+      - web
+    boylenet-terminal:
+      rule: Host(`terminal.boylenet.themfboyles.com`) || Host(`terminal`)
+      service: boylenet-terminal-svc
+      entryPoints:
+      - web
+    boylenet-sso-ca:
+      rule: Host(`ca.boylenet.themfboyles.com`) || Host(`ca`) || Host(`sso.boylenet.themfboyles.com`) || Host(`sso`)
+      service: boylenet-sso-ca-svc
+      entryPoints:
+      - web
+    boylenet-briefing-doctor:
+      rule: Host(`briefing.boylenet.themfboyles.com`) || Host(`briefing`) || Host(`doctor.boylenet.themfboyles.com`) || Host(`doctor`)
+      service: boylenet-briefing-doctor-svc
+      entryPoints:
+      - web
+  services:
+    boylenet-dashy-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:4080
+    boylenet-jarvis-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:3002
+    boylenet-chat-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:3003
+    boylenet-openwebui-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:8090
+    boylenet-litellm-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:4000
+    boylenet-orchestrator-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:4010
+    boylenet-gitea-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:3000
+    boylenet-grafana-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:3001
+    boylenet-prometheus-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:9090
+    boylenet-alertmanager-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:9093
+    boylenet-minio-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:9001
+    boylenet-cadvisor-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:8085
+    boylenet-devdocs-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:8088
+    boylenet-searxng-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:8888
+    boylenet-codeserver-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:8443
+    boylenet-verdaccio-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:4873
+    boylenet-devpi-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:3141
+    boylenet-acng-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:3142
+    boylenet-elastic-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:9200
+    boylenet-treesitter-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:8095
+    boylenet-novnc-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:6080
+    boylenet-langfuse-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.228:3000
+    boylenet-qdrant-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.125:6333
+    boylenet-ai-webui-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.72:8080
+    boylenet-opencode-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:4096
+    boylenet-openclaw-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:4097
+    boylenet-harnesses-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:4098
+    boylenet-lobechat-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:4095
+    boylenet-litellm-228-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.228:4000
+    boylenet-sentinel-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:4099
+    boylenet-prereview-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:4092
+    boylenet-multimodal-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:4093
+    boylenet-research-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:4094
+    boylenet-hardware-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:4091
+    boylenet-cloud-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:4090
+    boylenet-vault-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:4087
+    boylenet-ops-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:4089
+    boylenet-mobile-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:4086
+    boylenet-topology-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:4088
+    boylenet-os-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:4085
+    boylenet-models-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:4084
+    boylenet-terminal-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:4083
+    boylenet-sso-ca-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:4082
+    boylenet-briefing-doctor-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:4081

@@ -1,0 +1,320 @@
+#!/usr/bin/env bash
+# bd-remote-pytest-turbo: Fast-Path Remote Ramdisk (/dev/shm) Pytest Offload Runner (O1789 Swarm #8)
+# Syncs local worktree (/home/mboyle/BulkDownloader or --worktree <path>) into /dev/shm/bd-ci-ramdisk
+# on 10.0.70.82 (wrk-test04 / test3big, 64 vCPUs, 63 GiB /dev/shm) with automatic failover to
+# .149 / .120 / .183 and active 32-core workers (.85 / .95 / .80).
+# Enforces Rule 78 (bd-pytest-digest <=3 lines, exit code preserved) and Rule 80 (/var/tmp/bd-blobs/<sha256>.log).
+
+set -uo pipefail
+
+ PRIMARY_NODE="10.0.70.82"
+# Candidate pool ordered by priority: primary 64-core .82, spr-pool (.149, .120, .183), active 32-core workers (.85 test4, .95 test2, .80 test3)
+CANDIDATE_NODES=("10.0.70.82" "10.0.70.149" "10.0.70.120" "10.0.70.183" "10.0.70.85" "10.0.70.95" "10.0.70.80")
+REMOTE_RAMDISK="/dev/shm/bd-ci-ramdisk"
+DEFAULT_WORKTREE="/home/mboyle/BulkDownloader"
+BLOB_DIR="/var/tmp/bd-blobs"
+SSH_CTL_DIR="/var/tmp"
+
+SSH_OPTS=(
+    -o BatchMode=yes
+    -o StrictHostKeyChecking=accept-new
+    -o ConnectTimeout=2
+    -o ControlMaster=auto
+    -o "ControlPath=${SSH_CTL_DIR}/bd-turbo-ssh-%r@%h:%p"
+    -o ControlPersist=600
+)
+
+RSYNC_EXCLUDES=(
+    --exclude='.git/'
+    --exclude='.worktrees/'
+    --exclude='venv/'
+    --exclude='.venv/'
+    --exclude='.claude/'
+    --exclude='captures/'
+    --exclude='profiles/'
+    --exclude='frontend/node_modules/'
+    --exclude='node_modules/'
+    --exclude='__pycache__/'
+    --exclude='.pytest_cache/'
+    --exclude='.mypy_cache/'
+    --exclude='.ruff_cache/'
+    --exclude='.hypothesis/'
+    --exclude='screenshots/'
+    --exclude='logs/'
+    --exclude='live_recordings/'
+    --exclude='login_evidence/'
+    --exclude='.bd-precut-evidence/'
+    --exclude='kg_artifacts/'
+    --exclude='*.pyc'
+    --exclude='*.db'
+    --exclude='*.db-shm'
+    --exclude='*.db-wal'
+    --exclude='*.db.premigration.bak'
+    --exclude='*.db.corrupt*'
+)
+
+usage() {
+    cat <<'EOF'
+Usage:
+  bd-remote-pytest-turbo [--worktree <path>] [--node <ip>] [PYTEST_ARGS...]
+  bd-remote-pytest-turbo --warm [--worktree <path>]
+  bd-remote-pytest-turbo --audit
+
+Options:
+  --warm              Pre-sync /dev/shm/bd-ci-ramdisk across reachable worker pool & precompile bytecode
+  --audit, --status   Inspect /dev/shm size, CPU cores (nproc), load, and venv across worker pool
+  --worktree, -C DIR  Source worktree to sync (default: $BD_TURBO_WORKTREE or /home/mboyle/BulkDownloader)
+  --node IP           Force specific remote worker IP (default: 10.0.70.82 with failover)
+  -h, --help          Show this help message
+EOF
+}
+
+WORKTREE="${BD_TURBO_WORKTREE:-$DEFAULT_WORKTREE}"
+FORCED_NODE="${BD_TURBO_NODE:-}"
+MODE="run"
+PYTEST_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --warm)
+            MODE="warm"
+            shift
+            ;;
+        --audit|--status)
+            MODE="audit"
+            shift
+            ;;
+        --worktree|-C)
+            WORKTREE="$2"
+            shift 2
+            ;;
+        --node)
+            FORCED_NODE="$2"
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            PYTEST_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+if [[ ! -d "$WORKTREE" ]]; then
+    echo "FAIL: worktree not found: $WORKTREE" >&2
+    exit 2
+fi
+WORKTREE="$(cd "$WORKTREE" && pwd)"
+
+sync_to_node() {
+    local node="$1"
+    local t0 t1 elapsed_ms
+    t0=$(date +%s%3N)
+    ssh "${SSH_OPTS[@]}" "$node" "mkdir -p '$REMOTE_RAMDISK' /dev/shm/bd-tmp" >/dev/null 2>&1 || return 1
+    rsync -a --delete "${RSYNC_EXCLUDES[@]}" \
+        -e "ssh ${SSH_OPTS[*]}" \
+        "${WORKTREE}/" "${node}:${REMOTE_RAMDISK}/" >/dev/null 2>&1 || return 1
+    t1=$(date +%s%3N)
+    elapsed_ms=$((t1 - t0))
+    echo "$elapsed_ms"
+    return 0
+}
+
+run_audit() {
+    printf "%-13s %-12s %-6s %-18s %-14s %-36s %-10s\n" "NODE_IP" "HOSTNAME" "CORES" "/dev/shm (AVAIL)" "LOAD_1M" "VENV_PATH" "STATUS"
+    printf "%s\n" "--------------------------------------------------------------------------------------------------------------------"
+    for node in "${CANDIDATE_NODES[@]}"; do
+        local info
+        if info=$(ssh "${SSH_OPTS[@]}" "$node" '
+            h=$(hostname)
+            c=$(nproc)
+            shm=$(df -h /dev/shm | awk "NR==2{print \$2\" (\"\$4\")\"}")
+            ld=$(awk "{print \$1}" /proc/loadavg)
+            v="MISSING"
+            if [[ -x /home/mboyle/BulkDownloader/venv/bin/pytest ]]; then
+                v="/home/mboyle/BulkDownloader/venv"
+            elif [[ -x /home/mboyle/BulkDownloader/.venv/bin/pytest ]]; then
+                v="/home/mboyle/BulkDownloader/.venv"
+            fi
+            printf "%s|%s|%s|%s|%s" "$h" "$c" "$shm" "$ld" "$v"
+        ' 2>/dev/null); then
+            IFS='|' read -r h c shm ld v <<<"$info"
+            printf "%-13s %-12s %-6s %-18s %-14s %-36s %-10s\n" "$node" "$h" "$c" "$shm" "$ld" "$v" "ONLINE"
+        else
+            printf "%-13s %-12s %-6s %-18s %-14s %-36s %-10s\n" "$node" "-" "-" "-" "-" "-" "OFFLINE"
+        fi
+    done
+}
+
+run_warm() {
+    printf "Warming %s from %s across worker pool...\n" "$REMOTE_RAMDISK" "$WORKTREE"
+    printf "%-13s %-12s %-6s %-12s %-12s %-12s %-10s\n" "NODE_IP" "HOSTNAME" "CORES" "COLD_MS" "INCR_MS" "RAMDISK_USE" "STATUS"
+    printf "%s\n" "------------------------------------------------------------------------------------------"
+    local warmed=0
+    for node in "${CANDIDATE_NODES[@]}"; do
+        if ! ssh "${SSH_OPTS[@]}" "$node" "true" >/dev/null 2>&1; then
+            printf "%-13s %-12s %-6s %-12s %-12s %-12s %-10s\n" "$node" "-" "-" "-" "-" "-" "SKIP(OFF)"
+            continue
+        fi
+        # Seed from remote local BulkDownloader first if ramdisk is empty to accelerate initial warm
+        ssh "${SSH_OPTS[@]}" "$node" "
+            if [[ ! -d '$REMOTE_RAMDISK/tests' && -d /home/mboyle/BulkDownloader/tests ]]; then
+                mkdir -p '$REMOTE_RAMDISK'
+                rsync -a ${RSYNC_EXCLUDES[*]} /home/mboyle/BulkDownloader/ '$REMOTE_RAMDISK/' 2>/dev/null || true
+            fi
+        " >/dev/null 2>&1 || true
+
+        local cold_ms incr_ms meta h c used
+        cold_ms=$(sync_to_node "$node") || {
+            printf "%-13s %-12s %-6s %-12s %-12s %-12s %-10s\n" "$node" "-" "-" "-" "-" "-" "SYNC_ERR"
+            continue
+        }
+        # Precompile bytecode in ramdisk for fast pytest import
+        ssh "${SSH_OPTS[@]}" "$node" "
+            cd '$REMOTE_RAMDISK' &&
+            (/home/mboyle/BulkDownloader/venv/bin/python -m compileall -q -j 16 bulk_downloader tests 2>/dev/null || true)
+        " >/dev/null 2>&1 || true
+
+        # Measure incremental sync speed (<400ms target)
+        incr_ms=$(sync_to_node "$node") || incr_ms="$cold_ms"
+        meta=$(ssh "${SSH_OPTS[@]}" "$node" 'printf "%s|%s|%s" "$(hostname)" "$(nproc)" "$(du -sh /dev/shm/bd-ci-ramdisk 2>/dev/null | awk "{print \$1}")"' 2>/dev/null)
+        IFS='|' read -r h c used <<<"$meta"
+        printf "%-13s %-12s %-6s %-12s %-12s %-12s %-10s\n" "$node" "$h" "$c" "${cold_ms}ms" "${incr_ms}ms" "$used" "WARMED"
+        warmed=$((warmed + 1))
+    done
+    printf "%s\n" "------------------------------------------------------------------------------------------"
+    echo "WARM_SUMMARY: ${warmed} active high-core node(s) warmed at ${REMOTE_RAMDISK}"
+    [[ "$warmed" -gt 0 ]]
+}
+
+select_target_node() {
+    if [[ -n "$FORCED_NODE" ]]; then
+        echo "$FORCED_NODE"
+        return 0
+    fi
+    for node in "${CANDIDATE_NODES[@]}"; do
+        local probe
+        if probe=$(ssh "${SSH_OPTS[@]}" "$node" '
+            c=$(nproc)
+            ld=$(awk "{printf \"%d\", \$1}" /proc/loadavg)
+            if [[ -x /home/mboyle/BulkDownloader/venv/bin/pytest || -x /home/mboyle/BulkDownloader/.venv/bin/pytest ]]; then
+                if (( ld < c )); then
+                    echo "OK"
+                else
+                    echo "BUSY"
+                fi
+            else
+                echo "NOVENV"
+            fi
+        ' 2>/dev/null); then
+            if [[ "$probe" == "OK" ]]; then
+                echo "$node"
+                return 0
+            fi
+        fi
+    done
+    echo "$PRIMARY_NODE"
+}
+
+if [[ "$MODE" == "audit" ]]; then
+    run_audit
+    exit 0
+elif [[ "$MODE" == "warm" ]]; then
+    run_warm
+    exit $?
+fi
+
+TARGET_NODE="$(select_target_node)"
+SYNC_MS="$(sync_to_node "$TARGET_NODE")" || {
+    # Failover across remaining candidate nodes if primary sync failed
+    SYNC_OK=0
+    for fallback in "${CANDIDATE_NODES[@]}"; do
+        [[ "$fallback" == "$TARGET_NODE" ]] && continue
+        if SYNC_MS="$(sync_to_node "$fallback")"; then
+            TARGET_NODE="$fallback"
+            SYNC_OK=1
+            break
+        fi
+    done
+    if [[ "$SYNC_OK" -eq 0 ]]; then
+        echo "FAIL: unable to sync worktree to any remote ramdisk node" >&2
+        exit 2
+    fi
+}
+
+# Inspect PYTEST_ARGS to determine whether -n is already provided or should be auto-scaled
+HAS_XDIST=0
+FILE_TARGET_COUNT=0
+for arg in "${PYTEST_ARGS[@]}"; do
+    if [[ "$arg" == "-n" || "$arg" == -n* || "$arg" == --numprocesses* ]]; then
+        HAS_XDIST=1
+    elif [[ "$arg" != -* ]]; then
+        FILE_TARGET_COUNT=$((FILE_TARGET_COUNT + 1))
+    fi
+done
+
+EXTRA_XDIST_ARGS=()
+if [[ "$HAS_XDIST" -eq 0 ]]; then
+    if [[ "$FILE_TARGET_COUNT" -eq 0 || "$FILE_TARGET_COUNT" -ge 4 ]]; then
+        EXTRA_XDIST_ARGS=(-n auto)
+    elif [[ "${BD_TURBO_FORCE_XDIST:-0}" == "1" ]]; then
+        EXTRA_XDIST_ARGS=(-n auto)
+    fi
+fi
+
+mkdir -p "$BLOB_DIR"
+RAW_LOG="$(mktemp /dev/shm/bd-turbo-pytest-XXXXXX.log 2>/dev/null || mktemp /tmp/bd-turbo-pytest-XXXXXX.log)"
+trap 'rm -f "$RAW_LOG"' EXIT
+
+# Quote arguments safely for remote execution
+ESCAPED_ARGS=""
+for arg in "${EXTRA_XDIST_ARGS[@]}" "${PYTEST_ARGS[@]}"; do
+    ESCAPED_ARGS+=" $(printf '%q' "$arg")"
+done
+
+T_START=$(date +%s%3N)
+ssh "${SSH_OPTS[@]}" "$TARGET_NODE" "
+    cd '$REMOTE_RAMDISK' || exit 2
+    export TMPDIR=/dev/shm/bd-tmp
+    mkdir -p \"\$TMPDIR\"
+    if [[ -x /home/mboyle/BulkDownloader/venv/bin/pytest ]]; then
+        PYTEST_BIN=/home/mboyle/BulkDownloader/venv/bin/pytest
+    elif [[ -x /home/mboyle/BulkDownloader/.venv/bin/pytest ]]; then
+        PYTEST_BIN=/home/mboyle/BulkDownloader/.venv/bin/pytest
+    else
+        PYTEST_BIN=pytest
+    fi
+    exec \"\$PYTEST_BIN\" $ESCAPED_ARGS
+" >"$RAW_LOG" 2>&1
+RC=$?
+T_END=$(date +%s%3N)
+RUN_MS=$((T_END - T_START))
+
+SHA="$(sha256sum "$RAW_LOG" | awk '{print $1}')"
+BYTES="$(wc -c < "$RAW_LOG" | tr -d ' ')"
+BLOB_PATH="${BLOB_DIR}/${SHA}.log"
+cp -f "$RAW_LOG" "$BLOB_PATH"
+
+if [[ -x /home/mboyle/bin/bd-pytest-digest ]]; then
+    DIGEST_OUT="$(/home/mboyle/bin/bd-pytest-digest --pipe --exit-code "$RC" < "$RAW_LOG" 2>/dev/null || true)"
+else
+    DIGEST_OUT=""
+fi
+
+if [[ -z "${DIGEST_OUT// /}" ]]; then
+    SUMMARY="$(grep -E 'passed|failed|error|no tests ran' "$RAW_LOG" | tail -n 1 | sed 's/^[= ]*//;s/[= ]*$//' || true)"
+    [[ -z "$SUMMARY" ]] && SUMMARY="$(tail -n 1 "$RAW_LOG" | cut -c1-120)"
+    if [[ "$RC" -eq 0 ]]; then
+        DIGEST_OUT="PASS: ${SUMMARY}"
+    else
+        DIGEST_OUT="FAIL (rc=${RC}): ${SUMMARY}"
+    fi
+fi
+
+# Enforce Rule 78 (<= 3 lines) + Rule 80 CAS blob pointer
+echo "$DIGEST_OUT" | head -n 2
+echo "BLOB: ${BLOB_PATH} (node=${TARGET_NODE} sync=${SYNC_MS}ms run=${RUN_MS}ms bytes=${BYTES})"
+exit "$RC"

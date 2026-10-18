@@ -1,0 +1,281 @@
+#!/usr/bin/env python3
+"""
+bd-local-council — Multi-Model Local AI Consensus Council (Argon-4 / Rule 76)
+Queries Pool Alpha (Qwen3-Coder-30B-A3B on 10.0.70.72:8082) and
+Pool Beta (Qwen2.5-Coder-32B / CyberStrike-35B on 10.0.70.125:8081) in parallel
+on a code review or architecture question and computes a Rule 76 (BOARD|REFUTE)
+consensus verdict under Argon-4.
+"""
+import argparse
+import concurrent.futures
+import hashlib
+import json
+import os
+import re
+import sys
+import time
+import urllib.error
+import urllib.request
+from datetime import datetime, timezone
+
+POOLS = [
+    {
+        "pool": "alpha",
+        "seat": "pool-alpha-qwen3-30b-a3b",
+        "label": "Qwen3-Coder-30B-A3B",
+        "host": os.environ.get("BD_COUNCIL_ALPHA_URL", "http://10.0.70.72:8082"),
+        "default_model": "Qwen3-Coder-30B-A3B",
+    },
+    {
+        "pool": "beta",
+        "seat": "pool-beta-qwen25-32b",
+        "label": "Qwen2.5-Coder-32B/CyberStrike-35B",
+        "host": os.environ.get("BD_COUNCIL_BETA_URL", "http://10.0.70.125:8081"),
+        "default_model": "Qwen2.5-Coder-32B",
+    },
+]
+
+SYSTEM_PROMPT = (
+    "You are an Argon-4 Local AI Consensus Council review lens operating under Fleet Rule 76 "
+    "and Rule 86. Evaluate the code review or architecture question strictly for demonstrable "
+    "behavioral defects, regressions, or safety violations.\n"
+    "Respond ONLY with a single valid JSON object matching Rule 76 schema:\n"
+    '{"verdict":"BOARD|REFUTE","findings":[],"rationale":"concise technical reason"}\n'
+    "If sound / no blocking behavioral defect: verdict MUST be \"BOARD\" and findings MUST be []. "
+    "If blocking behavioral defect exists: verdict MUST be \"REFUTE\" and findings MUST list "
+    "machine coordinates or concrete defect descriptions."
+)
+
+
+def resolve_model_id(base_url: str, fallback: str, timeout: float = 4.0) -> str:
+    req = urllib.request.Request(f"{base_url.rstrip('/')}/v1/models", method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="replace"))
+            models = data.get("data") or []
+            if models and isinstance(models, list) and "id" in models[0]:
+                return str(models[0]["id"])
+    except Exception:
+        pass
+    return fallback
+
+
+def extract_verdict_json(raw_text: str) -> dict:
+    cleaned = re.sub(r"<think>.*?</think>", "", raw_text, flags=re.DOTALL).strip()
+    # Try direct JSON or fenced JSON block
+    candidates = [cleaned]
+    for m in re.finditer(r"\{.*?\}", cleaned, flags=re.DOTALL):
+        candidates.append(m.group(0))
+    for cand in candidates:
+        try:
+            obj = json.loads(cand)
+            if isinstance(obj, dict) and "verdict" in obj:
+                v = str(obj["verdict"]).upper().strip()
+                if "REFUTE" in v:
+                    v = "REFUTE"
+                else:
+                    v = "BOARD"
+                findings = obj.get("findings") if isinstance(obj.get("findings"), list) else []
+                if v == "BOARD":
+                    findings = []
+                elif not findings:
+                    findings = [str(obj.get("rationale") or "blocking defect identified")]
+                return {
+                    "verdict": v,
+                    "findings": findings,
+                    "rationale": str(obj.get("rationale") or "")[:240],
+                }
+        except Exception:
+            continue
+
+    upper = cleaned.upper()
+    if "REFUTE" in upper and "BOARD" not in upper:
+        return {
+            "verdict": "REFUTE",
+            "findings": [cleaned[:200] or "REFUTE signaled by model"],
+            "rationale": cleaned[:240],
+        }
+    return {
+        "verdict": "BOARD",
+        "findings": [],
+        "rationale": cleaned[:240] or "BOARD consensus affirmed",
+    }
+
+
+def query_pool(pool_cfg: dict, prompt: str, round_id: str, timeout: float, max_tokens: int) -> dict:
+    t0 = time.monotonic()
+    base_url = pool_cfg["host"].rstrip("/")
+    model_id = resolve_model_id(base_url, pool_cfg["default_model"], timeout=min(4.0, timeout))
+    payload = {
+        "model": model_id,
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.0,
+        "max_tokens": max_tokens,
+    }
+    req = urllib.request.Request(
+        f"{base_url}/v1/chat/completions",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = json.loads(resp.read().decode("utf-8", errors="replace"))
+        latency_ms = round((time.monotonic() - t0) * 1000.0, 1)
+        choice = (body.get("choices") or [{}])[0]
+        msg = choice.get("message") or {}
+        content = msg.get("content") or msg.get("reasoning_content") or ""
+        parsed = extract_verdict_json(content)
+        usage = body.get("usage") or {}
+        return {
+            "round": round_id,
+            "seat": pool_cfg["seat"],
+            "pool": pool_cfg["pool"],
+            "label": pool_cfg["label"],
+            "endpoint": base_url,
+            "model": model_id,
+            "ok": True,
+            "verdict": parsed["verdict"],
+            "findings": parsed["findings"],
+            "rationale": parsed["rationale"],
+            "latency_ms": latency_ms,
+            "tokens": usage.get("total_tokens", 0),
+        }
+    except Exception as exc:
+        latency_ms = round((time.monotonic() - t0) * 1000.0, 1)
+        return {
+            "round": round_id,
+            "seat": pool_cfg["seat"],
+            "pool": pool_cfg["pool"],
+            "label": pool_cfg["label"],
+            "endpoint": base_url,
+            "model": model_id,
+            "ok": False,
+            "verdict": "ERROR",
+            "findings": [f"endpoint_error: {exc}"],
+            "rationale": str(exc),
+            "latency_ms": latency_ms,
+            "tokens": 0,
+        }
+
+
+def compute_argon4_consensus(round_id: str, votes: list, quorum_mode: str = "unanimous-board") -> dict:
+    ok_votes = [v for v in votes if v.get("ok")]
+    responded = len(ok_votes)
+    total = len(votes)
+    all_findings = []
+    for v in ok_votes:
+        for f in v.get("findings") or []:
+            all_findings.append(f"[{v['pool']}] {f}")
+
+    if responded < total:
+        verdict = "REFUTE"
+        for v in votes:
+            if not v.get("ok"):
+                all_findings.append(f"[{v['pool']}] quorum_missing: {v.get('rationale', 'unreachable')}")
+        consensus_state = "QUORUM_INCOMPLETE"
+    else:
+        refutes = [v for v in ok_votes if v["verdict"] == "REFUTE"]
+        if quorum_mode == "majority":
+            verdict = "REFUTE" if len(refutes) > (total // 2) else "BOARD"
+        else:
+            # Argon-4 strict safety: any concrete REFUTE triggers REFUTE; unanimous BOARD -> BOARD
+            verdict = "REFUTE" if refutes else "BOARD"
+        if verdict == "BOARD":
+            all_findings = []
+        consensus_state = "UNANIMOUS_BOARD" if not refutes else (
+            "UNANIMOUS_REFUTE" if len(refutes) == total else "SPLIT_CONSERVATIVE_REFUTE"
+        )
+
+    return {
+        "round": round_id,
+        "seat": "argon4-local-council",
+        "protocol": "Argon-4/Rule-76",
+        "verdict": verdict,
+        "findings": all_findings,
+        "quorum": f"{responded}/{total}",
+        "responded": responded,
+        "total": total,
+        "consensus_state": consensus_state,
+        "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "votes": [
+            {
+                "round": v["round"],
+                "seat": v["seat"],
+                "pool": v["pool"],
+                "model": v["model"],
+                "endpoint": v["endpoint"],
+                "ok": v["ok"],
+                "verdict": v["verdict"],
+                "findings": v["findings"],
+                "rationale": v["rationale"],
+                "latency_ms": v["latency_ms"],
+            }
+            for v in votes
+        ],
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="bd-local-council: Argon-4 Multi-Model Local AI Consensus Council (Rule 76 BOARD|REFUTE)"
+    )
+    parser.add_argument("question", nargs="*", help="Code review or architecture question / diff prompt")
+    parser.add_argument("-f", "--file", help="Read prompt/diff from file")
+    parser.add_argument("--round", default="", help="Round ID (default: auto-generated)")
+    parser.add_argument("--timeout", type=float, default=45.0, help="Per-pool HTTP timeout seconds")
+    parser.add_argument("--max-tokens", type=int, default=256, help="Max completion tokens per pool")
+    parser.add_argument("--quorum-mode", choices=["unanimous-board", "majority"], default="unanimous-board")
+    parser.add_argument("--compact", action="store_true", help="Emit single-line Rule 76 JSON")
+    parser.add_argument("--require-board", action="store_true", help="Exit non-zero if verdict != BOARD")
+    args = parser.parse_args()
+
+    prompt_parts = []
+    if args.file:
+        with open(args.file, "r", encoding="utf-8", errors="replace") as fh:
+            prompt_parts.append(fh.read())
+    if args.question:
+        prompt_parts.append(" ".join(args.question))
+    if not prompt_parts and not sys.stdin.isatty():
+        prompt_parts.append(sys.stdin.read())
+    prompt = "\n\n".join(p.strip() for p in prompt_parts if p.strip())
+    if not prompt:
+        prompt = (
+            "Review candidate patch: atomic write via tempfile + os.replace() for state file "
+            "updates with fsync. Does this satisfy crash-safe atomic replacement invariants?"
+        )
+
+    round_id = args.round or ("argon4-" + hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:10])
+
+    t_start = time.monotonic()
+    votes_by_pool = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(POOLS)) as executor:
+        fut_map = {
+            executor.submit(query_pool, pool_cfg, prompt, round_id, args.timeout, args.max_tokens): pool_cfg["pool"]
+            for pool_cfg in POOLS
+        }
+        for fut in concurrent.futures.as_completed(fut_map):
+            pool_name = fut_map[fut]
+            votes_by_pool[pool_name] = fut.result()
+
+    ordered_votes = [votes_by_pool[p["pool"]] for p in POOLS]
+    result = compute_argon4_consensus(round_id, ordered_votes, quorum_mode=args.quorum_mode)
+    result["wall_ms"] = round((time.monotonic() - t_start) * 1000.0, 1)
+
+    if args.compact:
+        print(json.dumps(result, separators=(",", ":")))
+    else:
+        print(json.dumps(result, indent=2))
+
+    if result["responded"] < result["total"]:
+        return 2
+    if args.require_board and result["verdict"] != "BOARD":
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

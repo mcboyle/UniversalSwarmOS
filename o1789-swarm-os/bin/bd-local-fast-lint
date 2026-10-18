@@ -1,0 +1,162 @@
+#!/usr/bin/env python3
+"""bd-local-fast-lint: Fast local lint gate (ruff check + py_compile) with Argon-4 tier1 surgical fix advisor."""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+ENDPOINT = os.environ.get("BD_FAST_LINT_URL", "http://10.0.70.164:4010/v1/chat/completions")
+MODEL = os.environ.get("BD_FAST_LINT_MODEL", "tier1")
+THROUGHPUT_TAG = "77.6 tok/s"
+PROTOCOL_TAG = "Argon-4"
+
+
+def run_checks(files: list[str]) -> tuple[int, list[dict[str, str]]]:
+    issues: list[dict[str, str]] = []
+    ruff_bin = shutil.which("ruff") or "/home/mboyle/.local/bin/ruff"
+
+    for f in files:
+        p = Path(f)
+        if not p.exists() or p.suffix != ".py":
+            continue
+        # 1. python3 -m py_compile
+        cp = subprocess.run(
+            [sys.executable, "-m", "py_compile", str(p)],
+            capture_output=True,
+            text=True,
+        )
+        if cp.returncode != 0:
+            issues.append({
+                "file": str(p),
+                "tool": "py_compile",
+                "diagnostics": (cp.stderr or cp.stdout).strip(),
+            })
+
+        # 2. ruff check
+        if Path(ruff_bin).exists() or shutil.which("ruff"):
+            rc = subprocess.run(
+                [ruff_bin, "check", "--quiet", str(p)],
+                capture_output=True,
+                text=True,
+            )
+            if rc.returncode != 0:
+                issues.append({
+                    "file": str(p),
+                    "tool": "ruff",
+                    "diagnostics": (rc.stdout or rc.stderr).strip(),
+                })
+
+    return (1 if issues else 0), issues
+
+
+def query_tier1_fix(file_path: str, diagnostics: str, apply_fix: bool = False) -> dict[str, str]:
+    try:
+        content = Path(file_path).read_text(encoding="utf-8", errors="replace")
+    except Exception as exc:
+        return {"status": "read_error", "fix": str(exc)}
+
+    prompt = (
+        f"[{PROTOCOL_TAG} SURGICAL FIX | model={MODEL} | rate={THROUGHPUT_TAG}]\n"
+        f"Return ONLY the minimal corrected Python code (no prose, no markdown fences) "
+        f"to fix these diagnostics in {file_path}:\n"
+        f"DIAGNOSTICS:\n{diagnostics}\n\n"
+        f"SOURCE:\n{content}\n"
+    )
+    payload = json.dumps({
+        "model": MODEL,
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are an Argon-4 surgical code fixer. Output only valid Python code with minimal diff.",
+            },
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": 0.0,
+        "max_tokens": 512,
+    }).encode("utf-8")
+
+    req = urllib.request.Request(
+        ENDPOINT,
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {os.environ.get('LITELLM_API_KEY', 'sk-local')}",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=4.5) as resp:
+            body = json.loads(resp.read().decode("utf-8", errors="replace"))
+            suggestion = (
+                body.get("choices", [{}])[0]
+                .get("message", {})
+                .get("content", "")
+                .strip()
+            )
+            if suggestion.startswith("```"):
+                lines = [ln for ln in suggestion.splitlines() if not ln.strip().startswith("```")]
+                suggestion = "\n".join(lines).strip()
+            if apply_fix and suggestion:
+                Path(file_path).write_text(suggestion + "\n", encoding="utf-8")
+            return {"status": "ok", "endpoint": ENDPOINT, "model": MODEL, "fix": suggestion}
+    except Exception as exc:
+        return {"status": "fallback", "endpoint": ENDPOINT, "model": MODEL, "fix": f"tier1_unreachable: {exc}"}
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Fast lint (ruff check + py_compile) with Argon-4 tier1 surgical fix.")
+    parser.add_argument("files", nargs="*", help="Target Python files to lint")
+    parser.add_argument("--apply", action="store_true", help="Apply surgical fix returned by tier1")
+    parser.add_argument("--advisory", action="store_true", help="Exit 0 even if lint issues were found after querying tier1")
+    parser.add_argument("--json", action="store_true", help="Emit compact JSON report")
+    args = parser.parse_args()
+
+    files = args.files or [__file__]
+    rc, issues = run_checks(files)
+
+    fixes: list[dict[str, str]] = []
+    if issues:
+        for item in issues:
+            fix_res = query_tier1_fix(item["file"], item["diagnostics"], apply_fix=args.apply)
+            fixes.append({
+                "file": item["file"],
+                "tool": item["tool"],
+                "diagnostics": item["diagnostics"],
+                "argon4_tier1": fix_res,
+            })
+        if args.apply:
+            rc, issues = run_checks(files)
+
+    report = {
+        "protocol": PROTOCOL_TAG,
+        "endpoint": ENDPOINT,
+        "model": MODEL,
+        "throughput": THROUGHPUT_TAG,
+        "checked_files": len(files),
+        "rc": 0 if args.advisory else rc,
+        "issues_found": len(fixes),
+        "results": fixes,
+    }
+
+    if args.json:
+        print(json.dumps(report))
+    else:
+        if not fixes:
+            print(f"PASS bd-local-fast-lint ({PROTOCOL_TAG} {MODEL} {THROUGHPUT_TAG}): {len(files)} file(s) clean")
+        else:
+            for fx in fixes:
+                st = fx["argon4_tier1"]["status"]
+                print(f"ISSUE {fx['file']} [{fx['tool']}] -> {PROTOCOL_TAG} {MODEL} ({st}): {fx['diagnostics'].splitlines()[0] if fx['diagnostics'] else 'error'}")
+
+    return 0 if args.advisory else rc
+
+
+if __name__ == "__main__":
+    sys.exit(main())

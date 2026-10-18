@@ -1,0 +1,401 @@
+#!/usr/bin/env python3
+"""bd-build-farm: Distributed ccache / devpi / apt-cacher-ng Build Farm Manager.
+
+Manages ccache (max_size = 20.0G, compression = true), local devpi
+(http://10.0.70.164:3141), and apt-cacher-ng (http://10.0.70.164:3142) across
+the Boylenet build farm nodes:
+  - 10.0.70.164 (test5 controller)
+  - 10.0.70.82  (test3big 64-core build powerhouse)
+  - 10.0.70.72  (Tier 1 Pool Alpha / compute node)
+  - 10.0.70.83  (compute node)
+
+Supports:
+  - bd-build-farm --configure
+  - bd-build-farm --status [--json]
+  - bd-build-farm --compile-remote <node> <src-dir> [--cmd <build-cmd>]
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import shlex
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+from typing import Any
+
+BUILD_NODES: list[dict[str, Any]] = [
+    {"ip": "10.0.70.164", "name": "test5-controller", "local": True},
+    {"ip": "10.0.70.82", "name": "test3big-64core", "local": False},
+    {"ip": "10.0.70.72", "name": "node-72", "local": False},
+    {"ip": "10.0.70.83", "name": "node-83", "local": False},
+]
+
+DEVPI_URL = "http://10.0.70.164:3141"
+DEVPI_SIMPLE_URL = "http://10.0.70.164:3141/root/pypi/+simple/"
+APT_CACHER_URL = "http://10.0.70.164:3142"
+STATUS_JSON_PATH = Path("/var/tmp/bd-build-farm-status.json")
+
+SSH_BASE_ARGS = [
+    "ssh",
+    "-o",
+    "ControlMaster=no",
+    "-o",
+    "ControlPath=none",
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "ConnectTimeout=10",
+]
+
+
+def run_node_cmd(ip: str, cmd: str, timeout: float = 60.0) -> tuple[int, str, str]:
+    """Run a shell command locally on .164 or via SSH with mandatory ControlMaster=no flags."""
+    if ip in ("10.0.70.164", "127.0.0.1", "localhost", ".164"):
+        proc = subprocess.run(
+            ["bash", "-c", cmd],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        return proc.returncode, proc.stdout, proc.stderr
+
+    target_ip = ip if not ip.startswith(".") else f"10.0.70{ip}"
+    proc = subprocess.run(
+        [*SSH_BASE_ARGS, target_ip, cmd],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
+    return proc.returncode, proc.stdout, proc.stderr
+
+
+def configure_nodes() -> list[dict[str, Any]]:
+    """Install/configure ccache (20.0G, compression=true) and pip/uv devpi config on all build nodes."""
+    setup_script = r"""
+set -eo pipefail
+if ! command -v ccache >/dev/null 2>&1; then
+    sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+    sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ccache build-essential
+fi
+mkdir -p "$HOME/.config/ccache" "$HOME/.ccache" "$HOME/.config/pip" "$HOME/.config/uv"
+cat > "$HOME/.config/ccache/ccache.conf" <<'EOF'
+max_size = 20.0G
+compression = true
+compression_level = 6
+hash_dir = false
+sloppiness = file_macro,locale,time_macros
+EOF
+cp "$HOME/.config/ccache/ccache.conf" "$HOME/.ccache/ccache.conf"
+ccache --set-config=max_size=20.0G
+ccache --set-config=compression=true
+
+cat > "$HOME/.config/pip/pip.conf" <<'EOF'
+[global]
+index-url = http://10.0.70.164:3141/root/pypi/+simple/
+trusted-host = 10.0.70.164
+EOF
+
+cat > "$HOME/.config/uv/uv.toml" <<'EOF'
+index-url = "http://10.0.70.164:3141/root/pypi/+simple/"
+allow-insecure-host = ["10.0.70.164"]
+EOF
+
+echo "CONFIGURED_OK $(hostname) $(ccache --version | head -n 1)"
+"""
+    results = []
+    for node in BUILD_NODES:
+        ip = node["ip"]
+        rc, out, err = run_node_cmd(ip, setup_script, timeout=90.0)
+        results.append(
+            {
+                "ip": ip,
+                "name": node["name"],
+                "status": "OK" if rc == 0 else "ERROR",
+                "output": out.strip(),
+                "error": err.strip() if rc != 0 else "",
+            }
+        )
+    return results
+
+
+def parse_ccache_stats(raw_text: str) -> dict[str, Any]:
+    """Parse both human-readable `ccache -s` and `ccache --print-stats` output."""
+    stats: dict[str, Any] = {
+        "hit_rate_pct": 0.0,
+        "hits": 0,
+        "misses": 0,
+        "cache_size": "0 B",
+        "max_cache_size": "20.0 GB",
+        "compression": True,
+    }
+    for line in raw_text.splitlines():
+        s = line.strip()
+        # Modern ccache -s format:
+        # Hits:               12 /  14 (85.71 %)
+        m_hits = re.match(r"^Hits:\s+(\d+)\s*/\s*(\d+)\s*\(([\d.]+)\s*%\)", s)
+        if m_hits:
+            stats["hits"] = int(m_hits.group(1))
+            total = int(m_hits.group(2))
+            stats["misses"] = max(0, total - stats["hits"])
+            stats["hit_rate_pct"] = float(m_hits.group(3))
+        m_miss = re.match(r"^Misses:\s+(\d+)", s)
+        if m_miss:
+            stats["misses"] = int(m_miss.group(1))
+        m_size = re.match(r"^Cache size \(GB\):\s*([\d.]+)\s*/\s*([\d.]+)\s*\(([\d.]+)\s*%\)", s)
+        if m_size:
+            stats["cache_size"] = f"{m_size.group(1)} GB"
+            stats["max_cache_size"] = f"{m_size.group(2)} GB"
+        # Legacy ccache -s format:
+        if s.lower().startswith("cache size"):
+            parts = s.split(":", 1)
+            if len(parts) == 2 and "GB):" not in s:
+                stats["cache_size"] = parts[1].strip()
+        if s.lower().startswith("max cache size"):
+            parts = s.split(":", 1)
+            if len(parts) == 2:
+                stats["max_cache_size"] = parts[1].strip()
+    return stats
+
+
+def parse_tab_stats(tab_text: str, base_stats: dict[str, Any]) -> dict[str, Any]:
+    """Supplement with exact machine-readable counters from `ccache --print-stats`."""
+    kv: dict[str, int] = {}
+    for line in tab_text.splitlines():
+        parts = line.strip().split("\t")
+        if len(parts) == 2 and parts[1].isdigit():
+            kv[parts[0]] = int(parts[1])
+    if kv:
+        hits = kv.get("direct_cache_hit", 0) + kv.get("preprocessed_cache_hit", 0)
+        misses = kv.get("cache_miss", 0)
+        total = hits + misses
+        base_stats["hits"] = hits
+        base_stats["misses"] = misses
+        base_stats["hit_rate_pct"] = round((hits / total) * 100.0, 2) if total > 0 else 0.0
+        bytes_in_cache = kv.get("cache_size_kibibyte", 0) * 1024
+        max_bytes = kv.get("max_cache_size_kibibyte", 20 * 1024 * 1024) * 1024
+        base_stats["files_in_cache"] = kv.get("files_in_cache", 0)
+        base_stats["bytes_in_cache"] = bytes_in_cache
+        if bytes_in_cache >= 1024 * 1024:
+            base_stats["cache_size"] = f"{bytes_in_cache / (1024**2):.2f} MB"
+        else:
+            base_stats["cache_size"] = f"{kv.get('cache_size_kibibyte', 0)} KB ({kv.get('files_in_cache', 0)} files)"
+        base_stats["max_bytes_in_cache"] = max_bytes
+        base_stats["max_cache_size"] = "20.0 GB"
+    return base_stats
+
+
+def check_cache_endpoints() -> dict[str, Any]:
+    """Verify local devpi (3141) and apt-cacher-ng (3142) services on .164."""
+    devpi_info: dict[str, Any] = {"url": DEVPI_SIMPLE_URL, "status": "DOWN"}
+    try:
+        req = urllib.request.Request(DEVPI_URL, method="HEAD")
+        with urllib.request.urlopen(req, timeout=4.0) as resp:
+            devpi_info["status"] = "OK" if resp.status == 200 else f"HTTP_{resp.status}"
+            devpi_info["version"] = resp.headers.get("X-Devpi-Server-Version", "unknown")
+            devpi_info["serial"] = resp.headers.get("X-Devpi-Serial", "unknown")
+    except Exception as e:
+        devpi_info["error"] = str(e)
+
+    apt_info: dict[str, Any] = {"url": f"{APT_CACHER_URL}/acng-report.html", "status": "DOWN"}
+    try:
+        req = urllib.request.Request(f"{APT_CACHER_URL}/acng-report.html", method="GET")
+        with urllib.request.urlopen(req, timeout=4.0) as resp:
+            apt_info["status"] = "OK" if resp.status in (200, 406) else f"HTTP_{resp.status}"
+    except urllib.error.HTTPError as e:
+        if e.code == 406:
+            apt_info["status"] = "OK"
+        else:
+            apt_info["error"] = f"HTTP {e.code}"
+    except Exception as e:
+        apt_info["error"] = str(e)
+
+    return {"devpi": devpi_info, "apt_cacher_ng": apt_info}
+
+
+def collect_status() -> dict[str, Any]:
+    """Gather ccache -s, ccache config, and pip/uv devpi config across .164, .82, .72, .83."""
+    probe_cmd = r"""
+set -e
+echo "===CCACHE_S==="
+ccache -s 2>&1 || true
+echo "===CCACHE_TAB==="
+ccache --print-stats 2>/dev/null || true
+echo "===CCACHE_CONF==="
+ccache -p 2>/dev/null | grep -E 'max_size|compression' || cat "$HOME/.config/ccache/ccache.conf" 2>/dev/null || true
+echo "===PIP_CONF==="
+cat "$HOME/.config/pip/pip.conf" 2>/dev/null || true
+echo "===UV_CONF==="
+cat "$HOME/.config/uv/uv.toml" 2>/dev/null || true
+echo "===CORES==="
+nproc
+"""
+    nodes_report = []
+    for node in BUILD_NODES:
+        ip = node["ip"]
+        rc, out, err = run_node_cmd(ip, probe_cmd, timeout=20.0)
+        sections: dict[str, str] = {}
+        current = ""
+        for line in out.splitlines():
+            if line.startswith("===") and line.endswith("==="):
+                current = line.strip("=")
+                sections[current] = ""
+            elif current:
+                sections[current] += line + "\n"
+
+        ccache_s = sections.get("CCACHE_S", "").strip()
+        ccache_tab = sections.get("CCACHE_TAB", "").strip()
+        ccache_conf = sections.get("CCACHE_CONF", "").strip()
+        pip_conf = sections.get("PIP_CONF", "").strip()
+        uv_conf = sections.get("UV_CONF", "").strip()
+        cores = int(sections.get("CORES", "0").strip() or "0")
+
+        stats = parse_ccache_stats(ccache_s)
+        stats = parse_tab_stats(ccache_tab, stats)
+
+        nodes_report.append(
+            {
+                "ip": ip,
+                "name": node["name"],
+                "status": "OK" if rc == 0 else "ERROR",
+                "cores": cores,
+                "ccache_stats": stats,
+                "ccache_config": ccache_conf,
+                "pip_devpi_configured": "10.0.70.164:3141" in pip_conf,
+                "uv_devpi_configured": "10.0.70.164:3141" in uv_conf,
+                "raw_ccache_s": ccache_s,
+                "error": err.strip() if rc != 0 else "",
+            }
+        )
+
+    services = check_cache_endpoints()
+    report = {
+        "written_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "services": services,
+        "nodes": nodes_report,
+    }
+    STATUS_JSON_PATH.parent.mkdir(parents=True, exist_ok=True)
+    STATUS_JSON_PATH.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    return report
+
+
+def compile_remote(node_arg: str, src_dir: str, build_cmd: str | None = None) -> int:
+    """Sync source directory to target node and execute a ccache-accelerated build."""
+    target_ip = node_arg if not node_arg.startswith(".") else f"10.0.70{node_arg}"
+    src_path = Path(src_dir).resolve()
+    if not src_path.exists():
+        print(f"ERROR: source path does not exist: {src_path}", file=sys.stderr)
+        return 1
+
+    remote_work = f"/var/tmp/bd-build-farm-work/{src_path.name}"
+    ssh_transport = "ssh -o ControlMaster=no -o ControlPath=none -o BatchMode=yes -o ConnectTimeout=10"
+
+    if target_ip not in ("10.0.70.164", "127.0.0.1", "localhost"):
+        run_node_cmd(target_ip, f"mkdir -p {shlex.quote(remote_work)}")
+        rsync_cmd = [
+            "rsync",
+            "-az",
+            "--delete",
+            "-e",
+            ssh_transport,
+            f"{src_path}/",
+            f"{target_ip}:{remote_work}/",
+        ]
+        subprocess.run(rsync_cmd, check=True, timeout=120.0)
+        work_dir = remote_work
+    else:
+        work_dir = str(src_path)
+
+    if not build_cmd:
+        build_cmd = (
+            "if [ -f Makefile ] || [ -f makefile ]; then "
+            "CC='ccache gcc' CXX='ccache g++' make -j$(nproc); "
+            "elif [ -f CMakeLists.txt ]; then "
+            "cmake -B build -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache && cmake --build build -j$(nproc); "
+            "else "
+            "for f in *.c; do [ -f \"$f\" ] && ccache gcc -O2 -c \"$f\" -o \"${f%.c}.o\"; done; "
+            "fi"
+        )
+
+    remote_exec = (
+        f"cd {shlex.quote(work_dir)} && "
+        f"export PATH=\"/usr/lib/ccache:$PATH\" "
+        f"CC=\"ccache gcc\" CXX=\"ccache g++\" "
+        f"PIP_INDEX_URL=\"{DEVPI_SIMPLE_URL}\" "
+        f"PIP_TRUSTED_HOST=\"10.0.70.164\" "
+        f"UV_INDEX_URL=\"{DEVPI_SIMPLE_URL}\"; "
+        f"{build_cmd}"
+    )
+
+    t0 = time.perf_counter()
+    rc, out, err = run_node_cmd(target_ip, remote_exec, timeout=300.0)
+    elapsed_ms = round((time.perf_counter() - t0) * 1000.0, 2)
+    print(f"bd-build-farm --compile-remote {target_ip} {src_path}: rc={rc} elapsed={elapsed_ms}ms")
+    if out.strip():
+        print(out.strip())
+    if err.strip() and rc != 0:
+        print(err.strip(), file=sys.stderr)
+    return rc
+
+
+def print_status_table(report: dict[str, Any]) -> None:
+    svcs = report["services"]
+    devpi = svcs["devpi"]
+    acng = svcs["apt_cacher_ng"]
+    print("================================================================================")
+    print("BOYLENET DISTRIBUTED BUILD FARM STATUS (ccache + devpi + apt-cacher-ng)")
+    print(f"Timestamp:      {report['written_at']}")
+    print(
+        f"devpi:          {devpi['status']} ({devpi['url']}) "
+        f"[ver={devpi.get('version', 'n/a')}, serial={devpi.get('serial', 'n/a')}]"
+    )
+    print(f"apt-cacher-ng:  {acng['status']} ({acng['url']})")
+    print("--------------------------------------------------------------------------------")
+    print(f"{'NODE IP':<14} {'NAME':<18} {'CORES':<6} {'HITS/MISS':<12} {'HIT RATE':<10} {'CACHE SIZE':<20} {'DEVPI'}")
+    print("--------------------------------------------------------------------------------")
+    for n in report["nodes"]:
+        st = n["ccache_stats"]
+        hm = f"{st['hits']}/{st['misses']}"
+        hr = f"{st['hit_rate_pct']:.1f}%"
+        cs = f"{st['cache_size']} / {st['max_cache_size']}"
+        devpi_ok = "pip+uv OK" if (n["pip_devpi_configured"] and n["uv_devpi_configured"]) else "MISSING"
+        print(f"{n['ip']:<14} {n['name']:<18} {n['cores']:<6} {hm:<12} {hr:<10} {cs:<20} {devpi_ok}")
+    print("================================================================================")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Boylenet Distributed Build Farm Manager")
+    parser.add_argument("--configure", action="store_true", help="Configure ccache (20G, compression=true) and devpi across all nodes")
+    parser.add_argument("--status", action="store_true", help="Show ccache hit rates, cache sizes, and devpi/apt-cacher-ng status")
+    parser.add_argument("--json", action="store_true", help="Output status in JSON format")
+    parser.add_argument("--compile-remote", nargs=2, metavar=("NODE", "SRC_DIR"), help="Compile <src-dir> remotely on <node> using ccache")
+    parser.add_argument("--cmd", default=None, help="Custom build command for --compile-remote")
+    args = parser.parse_args()
+
+    if args.configure:
+        res = configure_nodes()
+        for r in res:
+            print(f"[{r['ip']}] {r['status']}: {r['output']} {r['error']}".strip())
+        if not (args.status or args.compile_remote):
+            return 0 if all(r["status"] == "OK" for r in res) else 1
+
+    if args.compile_remote:
+        node_arg, src_dir = args.compile_remote
+        return compile_remote(node_arg, src_dir, build_cmd=args.cmd)
+
+    # Default or --status
+    report = collect_status()
+    if args.json:
+        print(json.dumps(report, indent=2))
+    else:
+        print_status_table(report)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

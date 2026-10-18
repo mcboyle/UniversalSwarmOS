@@ -1,0 +1,15 @@
+[Unit]
+Description=BulkDownloader VNC export of :99
+After=bd-xvfb.service
+Requires=bd-xvfb.service
+
+[Service]
+Type=simple
+User=mboyle
+Environment=DISPLAY=:99
+ExecStart=/usr/bin/x11vnc -display :99 -rfbauth /home/mboyle/.bd_vnc_passwd -localhost -forever -shared -rfbport 5900 -quiet
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

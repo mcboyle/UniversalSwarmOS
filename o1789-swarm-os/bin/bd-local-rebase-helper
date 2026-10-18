@@ -1,0 +1,304 @@
+#!/usr/bin/env python3
+"""bd-local-rebase-helper: Read-only batch overlap analysis + in-train stacking order suggestions via tier1 LLM."""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Dict, List, Set
+
+DEFAULT_ENDPOINT = os.environ.get(
+    "BD_LOCAL_LLM_ENDPOINT", "http://10.0.70.164:4010/v1/chat/completions"
+)
+DEFAULT_MODEL = os.environ.get("BD_LOCAL_LLM_MODEL", "tier1")
+
+
+def parse_patch_files(patch_path: Path) -> List[str]:
+    files: Set[str] = set()
+    try:
+        with patch_path.open("r", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if line.startswith("diff --git "):
+                    parts = line.strip().split()
+                    if len(parts) >= 4:
+                        b_path = parts[3]
+                        if b_path.startswith("b/"):
+                            b_path = b_path[2:]
+                        files.add(b_path)
+                elif line.startswith("+++ b/"):
+                    files.add(line[6:].strip())
+    except OSError:
+        pass
+    return sorted(files)
+
+
+def git_changed_files(repo_path: Path, base_ref: str = "HEAD~1") -> List[str]:
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(repo_path), "diff", "--name-only", base_ref],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        if proc.returncode == 0 and proc.stdout.strip():
+            return sorted(
+                {line.strip() for line in proc.stdout.splitlines() if line.strip()}
+            )
+    except Exception:
+        pass
+    return []
+
+
+def collect_cut_files(targets: List[str], base_ref: str, limit: int = 12) -> Dict[str, List[str]]:
+    cut_map: Dict[str, List[str]] = {}
+
+    if not targets:
+        cuts_root = Path("/home/mboyle/bd-cuts")
+        if cuts_root.is_dir():
+            candidates = sorted(
+                [p for p in cuts_root.iterdir() if p.is_dir()],
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            for cand in candidates:
+                patch_file = cand / "PATCH.diff"
+                if patch_file.is_file():
+                    parsed = parse_patch_files(patch_file)
+                    if parsed:
+                        cut_map[cand.name] = parsed
+                if len(cut_map) >= limit:
+                    break
+
+    for raw in targets:
+        if "=" in raw and not Path(raw).exists():
+            name, csv_files = raw.split("=", 1)
+            cut_map[name.strip()] = sorted(
+                {f.strip() for f in csv_files.split(",") if f.strip()}
+            )
+            continue
+        p = Path(raw)
+        if p.is_file():
+            cut_map[p.parent.name if p.name == "PATCH.diff" else p.stem] = parse_patch_files(p)
+        elif p.is_dir():
+            patch_file = p / "PATCH.diff"
+            if patch_file.is_file():
+                files = parse_patch_files(patch_file)
+            else:
+                files = git_changed_files(p, base_ref)
+            cut_map[p.name] = files
+
+    if not cut_map:
+        cut_map = {
+            "cut-alpha": ["bulkdownloader/core/config.py", "tests/test_config.py"],
+            "cut-beta": ["bulkdownloader/core/config.py", "bulkdownloader/cli/main.py"],
+            "cut-gamma": ["bulkdownloader/utils/net.py"],
+        }
+
+    return cut_map
+
+
+def compute_overlap_and_stacking(cut_map: Dict[str, List[str]]) -> Dict[str, object]:
+    cuts = sorted(cut_map.keys())
+    file_sets: Dict[str, Set[str]] = {c: set(cut_map[c]) for c in cuts}
+
+    overlaps: List[Dict[str, object]] = []
+    adj: Dict[str, Set[str]] = {c: set() for c in cuts}
+
+    for i, c1 in enumerate(cuts):
+        for c2 in cuts[i + 1 :]:
+            shared = sorted(file_sets[c1] & file_sets[c2])
+            if shared:
+                overlaps.append(
+                    {
+                        "cut_a": c1,
+                        "cut_b": c2,
+                        "shared_count": len(shared),
+                        "shared_files": shared,
+                    }
+                )
+                adj[c1].add(c2)
+                adj[c2].add(c1)
+
+    disjoint_cuts = sorted([c for c in cuts if not adj[c]], key=lambda c: (len(file_sets[c]), c))
+    conflicting_cuts = sorted(
+        [c for c in cuts if adj[c]],
+        key=lambda c: (len(adj[c]), len(file_sets[c]), c),
+    )
+    deterministic_stack_order = disjoint_cuts + conflicting_cuts
+
+    clusters: List[List[str]] = []
+    visited: Set[str] = set()
+    for c in conflicting_cuts:
+        if c in visited:
+            continue
+        comp: List[str] = []
+        queue = [c]
+        visited.add(c)
+        while queue:
+            cur = queue.pop(0)
+            comp.append(cur)
+            for nb in sorted(adj[cur]):
+                if nb not in visited:
+                    visited.add(nb)
+                    queue.append(nb)
+        clusters.append(sorted(comp, key=lambda x: (len(adj[x]), len(file_sets[x]), x)))
+
+    return {
+        "cut_count": len(cuts),
+        "files_by_cut": {c: sorted(file_sets[c]) for c in cuts},
+        "overlap_pair_count": len(overlaps),
+        "overlaps": overlaps,
+        "disjoint_cuts": disjoint_cuts,
+        "conflict_clusters": clusters,
+        "deterministic_stack_order": deterministic_stack_order,
+    }
+
+
+def query_tier1_stacking(
+    analysis: Dict[str, object], endpoint: str, model: str, timeout: float = 8.0
+) -> Dict[str, object]:
+    compact_payload = {
+        "cut_count": analysis["cut_count"],
+        "overlap_pair_count": analysis["overlap_pair_count"],
+        "overlaps": analysis["overlaps"],
+        "disjoint_cuts": analysis["disjoint_cuts"],
+        "conflict_clusters": analysis["conflict_clusters"],
+        "deterministic_stack_order": analysis["deterministic_stack_order"],
+    }
+    prompt = (
+        "You are rebase-orchestrator. Analyze this read-only batch overlap summary "
+        "and return a concise JSON object with keys: "
+        '{"stack_order": [...], "strategy": "<=120 chars", "risk": "LOW|MEDIUM|HIGH"}. '
+        f"Input: {json.dumps(compact_payload, separators=(',', ':'))}"
+    )
+    req_body = json.dumps(
+        {
+            "model": model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "Respond only with compact valid JSON for in-train git rebase stacking.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.0,
+            "max_tokens": 200,
+        }
+    ).encode("utf-8")
+
+    req = urllib.request.Request(
+        endpoint,
+        data=req_body,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY', 'sk-local-tier1')}",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+            parsed = json.loads(raw)
+            content = (
+                parsed.get("choices", [{}])[0]
+                .get("message", {})
+                .get("content", "")
+                .strip()
+            )
+            return {
+                "status": "OK",
+                "endpoint": endpoint,
+                "model": parsed.get("model", model),
+                "suggestion": content,
+            }
+    except Exception as exc:
+        return {
+            "status": "FALLBACK_DETERMINISTIC",
+            "endpoint": endpoint,
+            "model": model,
+            "error": str(exc),
+            "suggestion": json.dumps(
+                {
+                    "stack_order": analysis["deterministic_stack_order"],
+                    "strategy": "Land disjoint cuts first; stack overlapping clusters smallest-blast-radius first.",
+                    "risk": "LOW" if analysis["overlap_pair_count"] == 0 else "MEDIUM",
+                }
+            ),
+        }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Read-only batch overlap analysis + in-train stacking order suggestions via tier1."
+    )
+    parser.add_argument(
+        "targets",
+        nargs="*",
+        help="Cut directories, PATCH.diff files, or name=file1,file2 specs (default: scan /home/mboyle/bd-cuts)",
+    )
+    parser.add_argument("--base", default="HEAD~1", help="Base git ref for directory diffs")
+    parser.add_argument("--limit", type=int, default=8, help="Max cuts when auto-scanning")
+    parser.add_argument("--endpoint", default=DEFAULT_ENDPOINT, help="LiteLLM chat completions URL")
+    parser.add_argument("--model", default=DEFAULT_MODEL, help="Model tier name (default: tier1)")
+    parser.add_argument("--no-llm", action="store_true", help="Skip LLM call and use deterministic order only")
+    parser.add_argument("--json", action="store_true", help="Emit full JSON report")
+    parser.add_argument("--self-test", action="store_true", help="Run built-in overlap + tier1 live test")
+    args = parser.parse_args()
+
+    targets = args.targets
+    if args.self_test and not targets:
+        targets = [
+            "cut-101=src/router.py,tests/test_router.py",
+            "cut-102=src/router.py,src/worker.py",
+            "cut-103=docs/README.md",
+            "cut-104=src/worker.py,src/metrics.py",
+        ]
+
+    cut_map = collect_cut_files(targets, args.base, limit=args.limit)
+    analysis = compute_overlap_and_stacking(cut_map)
+
+    if args.no_llm:
+        llm_res = {
+            "status": "SKIPPED",
+            "endpoint": args.endpoint,
+            "model": args.model,
+            "suggestion": json.dumps({"stack_order": analysis["deterministic_stack_order"]}),
+        }
+    else:
+        llm_res = query_tier1_stacking(analysis, args.endpoint, args.model)
+
+    report = {
+        "written_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "mode": "READ_ONLY_BATCH_OVERLAP",
+        "analysis": analysis,
+        "llm_tier1": llm_res,
+    }
+
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        print(
+            f"REBASE-HELPER | cuts={analysis['cut_count']} "
+            f"overlaps={analysis['overlap_pair_count']} "
+            f"disjoint={len(analysis['disjoint_cuts'])} "
+            f"llm={llm_res['status']}"
+        )
+        print(f"STACK_ORDER: {' -> '.join(analysis['deterministic_stack_order'])}")
+        for ov in analysis["overlaps"]:
+            print(
+                f"OVERLAP: {ov['cut_a']} <-> {ov['cut_b']} "
+                f"({ov['shared_count']} files: {', '.join(ov['shared_files'][:5])})"
+            )
+        print(f"TIER1_SUGGESTION: {llm_res['suggestion']}")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,3 @@
+#!/bin/bash
+echo "# REPO MAP" > /tmp/REPO_MAP.md
+find /home/mboyle/BulkDownloader -name "*.py" -not -path "*/venv/*" -exec grep -H "^def \|^class " {} \; | sed 's/\/home\/mboyle\/BulkDownloader\///' >> /tmp/REPO_MAP.md

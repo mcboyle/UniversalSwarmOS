@@ -1,0 +1,289 @@
+#!/usr/bin/env python3
+"""
+bd-restore-paused-vms — O1789 Infrastructure Utility (Agent-55)
+Manages and inspects the 27 non-essential VMs temporarily powered off in Agent-20
+to reclaim 1,676 GiB DDR4 RAM across esxi01..04 for the 4 GPU VMs (1,730 GiB locked).
+"""
+import argparse
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+MANIFEST_PATH = Path(
+    "/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/temporarily_powered_off_vms.json"
+)
+STEP1_REPORT_PATH = Path(
+    "/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/agent20_step1_report.json"
+)
+STEP3_REPORT_PATH = Path(
+    "/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/agent20_step3_report.json"
+)
+
+# Physical ESXi host specifications and GPU VM locked RAM allocations (1,730 GiB total)
+HOST_SPECS = {
+    "esxi01.boylenet.themfboyles.com": {
+        "short": "esxi01",
+        "phys_ram_gib": 512.0,
+        "gpu_vm": "ai-ollama01",
+        "gpu_locked_gib": 440.0,
+        "essential_and_esxi_overhead_gib": 72.0,
+    },
+    "esxi02.boylenet.themfboyles.com": {
+        "short": "esxi02",
+        "phys_ram_gib": 512.0,
+        "gpu_vm": "ai-infer01",
+        "gpu_locked_gib": 410.0,
+        "essential_and_esxi_overhead_gib": 102.0,
+    },
+    "esxi03.boylenet.themfboyles.com": {
+        "short": "esxi03",
+        "phys_ram_gib": 512.0,
+        "gpu_vm": "ai-infer02",
+        "gpu_locked_gib": 440.0,
+        "essential_and_esxi_overhead_gib": 72.0,
+    },
+    "esxi04.boylenet.themfboyles.com": {
+        "short": "esxi04",
+        "phys_ram_gib": 512.0,
+        "gpu_vm": "wrk-test01",
+        "gpu_locked_gib": 440.0,
+        "essential_and_esxi_overhead_gib": 72.0,
+    },
+}
+TOTAL_GPU_LOCKED_GIB = 1730.0
+
+
+def load_manifest(path: Path) -> dict:
+    if not path.exists():
+        sys.stderr.write(f"ERROR: Manifest not found at {path}\n")
+        sys.exit(1)
+    with path.open("r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def cmd_list(data: dict) -> int:
+    vms = data.get("vms", [])
+    print(
+        f"O1789 Paused VMs Manifest ({len(vms)} VMs | Source: {MANIFEST_PATH})"
+    )
+    print(
+        f"Created: {data.get('created_at_utc', 'unknown')} | GPU VMs Locked RAM: {TOTAL_GPU_LOCKED_GIB:,.0f} GiB"
+    )
+    print("-" * 106)
+    header = (
+        f"{'#':>2}  {'VM Name':<28}  {'MOID':<10}  {'ESXi Host':<32}  "
+        f"{'RAM (GiB)':>9}  {'vCPUs':>5}  {'State':<10}"
+    )
+    print(header)
+    print("-" * 106)
+
+    total_ram_gib = 0.0
+    total_vcpus = 0
+    per_host = {}
+
+    for idx, vm in enumerate(vms, start=1):
+        name = vm.get("name", "unknown")
+        moid = vm.get("moid", "-")
+        host = vm.get("host", "unknown")
+        ram_gib = float(vm.get("memoryGiB", vm.get("memoryMB", 0) / 1024.0))
+        vcpus = int(vm.get("numCPU", 0))
+        state = vm.get("finalPowerState", "poweredOff")
+
+        total_ram_gib += ram_gib
+        total_vcpus += vcpus
+        per_host.setdefault(host, {"count": 0, "ram_gib": 0.0, "vcpus": 0})
+        per_host[host]["count"] += 1
+        per_host[host]["ram_gib"] += ram_gib
+        per_host[host]["vcpus"] += vcpus
+
+        print(
+            f"{idx:>2}  {name:<28}  {moid:<10}  {host:<32}  "
+            f"{ram_gib:>9.1f}  {vcpus:>5}  {state:<10}"
+        )
+
+    print("-" * 106)
+    print(
+        f"TOTAL: {len(vms)} VMs | {total_ram_gib:,.1f} GiB RAM ({int(total_ram_gib * 1024):,} MB) | {total_vcpus} vCPUs"
+    )
+    print("\nPer-Host Reclaimed Summary:")
+    for host in sorted(per_host.keys()):
+        hs = per_host[host]
+        spec = HOST_SPECS.get(host, {})
+        gpu_vm = spec.get("gpu_vm", "GPU-VM")
+        gpu_gib = spec.get("gpu_locked_gib", 0.0)
+        print(
+            f"  - {host:<32}: {hs['count']:>2} VMs paused | "
+            f"{hs['ram_gib']:>6.1f} GiB RAM reclaimed | {hs['vcpus']:>3} vCPUs | "
+            f"Active GPU VM: {gpu_vm} ({gpu_gib:.0f} GiB locked)"
+        )
+    return 0
+
+
+def cmd_status(data: dict) -> int:
+    vms = data.get("vms", [])
+    total_reclaimed_gib = sum(
+        float(v.get("memoryGiB", v.get("memoryMB", 0) / 1024.0)) for v in vms
+    )
+    total_vcpus = sum(int(v.get("numCPU", 0)) for v in vms)
+    print("=== O1789 Paused VMs & ESXi Host Memory Status ===")
+    print(f"Manifest File          : {MANIFEST_PATH}")
+    print(f"Paused Non-Essential VMs: {len(vms)} VMs ({total_reclaimed_gib:,.1f} GiB RAM, {total_vcpus} vCPUs)")
+    print(f"4 GPU VMs Locked RAM   : {TOTAL_GPU_LOCKED_GIB:,.1f} GiB (memoryReservationLockedToMax=true)")
+    print("Cluster Physical RAM   : 2,048.0 GiB across esxi01..04 (4 x 512 GiB DDR4)")
+    print("-" * 98)
+    print(
+        f"{'ESXi Host':<32}  {'Phys GiB':>8}  {'GPU VM (Locked)':<22}  "
+        f"{'Ess+OS GiB':>10}  {'Paused VMs':>10}  {'Paused GiB':>10}"
+    )
+    print("-" * 98)
+
+    by_host = {}
+    for vm in vms:
+        h = vm.get("host", "unknown")
+        by_host.setdefault(h, []).append(vm)
+
+    for host, spec in sorted(HOST_SPECS.items()):
+        hvms = by_host.get(host, [])
+        paused_gib = sum(float(v.get("memoryGiB", 0.0)) for v in hvms)
+        gpu_desc = f"{spec['gpu_vm']} ({spec['gpu_locked_gib']:.0f} GiB)"
+        print(
+            f"{host:<32}  {spec['phys_ram_gib']:>8.1f}  {gpu_desc:<22}  "
+            f"{spec['essential_and_esxi_overhead_gib']:>10.1f}  {len(hvms):>10}  {paused_gib:>10.1f}"
+        )
+    print("-" * 98)
+    print(
+        "STATUS: All 27 non-essential VMs remain recorded as poweredOff while 1,730 GiB RAM is locked to the 4 GPU VMs."
+    )
+    return 0
+
+
+def cmd_power_on(data: dict, vm_name: str, force: bool = False, dry_run: bool = False) -> int:
+    vms = data.get("vms", [])
+    matches = [v for v in vms if v.get("name") == vm_name or v.get("moid") == vm_name]
+    if not matches:
+        sys.stderr.write(
+            f"ERROR: VM '{vm_name}' not found in {MANIFEST_PATH} (expected one of the 27 paused VMs).\n"
+        )
+        return 1
+
+    vm = matches[0]
+    name = vm.get("name")
+    moid = vm.get("moid")
+    host = vm.get("host", "unknown")
+    ram_gib = float(vm.get("memoryGiB", vm.get("memoryMB", 0) / 1024.0))
+    vcpus = int(vm.get("numCPU", 0))
+
+    spec = HOST_SPECS.get(
+        host,
+        {
+            "short": host,
+            "phys_ram_gib": 512.0,
+            "gpu_vm": "GPU-VM",
+            "gpu_locked_gib": 440.0,
+            "essential_and_esxi_overhead_gib": 72.0,
+        },
+    )
+
+    phys_ram = spec["phys_ram_gib"]
+    gpu_locked = spec["gpu_locked_gib"]
+    overhead = spec["essential_and_esxi_overhead_gib"]
+    projected_used = gpu_locked + overhead + ram_gib
+    free_before = max(0.0, phys_ram - (gpu_locked + overhead))
+
+    if projected_used > phys_ram or TOTAL_GPU_LOCKED_GIB >= 1730.0:
+        print(
+            f"WARNING: SAFETY CHECK FAILED — Powering on '{name}' ({ram_gib:.1f} GiB RAM, {vcpus} vCPUs) "
+            f"on {host} would exceed ESXi host physical RAM while the 4 GPU VMs have "
+            f"{TOTAL_GPU_LOCKED_GIB:,.0f} GiB locked!"
+        )
+        print(
+            f"  Host Physical RAM       : {phys_ram:.1f} GiB ({host})"
+        )
+        print(
+            f"  Host Locked GPU VM      : {spec['gpu_vm']} = {gpu_locked:.1f} GiB locked (Cluster total: {TOTAL_GPU_LOCKED_GIB:,.0f} GiB locked)"
+        )
+        print(
+            f"  Essential VMs + ESXi OS : ~{overhead:.1f} GiB committed/reserved"
+        )
+        print(
+            f"  Requested VM RAM        : +{ram_gib:.1f} GiB ({name} / {moid})"
+        )
+        print(
+            f"  Projected Host Demand   : {projected_used:.1f} GiB > {phys_ram:.1f} GiB physical RAM (Headroom: {free_before:.1f} GiB)"
+        )
+        if not force:
+            print(
+                "ABORTED: Refusing to power on VM while 1,730 GiB RAM is locked by the 4 GPU VMs. "
+                "Reclaim/downsize GPU VM locked reservations first or pass --force to override."
+            )
+            return 0 if dry_run else 2
+
+    if dry_run:
+        print(f"DRY-RUN: Would execute: govc vm.power -on {name}")
+        return 0
+
+    print(f"Powering on VM '{name}' ({moid}) on {host} via govc...")
+    res = subprocess.run(["govc", "vm.power", "-on", name], capture_output=True, text=True)
+    if res.returncode != 0:
+        sys.stderr.write(f"ERROR running govc vm.power -on {name}: {res.stderr}\n")
+        return res.returncode
+    print(res.stdout.strip())
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        prog="bd-restore-paused-vms",
+        description="Inspect and safely restore the 27 non-essential VMs paused in O1789 Agent-20 (1,676 GiB RAM).",
+    )
+    parser.add_argument(
+        "--manifest",
+        type=Path,
+        default=MANIFEST_PATH,
+        help="Path to temporarily_powered_off_vms.json",
+    )
+    parser.add_argument(
+        "--list",
+        action="store_true",
+        help="Print table of all 27 paused VMs, their ESXi host, RAM GiB, and vCPUs",
+    )
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="Show cluster/host RAM status and paused VM summary",
+    )
+    parser.add_argument(
+        "--power-on",
+        metavar="VM_NAME",
+        help="Power on a specific paused VM (performs ESXi physical RAM safety check against 1,730 GiB GPU VM lock)",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Override ESXi host physical RAM safety check when using --power-on",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Run safety checks for --power-on without invoking govc and exit 0",
+    )
+
+    args = parser.parse_args()
+    if not (args.list or args.status or args.power_on):
+        parser.print_help()
+        return 0
+
+    data = load_manifest(args.manifest)
+
+    if args.list:
+        return cmd_list(data)
+    if args.status:
+        return cmd_status(data)
+    if args.power_on:
+        return cmd_power_on(data, args.power_on, force=args.force, dry_run=args.dry_run)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

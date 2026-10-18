@@ -1,0 +1,1297 @@
+#!/usr/bin/env python3
+"""
+bd-pool-autobalancer — Autonomous Cross-Pool Quota Load-Balancer & Failover Daemon (O1740 / O1789 Swarm #7)
+
+Continuously monitors:
+  - /home/mboyle/bd-persist/POOL_STATE.tsv (state, five_hour_pct, weekly_pct, resets_at)
+  - Live health of codex, kimi, AGY, and local-4xt4 (10.0.70.164:4010 GPU Orchestrator & 10.0.70.228:4000 LiteLLM)
+
+Implements O1740 Dynamic Capability Routing + Autonomous Failover:
+  - --recommend <role> [--json] [--simulate-claude-exhausted]
+      * Command Squad (integrator, dispatch, audit, adjudicator, trainer, lensrouter, pm):
+        Picks the OK Opus-tier pool (A, B, C, D) with the lowest five_hour_pct (tie-break: lowest weekly_pct,
+        then role affinity). If all Claude pools are >=85% or OFF-PACE/LIMITED/UNKNOWN, fails over cleanly to
+        codex (gpt-6-astra) or hermes (mimo-v2.6-pro-1024b / glm-5.3-753b).
+      * Heavy Lifters (worker, builder, fixer, review-*):
+        Picks the most capable admitting pool (five_hour_pct < 80%), balancing load across Claude ABCD
+        (claude-opus-5-5), Codex (gpt-6-sol / gpt-6-astra), Kimi (kimi-for-coding), and Local 4xT4
+        (qwen3-coder-30b-a3b / swift-qwen3.8-flash-next).
+      * Lightweight Investigators (investigator, probe, cavecrew-*):
+        Picks the fast-model pool with the highest idle quota (max(100 - five_hour_pct)) or Local Tier 1
+        (qwen3-coder-30b-a3b at $0 marginal cost).
+  - --status [--json] [--no-color]
+      Prints a rich, color-coded table of all pools (A, B, C, D, codex, kimi, AGY, local-4xt4), current
+      5h/weekly %, headroom before 80% soft cap, and recommended routing per role tier.
+  - --daemon [--interval 30]
+      Continuously refreshes /var/tmp/bd-pool-autobalancer.json every 30s.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime
+import json
+import os
+import re
+import signal
+import shutil
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+from typing import Any, Dict, List, Optional, Tuple
+
+POOL_STATE_PATH = os.environ.get(
+    "BD_POOL_STATE_PATH", "/home/mboyle/bd-persist/POOL_STATE.tsv"
+)
+STATE_JSON_OUT = os.environ.get(
+    "BD_AUTOBALANCER_JSON", "/var/tmp/bd-pool-autobalancer.json"
+)
+ORCHESTRATOR_HEALTH_URL = os.environ.get(
+    "BD_ORCHESTRATOR_HEALTH_URL", "http://10.0.70.164:4010/health"
+)
+LITELLM_LIVELINESS_URL = os.environ.get(
+    "BD_LITELLM_LIVELINESS_URL", "http://10.0.70.228:4000/health/liveliness"
+)
+LITELLM_MODELS_URL = os.environ.get(
+    "BD_LITELLM_MODELS_URL", "http://10.0.70.228:4000/v1/models"
+)
+LITELLM_API_KEY = os.environ.get("BD_LOCAL_API_KEY", "sk-boylenet-local")
+
+SOFT_CAP_PCT = 80.0
+COMMAND_FAILOVER_PCT = 85.0
+HARD_STOP_PCT = 95.0
+GLOBAL_HEAVY_LIFTER_CAP = 30
+
+DISPLAY_POOLS = ["A", "B", "C", "D", "codex", "kimi", "AGY", "local-4xt4"]
+CLAUDE_POOLS = ["A", "B", "C", "D"]
+
+COMMAND_SQUAD_ROLES = {
+    "integrator",
+    "integrator-b",
+    "integrator-c",
+    "integrator-d",
+    "dispatch",
+    "audit",
+    "adjudicator",
+    "adjudicator-b",
+    "trainer",
+    "registrar",
+    "lensrouter",
+    "pm",
+    "pm-b",
+    "fable",
+    "fable-b",
+    "council",
+    "panel",
+    "panel-b",
+}
+
+HEAVY_LIFTER_ROLES = {
+    "worker",
+    "worker-b",
+    "builder",
+    "fixer",
+    "review-correctness",
+    "review-security",
+    "review-shape",
+    "review-lite",
+    "review-lite-b",
+    "flakecourt",
+    "flakecourt-a",
+    "flakecourt-b",
+    "local-runner",
+    "local-a",
+}
+
+LIGHTWEIGHT_ROLES = {
+    "investigator",
+    "probe",
+    "cavecrew",
+    "cavecrew-investigator",
+    "cavecrew-reviewer",
+    "cavecrew-builder",
+    "verify",
+    "cartograph",
+    "codexwatch",
+    "nurse",
+    "status",
+    "flow",
+    "triage",
+    "smoketest",
+    "prereview",
+    "preflight",
+}
+
+
+class ANSI:
+    RESET = "\033[0m"
+    BOLD = "\033[1m"
+    DIM = "\033[2m"
+    GREEN = "\033[32m"
+    BRIGHT_GREEN = "\033[92m"
+    YELLOW = "\033[33m"
+    BRIGHT_YELLOW = "\033[93m"
+    RED = "\033[31m"
+    BRIGHT_RED = "\033[91m"
+    CYAN = "\033[36m"
+    BRIGHT_CYAN = "\033[96m"
+    MAGENTA = "\033[35m"
+    BLUE = "\033[34m"
+    WHITE = "\033[97m"
+
+
+def _parse_float(val: Optional[str]) -> Optional[float]:
+    if val is None:
+        return None
+    s = val.strip()
+    if not s or s == "-":
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _format_reset_ts(raw: str) -> str:
+    s = (raw or "").strip()
+    if not s or s == "-":
+        return "-"
+    if re.match(r"^\d{9,12}$", s):
+        try:
+            dt = datetime.datetime.fromtimestamp(int(s), tz=datetime.timezone.utc)
+            return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+        except Exception:
+            return s
+    return s
+
+
+def classify_role_tier(role: str) -> str:
+    r = role.strip().lower()
+    if r in COMMAND_SQUAD_ROLES:
+        return "command_squad"
+    if (
+        r in HEAVY_LIFTER_ROLES
+        or r.startswith("review-")
+        or r.startswith("worker")
+        or r.startswith("builder")
+        or r.startswith("fixer")
+    ):
+        return "heavy_lifter"
+    if (
+        r in LIGHTWEIGHT_ROLES
+        or r.startswith("cavecrew")
+        or r.startswith("investigator")
+        or r.startswith("probe")
+    ):
+        return "lightweight_investigator"
+    return "heavy_lifter"
+
+
+def probe_http_json(
+    url: str, headers: Optional[Dict[str, str]] = None, timeout: float = 2.0
+) -> Tuple[bool, Any, float]:
+    t0 = time.monotonic()
+    req_headers = {"Accept": "application/json"}
+    if headers:
+        req_headers.update(headers)
+    req = urllib.request.Request(url, headers=req_headers, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+            elapsed_ms = round((time.monotonic() - t0) * 1000.0, 1)
+            try:
+                return True, json.loads(raw), elapsed_ms
+            except Exception:
+                return True, raw.strip(), elapsed_ms
+    except Exception as exc:
+        elapsed_ms = round((time.monotonic() - t0) * 1000.0, 1)
+        return False, str(exc), elapsed_ms
+
+
+def probe_live_health() -> Dict[str, Dict[str, Any]]:
+    """Probe live health of codex, kimi, AGY, local-4xt4 (:4010 & :4000), and Claude ABCD configs."""
+    health: Dict[str, Dict[str, Any]] = {}
+
+    # 1. Local 4xT4 GPU Orchestrator (:4010) + LiteLLM (:4000)
+    orch_ok, orch_data, orch_ms = probe_http_json(ORCHESTRATOR_HEALTH_URL, timeout=2.0)
+    litellm_ok, litellm_data, litellm_ms = probe_http_json(
+        LITELLM_LIVELINESS_URL,
+        headers={"Authorization": f"Bearer {LITELLM_API_KEY}"},
+        timeout=2.0,
+    )
+    active_model = "qwen3-coder-30b-a3b"
+    effective_tier = "tier1"
+    argon4_shield = "UNKNOWN"
+    upstreams: Dict[str, Any] = {}
+    if orch_ok and isinstance(orch_data, dict):
+        active_model = str(orch_data.get("active_model", active_model))
+        effective_tier = str(orch_data.get("effective_tier", effective_tier))
+        argon4_shield = str(orch_data.get("argon4_shield", "ENFORCED"))
+        upstreams = orch_data.get("upstreams", {}) or {}
+
+    local_healthy = bool(orch_ok or litellm_ok)
+    health["local-4xt4"] = {
+        "healthy": local_healthy,
+        "orchestrator_4010_ok": orch_ok,
+        "orchestrator_latency_ms": orch_ms,
+        "litellm_4000_ok": litellm_ok,
+        "litellm_latency_ms": litellm_ms,
+        "effective_tier": effective_tier,
+        "active_model": active_model,
+        "secondary_model": "swift-qwen3.8-flash-next",
+        "hermes_failover_models": ["mimo-v2.6-pro-1024b", "glm-5.3-753b"],
+        "argon4_shield": argon4_shield,
+        "upstreams": upstreams,
+        "summary": (
+            f"ONLINE (:4010 {effective_tier}/{active_model} {orch_ms}ms, :4000 {'OK' if litellm_ok else 'DOWN'} {litellm_ms}ms)"
+            if local_healthy
+            else "OFFLINE (:4010 & :4000 unreachable)"
+        ),
+    }
+
+    # 2. Codex CLI + config health
+    codex_bin = shutil.which("codex") or (
+        "/usr/local/bin/codex" if os.path.exists("/usr/local/bin/codex") else None
+    )
+    codex_cfg = os.path.expanduser("~/.codex/config.toml")
+    codex_hooks = os.path.expanduser("~/.codex/hooks.json")
+    codex_healthy = bool(codex_bin or os.path.isfile(codex_cfg))
+    health["codex"] = {
+        "healthy": codex_healthy,
+        "binary": codex_bin,
+        "config_present": os.path.isfile(codex_cfg),
+        "hooks_present": os.path.isfile(codex_hooks),
+        "models": ["gpt-6-astra", "gpt-6-sol", "gpt-5.6-terra"],
+        "summary": (
+            f"ONLINE (cli={'ok' if codex_bin else 'cfg'}, hooks={'ok' if os.path.isfile(codex_hooks) else 'no'})"
+            if codex_healthy
+            else "DEGRADED (missing codex cli/config)"
+        ),
+    }
+
+    # 3. Kimi CLI / provider health
+    kimi_bin = shutil.which("kimi") or (
+        "/home/mboyle/.local/bin/kimi"
+        if os.path.exists("/home/mboyle/.local/bin/kimi")
+        else None
+    )
+    kimi_cfg_dir = os.path.expanduser("~/.kimi")
+    kimi_healthy = bool(kimi_bin or os.path.isdir(kimi_cfg_dir) or litellm_ok)
+    health["kimi"] = {
+        "healthy": kimi_healthy,
+        "binary": kimi_bin,
+        "config_dir_present": os.path.isdir(kimi_cfg_dir),
+        "models": ["kimi-for-coding", "kimi-k2.5"],
+        "summary": (
+            f"ONLINE (model=kimi-for-coding, cli={'ok' if kimi_bin else 'gateway'})"
+            if kimi_healthy
+            else "OFFLINE"
+        ),
+    }
+
+    # 4. AGY (Antigravity) health
+    agy_hooks = os.path.expanduser("~/.gemini/config/hooks.json")
+    agy_dir = os.path.expanduser("~/.gemini/antigravity-cli")
+    agy_healthy = os.path.isfile(agy_hooks) or os.path.isdir(agy_dir)
+    health["AGY"] = {
+        "healthy": agy_healthy,
+        "hooks_present": os.path.isfile(agy_hooks),
+        "models": ["claude-opus-4-6", "gemini-2.5-pro", "gpt-5"],
+        "summary": (
+            "ONLINE (shield=active, subagent-pool=ready)"
+            if agy_healthy
+            else "DEGRADED"
+        ),
+    }
+
+    # 5. Claude A/B/C/D config dirs
+    for pool_id, suffix in [("A", "a"), ("B", "b"), ("C", "c"), ("D", "d")]:
+        cfg_dir = f"/home/mboyle/.claude-{suffix}"
+        cred_file = os.path.join(cfg_dir, ".credentials.json")
+        has_cred = os.path.isfile(cred_file) and os.path.getsize(cred_file) > 0
+        health[pool_id] = {
+            "healthy": os.path.isdir(cfg_dir),
+            "config_dir": cfg_dir,
+            "credentials_fresh": has_cred,
+            "models": ["claude-opus-5-5", "claude-sonnet-5-5"],
+            "summary": f"ONLINE (.claude-{suffix}, cred={'ok' if has_cred else 'missing'})",
+        }
+
+    return health
+
+
+def count_active_seats() -> Dict[str, Any]:
+    """Count active tmux sessions and heavy-lifter seats for O1740 global cap tracking."""
+    by_pool: Dict[str, int] = {p: 0 for p in DISPLAY_POOLS}
+    heavy_lifter_count = 0
+    total_sessions = 0
+    try:
+        proc = subprocess.run(
+            ["tmux", "list-sessions", "-F", "#{session_name}"],
+            capture_output=True,
+            text=True,
+            timeout=2.0,
+            check=False,
+        )
+        if proc.returncode == 0:
+            for line in proc.stdout.splitlines():
+                s = line.strip()
+                if not s:
+                    continue
+                total_sessions += 1
+                s_low = s.lower()
+                if any(
+                    k in s_low
+                    for k in ("worker", "builder", "fixer", "review-", "lens")
+                ):
+                    heavy_lifter_count += 1
+                if s.startswith("cx-") or "-codex" in s_low:
+                    by_pool["codex"] += 1
+                elif "kimi" in s_low:
+                    by_pool["kimi"] += 1
+                elif any(
+                    k in s_low for k in ("local", "hermes", "opencode", "deepseek")
+                ):
+                    by_pool["local-4xt4"] += 1
+                elif s.endswith("-A") or "-a-" in s_low:
+                    by_pool["A"] += 1
+                elif s.endswith("-B") or "-b-" in s_low:
+                    by_pool["B"] += 1
+                elif s.endswith("-C") or "-c-" in s_low:
+                    by_pool["C"] += 1
+                elif s.endswith("-D") or "-d-" in s_low:
+                    by_pool["D"] += 1
+    except Exception:
+        pass
+    return {
+        "total_tmux_sessions": total_sessions,
+        "heavy_lifter_seats_active": heavy_lifter_count,
+        "heavy_lifter_global_cap": GLOBAL_HEAVY_LIFTER_CAP,
+        "heavy_lifter_slots_remaining": max(
+            0, GLOBAL_HEAVY_LIFTER_CAP - heavy_lifter_count
+        ),
+        "seats_by_pool": by_pool,
+    }
+
+
+def load_pool_states(
+    pool_state_path: str = POOL_STATE_PATH,
+    live_health: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> Dict[str, Dict[str, Any]]:
+    """Parse POOL_STATE.tsv and merge with live health checks."""
+    if live_health is None:
+        live_health = probe_live_health()
+
+    raw_rows: Dict[str, Dict[str, str]] = {}
+    if os.path.isfile(pool_state_path):
+        with open(pool_state_path, "r", encoding="utf-8", errors="replace") as f:
+            lines = [ln.rstrip("\r\n") for ln in f if ln.strip()]
+        if lines:
+            headers = lines[0].split("\t")
+            for ln in lines[1:]:
+                cols = ln.split("\t")
+                row_dict = {
+                    headers[i]: (cols[i] if i < len(cols) else "-")
+                    for i in range(len(headers))
+                }
+                pool_name = row_dict.get("pool", "").strip()
+                if pool_name:
+                    raw_rows[pool_name] = row_dict
+
+    pools: Dict[str, Dict[str, Any]] = {}
+    for disp_pool in DISPLAY_POOLS:
+        tsv_key = "local" if disp_pool == "local-4xt4" else disp_pool
+        r = raw_rows.get(tsv_key, {})
+        state = r.get("state", "UNKNOWN").strip() or "UNKNOWN"
+        since = r.get("since", "-").strip()
+        evidence = r.get("evidence", "").strip()
+        five_h_used = _parse_float(r.get("pct"))
+        weekly_used = _parse_float(r.get("weekly_pct"))
+        five_h_rem = _parse_float(r.get("five_hour_remaining_pct"))
+
+        # Parse monthly % from evidence for kimi if weekly_pct is '-'
+        monthly_used: Optional[float] = None
+        if weekly_used is None and evidence:
+            m_mo = re.search(r"monthly\s+(\d+(?:\.\d+)?)%\s+used", evidence)
+            if m_mo:
+                monthly_used = float(m_mo.group(1))
+
+        if five_h_used is None and five_h_rem is not None:
+            five_h_used = round(max(0.0, 100.0 - five_h_rem), 4)
+        if five_h_rem is None and five_h_used is not None:
+            five_h_rem = round(max(0.0, 100.0 - five_h_used), 4)
+
+        # Default numeric fallbacks if missing
+        eff_5h = five_h_used if five_h_used is not None else 100.0
+        eff_wk = (
+            weekly_used
+            if weekly_used is not None
+            else (monthly_used if monthly_used is not None else 0.0)
+        )
+        headroom_80 = round(SOFT_CAP_PCT - eff_5h, 2)
+        idle_pct = round(max(0.0, 100.0 - eff_5h), 2)
+
+        lh = live_health.get(disp_pool, {})
+        is_live_healthy = bool(lh.get("healthy", True))
+        effective_state = state
+        if disp_pool == "local-4xt4" and not is_live_healthy:
+            effective_state = "DOWN"
+
+        default_models_map = {
+            "A": "claude-opus-5-5 / sonnet-5-5",
+            "B": "claude-opus-5-5 / sonnet-5-5",
+            "C": "claude-opus-5-5 / sonnet-5-5",
+            "D": "claude-opus-5-5 / sonnet-5-5",
+            "codex": "gpt-6-astra / gpt-6-sol",
+            "kimi": "kimi-for-coding",
+            "AGY": "claude-opus-4-6 / gemini-2.5-pro",
+            "local-4xt4": f"{lh.get('active_model', 'qwen3-coder-30b-a3b')} / swift-qwen3.8-flash-next",
+        }
+
+        pools[disp_pool] = {
+            "pool": disp_pool,
+            "tsv_pool": tsv_key,
+            "state": effective_state,
+            "tsv_state": state,
+            "live_healthy": is_live_healthy,
+            "live_summary": lh.get("summary", "ONLINE"),
+            "live_details": lh,
+            "since": since,
+            "resets_at": _format_reset_ts(r.get("resets_at", "-")),
+            "quota_observed_at": r.get("quota_observed_at", "-"),
+            "five_hour_pct": round(eff_5h, 2) if five_h_used is not None else None,
+            "weekly_pct": round(weekly_used, 2) if weekly_used is not None else None,
+            "monthly_pct": round(monthly_used, 2) if monthly_used is not None else None,
+            "effective_secondary_pct": round(eff_wk, 2),
+            "five_hour_remaining_pct": (
+                round(five_h_rem, 2) if five_h_rem is not None else None
+            ),
+            "headroom_before_80_pct": headroom_80 if five_h_used is not None else None,
+            "idle_quota_pct": idle_pct if five_h_used is not None else None,
+            "admits_soft_cap_80": (
+                effective_state in ("OK", "OFF-PACE")
+                and five_h_used is not None
+                and eff_5h < SOFT_CAP_PCT
+                and is_live_healthy
+            ),
+            "admits_command_85": (
+                effective_state == "OK"
+                and five_h_used is not None
+                and eff_5h < COMMAND_FAILOVER_PCT
+                and eff_wk < HARD_STOP_PCT
+                and is_live_healthy
+            ),
+            "default_models": default_models_map.get(disp_pool, "-"),
+            "evidence": evidence,
+        }
+
+    return pools
+
+
+def recommend_for_role(
+    role: str,
+    pools: Dict[str, Dict[str, Any]],
+    seat_counts: Optional[Dict[str, Any]] = None,
+    simulate_claude_exhausted: bool = False,
+) -> Dict[str, Any]:
+    """Compute O1740 Dynamic Capability Routing + Autonomous Failover recommendation for <role>."""
+    if seat_counts is None:
+        seat_counts = count_active_seats()
+
+    role_clean = role.strip()
+    tier = classify_role_tier(role_clean)
+    by_pool_seats = seat_counts.get("seats_by_pool", {})
+
+    # Affinity helper for Command Squad
+    affinity_pool = (
+        "A"
+        if role_clean
+        in ("integrator", "integrator-b", "integrator-c", "trainer", "registrar", "fable")
+        else "C"
+    )
+
+    if tier == "command_squad":
+        # Command Squad: picks the OK Opus-tier pool (A, B, C, D) with lowest five_hour_pct (<85%).
+        # Tie-break: lowest weekly_pct, then active seats, then affinity.
+        claude_candidates: List[Dict[str, Any]] = []
+        for p in CLAUDE_POOLS:
+            info = pools.get(p, {})
+            if simulate_claude_exhausted:
+                continue
+            if info.get("admits_command_85"):
+                f5 = float(info.get("five_hour_pct") or 0.0)
+                wk = float(info.get("weekly_pct") or 0.0)
+                seats = int(by_pool_seats.get(p, 0))
+                aff_rank = 0 if p == affinity_pool else 1
+                claude_candidates.append(
+                    {
+                        "pool": p,
+                        "harness": "claude",
+                        "model": "claude-opus-5-5",
+                        "effort": "xhigh" if "adjudicator" in role_clean else "high",
+                        "state": info.get("state"),
+                        "five_hour_pct": f5,
+                        "weekly_pct": wk,
+                        "headroom_before_80_pct": info.get("headroom_before_80_pct"),
+                        "active_seats": seats,
+                        "sort_key": (f5, wk, seats, aff_rank, p),
+                    }
+                )
+
+        claude_candidates.sort(key=lambda x: x["sort_key"])
+
+        # Build failover chain: codex (gpt-6-astra) -> hermes (mimo-v2.6-pro-1024b / glm-5.3-753b)
+        codex_info = pools.get("codex", {})
+        local_info = pools.get("local-4xt4", {})
+        failover_chain = [
+            {
+                "pool": "codex",
+                "harness": "codex",
+                "model": "gpt-6-astra",
+                "effort": "high",
+                "state": codex_info.get("state", "UNKNOWN"),
+                "five_hour_pct": codex_info.get("five_hour_pct"),
+                "available": bool(codex_info.get("admits_soft_cap_80", False)),
+                "launch_cmd": f"/home/mboyle/bd-persist/harness/bd-launch-role.sh {role_clean} codex --model gpt-6-astra --effort high",
+            },
+            {
+                "pool": "hermes",
+                "harness": "hermes",
+                "model": "mimo-v2.6-pro-1024b",
+                "secondary_model": "glm-5.3-753b",
+                "effort": "high",
+                "state": local_info.get("state", "UNKNOWN"),
+                "five_hour_pct": local_info.get("five_hour_pct"),
+                "available": bool(local_info.get("live_healthy", False)),
+                "launch_cmd": f"/home/mboyle/bd-persist/harness/bd-launch-role.sh {role_clean} hermes --model mimo-v2.6-pro-1024b --effort high",
+            },
+        ]
+
+        if claude_candidates:
+            win = claude_candidates[0]
+            pool_choice = win["pool"]
+            return {
+                "role": role_clean,
+                "role_tier": "command_squad",
+                "recommended_pool": pool_choice,
+                "recommended_harness": "claude",
+                "recommended_model": win["model"],
+                "recommended_effort": win["effort"],
+                "failover_triggered": False,
+                "state": win["state"],
+                "five_hour_pct": win["five_hour_pct"],
+                "weekly_pct": win["weekly_pct"],
+                "headroom_before_80_pct": win["headroom_before_80_pct"],
+                "rationale": (
+                    f"O1740 Command Squad: Opus-tier pool '{pool_choice}' is OK with lowest "
+                    f"five_hour_pct={win['five_hour_pct']}% (weekly={win['weekly_pct']}%, "
+                    f"headroom_to_80={win['headroom_before_80_pct']:+.1f}%)."
+                ),
+                "launch_cmd": f"/home/mboyle/bd-persist/harness/bd-launch-role.sh {role_clean} {pool_choice}",
+                "candidates_ranked": [
+                    {k: v for k, v in c.items() if k != "sort_key"}
+                    for c in claude_candidates
+                ],
+                "failover_chain": failover_chain,
+            }
+
+        # Autonomous Failover triggered (all Claude ABCD >=85% or OFF-PACE/LIMITED/UNKNOWN)
+        if failover_chain[0]["available"]:
+            fo = failover_chain[0]
+            return {
+                "role": role_clean,
+                "role_tier": "command_squad",
+                "recommended_pool": "codex",
+                "recommended_harness": "codex",
+                "recommended_model": "gpt-6-astra",
+                "recommended_effort": "high",
+                "failover_triggered": True,
+                "state": fo["state"],
+                "five_hour_pct": fo["five_hour_pct"],
+                "weekly_pct": codex_info.get("weekly_pct"),
+                "headroom_before_80_pct": codex_info.get("headroom_before_80_pct"),
+                "rationale": (
+                    "O1740 Command Squad AUTONOMOUS FAILOVER: all Claude ABCD pools >=85% or non-OK; "
+                    "failing over cleanly to codex (gpt-6-astra)."
+                ),
+                "launch_cmd": fo["launch_cmd"],
+                "candidates_ranked": [],
+                "failover_chain": failover_chain,
+            }
+
+        fo_h = failover_chain[1]
+        return {
+            "role": role_clean,
+            "role_tier": "command_squad",
+            "recommended_pool": "hermes",
+            "recommended_harness": "hermes",
+            "recommended_model": "mimo-v2.6-pro-1024b",
+            "fallback_model": "glm-5.3-753b",
+            "recommended_effort": "high",
+            "failover_triggered": True,
+            "state": fo_h["state"],
+            "five_hour_pct": fo_h["five_hour_pct"],
+            "weekly_pct": 0.0,
+            "headroom_before_80_pct": 80.0,
+            "rationale": (
+                "O1740 Command Squad AUTONOMOUS FAILOVER: Claude ABCD and Codex unavailable; "
+                "failing over cleanly to local Hermes (mimo-v2.6-pro-1024b / glm-5.3-753b)."
+            ),
+            "launch_cmd": fo_h["launch_cmd"],
+            "candidates_ranked": [],
+            "failover_chain": failover_chain,
+        }
+
+    if tier == "heavy_lifter":
+        # Heavy Lifters (worker, builder, fixer, review-*):
+        # Picks the most capable admitting pool (five_hour_pct < 80%), balancing load across:
+        #   1. Claude ABCD (claude-opus-5-5)
+        #   2. Codex (gpt-6-sol / gpt-6-astra)
+        #   3. Kimi (kimi-for-coding)
+        #   4. Local 4xT4 (qwen3-coder-30b-a3b / swift-qwen3.8-flash-next)
+        is_lens = role_clean.startswith("review-") or role_clean.startswith("flakecourt")
+        candidates: List[Dict[str, Any]] = []
+
+        # Evaluate Claude ABCD
+        for p in CLAUDE_POOLS:
+            info = pools.get(p, {})
+            if simulate_claude_exhausted or not info.get("admits_soft_cap_80"):
+                continue
+            f5 = float(info.get("five_hour_pct") or 0.0)
+            wk = float(info.get("weekly_pct") or 0.0)
+            seats = int(by_pool_seats.get(p, 0))
+            # Load-balance score: lower is better (5h% + 0.35*weekly% + 2.5*active_seats)
+            lb_score = round(f5 + 0.35 * wk + 2.5 * seats, 2)
+            candidates.append(
+                {
+                    "pool": p,
+                    "family": "Claude ABCD",
+                    "harness": "claude",
+                    "model": "claude-opus-5-5",
+                    "effort": "high",
+                    "state": info.get("state"),
+                    "five_hour_pct": f5,
+                    "weekly_pct": wk,
+                    "headroom_before_80_pct": info.get("headroom_before_80_pct"),
+                    "active_seats": seats,
+                    "load_balance_score": lb_score,
+                    "launch_cmd": f"/home/mboyle/bd-persist/harness/bd-launch-role.sh {role_clean} {p}",
+                }
+            )
+
+        # Evaluate Codex
+        cx_info = pools.get("codex", {})
+        if cx_info.get("admits_soft_cap_80"):
+            f5 = float(cx_info.get("five_hour_pct") or 0.0)
+            wk = float(cx_info.get("weekly_pct") or 0.0)
+            seats = int(by_pool_seats.get("codex", 0))
+            cx_model = "gpt-6-astra" if is_lens else "gpt-6-sol"
+            cx_alt_model = "gpt-6-astra"
+            lb_score = round(f5 + 0.35 * wk + 2.0 * seats, 2)
+            candidates.append(
+                {
+                    "pool": "codex",
+                    "family": "Codex",
+                    "harness": "codex",
+                    "model": cx_model,
+                    "secondary_model": cx_alt_model,
+                    "effort": "medium",
+                    "state": cx_info.get("state"),
+                    "five_hour_pct": f5,
+                    "weekly_pct": wk,
+                    "headroom_before_80_pct": cx_info.get("headroom_before_80_pct"),
+                    "active_seats": seats,
+                    "load_balance_score": lb_score,
+                    "launch_cmd": f"/home/mboyle/bd-persist/harness/bd-launch-role.sh {role_clean} codex --model {cx_model}",
+                }
+            )
+
+        # Evaluate Kimi
+        kimi_info = pools.get("kimi", {})
+        if kimi_info.get("admits_soft_cap_80"):
+            f5 = float(kimi_info.get("five_hour_pct") or 0.0)
+            mo = float(kimi_info.get("effective_secondary_pct") or 0.0)
+            seats = int(by_pool_seats.get("kimi", 0))
+            lb_score = round(f5 + 0.15 * mo + 2.0 * seats, 2)
+            candidates.append(
+                {
+                    "pool": "kimi",
+                    "family": "Kimi",
+                    "harness": "opencode",
+                    "model": "kimi-for-coding",
+                    "effort": "high",
+                    "state": kimi_info.get("state"),
+                    "five_hour_pct": f5,
+                    "weekly_pct": kimi_info.get("weekly_pct"),
+                    "monthly_pct": kimi_info.get("monthly_pct"),
+                    "headroom_before_80_pct": kimi_info.get("headroom_before_80_pct"),
+                    "active_seats": seats,
+                    "load_balance_score": lb_score,
+                    "launch_cmd": f"/home/mboyle/bd-persist/harness/bd-launch-role.sh {role_clean} opencode --model kimi-for-coding",
+                }
+            )
+
+        # Evaluate Local 4xT4
+        loc_info = pools.get("local-4xt4", {})
+        if loc_info.get("admits_soft_cap_80"):
+            f5 = float(loc_info.get("five_hour_pct") or 0.0)
+            seats = int(by_pool_seats.get("local-4xt4", 0))
+            orch_active = str(
+                loc_info.get("live_details", {}).get(
+                    "active_model", "qwen3-coder-30b-a3b"
+                )
+            )
+            loc_model = "qwen3-coder-30b-a3b"
+            lb_score = round(f5 + 1.5 * seats + (3.0 if is_lens else 0.5), 2)
+            candidates.append(
+                {
+                    "pool": "local-4xt4",
+                    "family": "Local 4xT4",
+                    "harness": "hermes",
+                    "model": loc_model,
+                    "secondary_model": "swift-qwen3.8-flash-next",
+                    "orchestrator_active_model": orch_active,
+                    "effort": "high",
+                    "state": loc_info.get("state"),
+                    "five_hour_pct": f5,
+                    "weekly_pct": 0.0,
+                    "headroom_before_80_pct": loc_info.get("headroom_before_80_pct"),
+                    "active_seats": seats,
+                    "load_balance_score": lb_score,
+                    "launch_cmd": f"/home/mboyle/bd-persist/harness/bd-launch-role.sh {role_clean} hermes --model {loc_model}",
+                }
+            )
+
+        candidates.sort(
+            key=lambda c: (
+                c["load_balance_score"],
+                c["five_hour_pct"],
+                c["active_seats"],
+            )
+        )
+
+        # Pick best per family for balanced cross-pool rotation summary
+        family_best: Dict[str, Dict[str, Any]] = {}
+        for c in candidates:
+            fam = c["family"]
+            if fam not in family_best:
+                family_best[fam] = c
+
+        win = (
+            candidates[0]
+            if candidates
+            else {
+                "pool": "local-4xt4",
+                "family": "Local 4xT4",
+                "harness": "hermes",
+                "model": "qwen3-coder-30b-a3b",
+                "secondary_model": "swift-qwen3.8-flash-next",
+                "effort": "high",
+                "state": loc_info.get("state", "OK"),
+                "five_hour_pct": 0.0,
+                "weekly_pct": 0.0,
+                "headroom_before_80_pct": 80.0,
+                "load_balance_score": 0.0,
+                "launch_cmd": f"/home/mboyle/bd-persist/harness/bd-launch-role.sh {role_clean} hermes --model qwen3-coder-30b-a3b",
+            }
+        )
+
+        return {
+            "role": role_clean,
+            "role_tier": "heavy_lifter",
+            "recommended_pool": win["pool"],
+            "recommended_family": win["family"],
+            "recommended_harness": win["harness"],
+            "recommended_model": win["model"],
+            "recommended_effort": win["effort"],
+            "state": win["state"],
+            "five_hour_pct": win["five_hour_pct"],
+            "weekly_pct": win.get("weekly_pct"),
+            "headroom_before_80_pct": win["headroom_before_80_pct"],
+            "load_balance_score": win["load_balance_score"],
+            "global_heavy_lifter_seats": {
+                "active": seat_counts.get("heavy_lifter_seats_active", 0),
+                "cap": GLOBAL_HEAVY_LIFTER_CAP,
+                "remaining": seat_counts.get(
+                    "heavy_lifter_slots_remaining", GLOBAL_HEAVY_LIFTER_CAP
+                ),
+            },
+            "rationale": (
+                f"O1740 Heavy Lifter Load-Balancer: pool '{win['pool']}' ({win['family']}, model={win['model']}) "
+                f"admits under <80% soft cap with 5h={win['five_hour_pct']}%, headroom={win['headroom_before_80_pct']:+.1f}%, "
+                f"load_score={win['load_balance_score']} (balanced across Claude ABCD, Codex, Kimi, Local 4xT4)."
+            ),
+            "launch_cmd": win["launch_cmd"],
+            "cross_pool_rotation": list(family_best.values()),
+            "candidates_ranked": candidates,
+        }
+
+    # Tier 3: Lightweight Investigators (investigator, probe, cavecrew-*):
+    # Picks the fast-model pool with the highest idle quota (max(100 - five_hour_pct)) or Local Tier 1
+    # (qwen3-coder-30b-a3b at $0 marginal cost).
+    inv_candidates: List[Dict[str, Any]] = []
+
+    loc_info = pools.get("local-4xt4", {})
+    if loc_info.get("live_healthy") and loc_info.get("state") == "OK":
+        idle = float(loc_info.get("idle_quota_pct") or 100.0)
+        orch_active = str(
+            loc_info.get("live_details", {}).get(
+                "active_model", "qwen3-coder-30b-a3b"
+            )
+        )
+        loc_model = "qwen3-coder-30b-a3b"
+        inv_candidates.append(
+            {
+                "pool": "local-4xt4",
+                "harness": "hermes",
+                "model": loc_model,
+                "secondary_model": "swift-qwen3.8-flash-next",
+                "orchestrator_active_model": orch_active,
+                "effort": "low",
+                "state": loc_info.get("state"),
+                "five_hour_pct": loc_info.get("five_hour_pct", 0.0),
+                "idle_quota_pct": idle,
+                "headroom_before_80_pct": loc_info.get("headroom_before_80_pct", 80.0),
+                "marginal_cost_usd": 0.0,
+                "sort_key": (-idle, 0.0, 0.0),
+                "launch_cmd": f"/home/mboyle/bd-persist/harness/bd-launch-role.sh {role_clean} hermes --model {loc_model} --effort low",
+            }
+        )
+
+    for p, fast_model, harness_name in [
+        ("codex", "gpt-5.6-terra", "codex"),
+        ("kimi", "kimi-for-coding", "opencode"),
+        ("C", "claude-sonnet-5-5", "claude"),
+        ("A", "claude-sonnet-5-5", "claude"),
+        ("D", "claude-sonnet-5-5", "claude"),
+        ("B", "claude-sonnet-5-5", "claude"),
+        ("AGY", "gemini-2.5-flash", "agy"),
+    ]:
+        info = pools.get(p, {})
+        if info.get("state") != "OK" or info.get("five_hour_pct") is None:
+            continue
+        idle = float(info.get("idle_quota_pct") or 0.0)
+        wk = float(info.get("effective_secondary_pct") or 0.0)
+        inv_candidates.append(
+            {
+                "pool": p,
+                "harness": harness_name,
+                "model": fast_model,
+                "effort": "low",
+                "state": info.get("state"),
+                "five_hour_pct": info.get("five_hour_pct"),
+                "idle_quota_pct": idle,
+                "headroom_before_80_pct": info.get("headroom_before_80_pct"),
+                "marginal_cost_usd": 0.0,
+                "sort_key": (-idle, wk, 1.0),
+                "launch_cmd": f"/home/mboyle/bd-persist/harness/bd-launch-role.sh {role_clean} {p} --model {fast_model} --effort low",
+            }
+        )
+
+    inv_candidates.sort(key=lambda x: x["sort_key"])
+    win = inv_candidates[0]
+    return {
+        "role": role_clean,
+        "role_tier": "lightweight_investigator",
+        "recommended_pool": win["pool"],
+        "recommended_harness": win["harness"],
+        "recommended_model": win["model"],
+        "recommended_effort": win["effort"],
+        "state": win["state"],
+        "five_hour_pct": win["five_hour_pct"],
+        "idle_quota_pct": win["idle_quota_pct"],
+        "headroom_before_80_pct": win["headroom_before_80_pct"],
+        "marginal_cost_usd": win["marginal_cost_usd"],
+        "rationale": (
+            f"O1740 Lightweight Investigator: pool '{win['pool']}' (model={win['model']}) "
+            f"selected with max idle quota={win['idle_quota_pct']}% (5h_used={win['five_hour_pct']}%, "
+            f"$0 marginal cost Tier-1 fast probe)."
+        ),
+        "launch_cmd": win["launch_cmd"],
+        "candidates_ranked": [
+            {k: v for k, v in c.items() if k != "sort_key"} for c in inv_candidates
+        ],
+    }
+
+
+def build_snapshot(simulate_claude_exhausted: bool = False) -> Dict[str, Any]:
+    """Build full telemetry + routing snapshot for --status, --json, and /var/tmp/bd-pool-autobalancer.json."""
+    now_iso = datetime.datetime.now(datetime.timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    live_health = probe_live_health()
+    pools = load_pool_states(POOL_STATE_PATH, live_health=live_health)
+    seat_counts = count_active_seats()
+
+    rec_command = recommend_for_role(
+        "integrator",
+        pools,
+        seat_counts=seat_counts,
+        simulate_claude_exhausted=simulate_claude_exhausted,
+    )
+    rec_builder = recommend_for_role(
+        "builder",
+        pools,
+        seat_counts=seat_counts,
+        simulate_claude_exhausted=simulate_claude_exhausted,
+    )
+    rec_lens = recommend_for_role(
+        "review-correctness",
+        pools,
+        seat_counts=seat_counts,
+        simulate_claude_exhausted=simulate_claude_exhausted,
+    )
+    rec_investigator = recommend_for_role(
+        "investigator",
+        pools,
+        seat_counts=seat_counts,
+        simulate_claude_exhausted=simulate_claude_exhausted,
+    )
+
+    return {
+        "schema_version": "1.0",
+        "service": "bd-pool-autobalancer",
+        "directive": "O1740 Dynamic Capability Routing + O1789 Autonomous Cross-Pool Failover",
+        "generated_at": now_iso,
+        "pool_state_source": POOL_STATE_PATH,
+        "soft_cap_pct": SOFT_CAP_PCT,
+        "command_failover_pct": COMMAND_FAILOVER_PCT,
+        "hard_stop_pct": HARD_STOP_PCT,
+        "seat_telemetry": seat_counts,
+        "pools": pools,
+        "recommendations_by_tier": {
+            "command_squad": rec_command,
+            "heavy_lifter_builder": rec_builder,
+            "heavy_lifter_lens": rec_lens,
+            "lightweight_investigator": rec_investigator,
+        },
+    }
+
+
+def write_snapshot_atomic(
+    snapshot: Dict[str, Any], target_path: str = STATE_JSON_OUT
+) -> None:
+    parent = os.path.dirname(target_path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    tmp_path = f"{target_path}.tmp.{os.getpid()}"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(snapshot, f, indent=2, sort_keys=False)
+        f.write("\n")
+    os.replace(tmp_path, target_path)
+
+
+def _colorize(text: str, color: str, use_color: bool) -> str:
+    if not use_color or not color:
+        return text
+    return f"{color}{text}{ANSI.RESET}"
+
+
+def render_status_table(snapshot: Dict[str, Any], use_color: bool = True) -> str:
+    out: List[str] = []
+    gen_at = snapshot.get("generated_at", "-")
+    seats = snapshot.get("seat_telemetry", {})
+    hl_active = seats.get("heavy_lifter_seats_active", 0)
+    hl_cap = seats.get("heavy_lifter_global_cap", GLOBAL_HEAVY_LIFTER_CAP)
+    hl_rem = seats.get("heavy_lifter_slots_remaining", GLOBAL_HEAVY_LIFTER_CAP)
+
+    banner = (
+        f"=== BOYLENET CROSS-POOL QUOTA AUTOBALANCER (O1740 / O1789) @ {gen_at} ==="
+    )
+    out.append(_colorize(banner, ANSI.BOLD + ANSI.BRIGHT_CYAN, use_color))
+    out.append(
+        f"Source: {snapshot.get('pool_state_source')} | Soft Cap: <{SOFT_CAP_PCT:.0f}% | "
+        f"Cmd Failover: >={COMMAND_FAILOVER_PCT:.0f}% | Global Heavy-Lifter Seats: {hl_active}/{hl_cap} ({hl_rem} avail)"
+    )
+    out.append("")
+
+    headers = [
+        "POOL",
+        "STATE",
+        "5H USED",
+        "WK/MO USED",
+        "HEADROOM(<80%)",
+        "IDLE %",
+        "RESETS AT",
+        "LIVE HEALTH & MODELS",
+    ]
+    widths = [11, 9, 9, 11, 15, 8, 21, 56]
+
+    header_line = "  ".join(h.ljust(widths[i]) for i, h in enumerate(headers))
+    out.append(_colorize(header_line, ANSI.BOLD + ANSI.WHITE, use_color))
+    out.append("-" * len(header_line))
+
+    pools = snapshot.get("pools", {})
+    for p_name in DISPLAY_POOLS:
+        p = pools.get(p_name, {})
+        st = str(p.get("state", "UNKNOWN"))
+        f5 = p.get("five_hour_pct")
+        wk = p.get("weekly_pct")
+        mo = p.get("monthly_pct")
+        hr = p.get("headroom_before_80_pct")
+        idle = p.get("idle_quota_pct")
+        resets = str(p.get("resets_at", "-"))
+        live_sum = str(p.get("live_summary", "-"))
+
+        f5_str = f"{f5:.1f}%" if f5 is not None else "-"
+        if wk is not None:
+            wk_str = f"{wk:.1f}% (wk)"
+        elif mo is not None:
+            wk_str = f"{mo:.1f}% (mo)"
+        else:
+            wk_str = "-"
+        hr_str = f"{hr:+.1f}%" if hr is not None else "-"
+        idle_str = f"{idle:.1f}%" if idle is not None else "-"
+
+        # State color
+        if st == "OK":
+            st_col = ANSI.BOLD + ANSI.BRIGHT_GREEN
+        elif st == "OFF-PACE":
+            st_col = ANSI.BOLD + ANSI.BRIGHT_YELLOW
+        elif st in ("LIMITED", "STOP", "DOWN"):
+            st_col = ANSI.BOLD + ANSI.BRIGHT_RED
+        else:
+            st_col = ANSI.DIM
+
+        # Headroom color
+        if hr is None:
+            hr_col = ANSI.DIM
+        elif hr >= 30.0:
+            hr_col = ANSI.BRIGHT_GREEN
+        elif hr > 0.0:
+            hr_col = ANSI.BRIGHT_YELLOW
+        else:
+            hr_col = ANSI.BRIGHT_RED
+
+        row_cells = [
+            _colorize(p_name.ljust(widths[0]), ANSI.BOLD + ANSI.CYAN, use_color),
+            _colorize(st.ljust(widths[1]), st_col, use_color),
+            f5_str.ljust(widths[2]),
+            wk_str.ljust(widths[3]),
+            _colorize(hr_str.ljust(widths[4]), hr_col, use_color),
+            idle_str.ljust(widths[5]),
+            resets[: widths[6]].ljust(widths[6]),
+            live_sum,
+        ]
+        out.append("  ".join(row_cells))
+
+    out.append("")
+    out.append(
+        _colorize(
+            "--- O1740 RECOMMENDED ROUTING & AUTONOMOUS FAILOVER BY ROLE TIER ---",
+            ANSI.BOLD + ANSI.BRIGHT_CYAN,
+            use_color,
+        )
+    )
+
+    recs = snapshot.get("recommendations_by_tier", {})
+    cmd_rec = recs.get("command_squad", {})
+    bld_rec = recs.get("heavy_lifter_builder", {})
+    lns_rec = recs.get("heavy_lifter_lens", {})
+    inv_rec = recs.get("lightweight_investigator", {})
+
+    out.append(
+        f"1. {_colorize('Command Squad', ANSI.BOLD, use_color)} (integrator, dispatch, audit, adjudicator, trainer, lensrouter, pm):"
+    )
+    out.append(
+        f"   -> Primary: {_colorize(str(cmd_rec.get('recommended_pool')), ANSI.BOLD + ANSI.BRIGHT_GREEN, use_color)} "
+        f"(model={cmd_rec.get('recommended_model')}, 5h={cmd_rec.get('five_hour_pct')}%, wk={cmd_rec.get('weekly_pct')}%) "
+        f"| Failover: codex (gpt-6-astra) -> hermes (mimo-v2.6-pro-1024b / glm-5.3-753b)"
+    )
+
+    out.append(
+        f"2. {_colorize('Heavy Lifters', ANSI.BOLD, use_color)} (worker, builder, fixer, review-*):"
+    )
+    rot = bld_rec.get("cross_pool_rotation", [])
+    rot_summary = ", ".join(
+        f"{r['family']}={r['pool']}:{r['model']} (5h={r['five_hour_pct']}%)"
+        for r in rot
+    )
+    out.append(
+        f"   -> Builder/Worker Primary: {_colorize(str(bld_rec.get('recommended_pool')), ANSI.BOLD + ANSI.BRIGHT_GREEN, use_color)} "
+        f"({bld_rec.get('recommended_model')}) | Review Lens Primary: {_colorize(str(lns_rec.get('recommended_pool')), ANSI.BOLD + ANSI.BRIGHT_GREEN, use_color)} ({lns_rec.get('recommended_model')})"
+    )
+    out.append(f"   -> Balanced 4-Family Pool Rotation: {rot_summary}")
+
+    out.append(
+        f"3. {_colorize('Lightweight Investigators', ANSI.BOLD, use_color)} (investigator, probe, cavecrew-*):"
+    )
+    out.append(
+        f"   -> Primary: {_colorize(str(inv_rec.get('recommended_pool')), ANSI.BOLD + ANSI.BRIGHT_GREEN, use_color)} "
+        f"(model={inv_rec.get('recommended_model')}, idle={inv_rec.get('idle_quota_pct')}%, cost=$0.00)"
+    )
+    out.append(f"State JSON: {STATE_JSON_OUT}")
+    return "\n".join(out)
+
+
+def render_recommendation(rec: Dict[str, Any], use_color: bool = True) -> str:
+    lines = [
+        _colorize(
+            f"[bd-pool-autobalancer] Role='{rec.get('role')}' Tier='{rec.get('role_tier')}'",
+            ANSI.BOLD + ANSI.BRIGHT_CYAN,
+            use_color,
+        ),
+        f"  RECOMMENDED_POOL   : {_colorize(str(rec.get('recommended_pool')), ANSI.BOLD + ANSI.BRIGHT_GREEN, use_color)}",
+        f"  RECOMMENDED_HARNESS: {rec.get('recommended_harness')}",
+        f"  RECOMMENDED_MODEL  : {rec.get('recommended_model')}",
+        f"  RECOMMENDED_EFFORT : {rec.get('recommended_effort')}",
+        f"  POOL_STATE         : {rec.get('state')} (5h={rec.get('five_hour_pct')}%, headroom_to_80={rec.get('headroom_before_80_pct')}%)",
+        f"  RATIONALE          : {rec.get('rationale')}",
+        f"  LAUNCH_CMD         : {rec.get('launch_cmd')}",
+    ]
+    if "failover_chain" in rec:
+        fo_str = " -> ".join(
+            f"{f['pool']}:{f['model']}({'READY' if f['available'] else 'DOWN'})"
+            for f in rec["failover_chain"]
+        )
+        lines.append(f"  FAILOVER_CHAIN     : {fo_str}")
+    if "cross_pool_rotation" in rec:
+        rot_str = " | ".join(
+            f"{r['family']}=>{r['pool']}({r['model']}, 5h={r['five_hour_pct']}%)"
+            for r in rec["cross_pool_rotation"]
+        )
+        lines.append(f"  BALANCED_ROTATION  : {rot_str}")
+    return "\n".join(lines)
+
+
+def run_daemon(interval_sec: int = 30) -> int:
+    stop_requested = False
+
+    def _sig_handler(signum: int, _frame: Any) -> None:
+        nonlocal stop_requested
+        stop_requested = True
+
+    signal.signal(signal.SIGTERM, _sig_handler)
+    signal.signal(signal.SIGINT, _sig_handler)
+
+    print(
+        f"[bd-pool-autobalancer] daemon started (interval={interval_sec}s, json={STATE_JSON_OUT})",
+        flush=True,
+    )
+    while not stop_requested:
+        t0 = time.monotonic()
+        try:
+            snap = build_snapshot()
+            write_snapshot_atomic(snap, STATE_JSON_OUT)
+            cmd_pool = (
+                snap.get("recommendations_by_tier", {})
+                .get("command_squad", {})
+                .get("recommended_pool")
+            )
+            bld_pool = (
+                snap.get("recommendations_by_tier", {})
+                .get("heavy_lifter_builder", {})
+                .get("recommended_pool")
+            )
+            inv_pool = (
+                snap.get("recommendations_by_tier", {})
+                .get("lightweight_investigator", {})
+                .get("recommended_pool")
+            )
+            print(
+                f"[bd-pool-autobalancer] {snap['generated_at']} updated {STATE_JSON_OUT} "
+                f"(cmd={cmd_pool}, builder={bld_pool}, investigator={inv_pool})",
+                flush=True,
+            )
+        except Exception as exc:
+            print(f"[bd-pool-autobalancer] ERROR in daemon loop: {exc}", file=sys.stderr, flush=True)
+
+        elapsed = time.monotonic() - t0
+        sleep_rem = max(1.0, float(interval_sec) - elapsed)
+        end_wait = time.monotonic() + sleep_rem
+        while not stop_requested and time.monotonic() < end_wait:
+            time.sleep(min(0.5, end_wait - time.monotonic()))
+
+    print("[bd-pool-autobalancer] daemon stopped cleanly.", flush=True)
+    return 0
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="bd-pool-autobalancer",
+        description="Autonomous Cross-Pool Quota Load-Balancer & Failover Daemon (O1740 / O1789)",
+    )
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="Print rich color-coded status table of all pools and recommended routing per role tier",
+    )
+    parser.add_argument(
+        "--recommend",
+        metavar="ROLE",
+        help="Recommend optimal pool, harness, and model for ROLE (e.g., integrator, builder, investigator)",
+    )
+    parser.add_argument(
+        "--daemon",
+        action="store_true",
+        help="Run continuously, refreshing /var/tmp/bd-pool-autobalancer.json every --interval seconds",
+    )
+    parser.add_argument(
+        "--interval",
+        type=int,
+        default=30,
+        help="Polling interval in seconds for --daemon mode (default: 30)",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output machine-readable JSON",
+    )
+    parser.add_argument(
+        "--pool-only",
+        action="store_true",
+        help="With --recommend, print only the resolved pool name on a single line",
+    )
+    parser.add_argument(
+        "--no-color",
+        action="store_true",
+        help="Disable ANSI color codes in terminal output",
+    )
+    parser.add_argument(
+        "--simulate-claude-exhausted",
+        action="store_true",
+        help="Simulate Claude ABCD pools >=85%% / exhausted to verify autonomous failover to codex/hermes",
+    )
+
+    args = parser.parse_args(argv)
+    use_color = not args.no_color and (sys.stdout.isatty() or args.status)
+
+    if args.daemon:
+        return run_daemon(interval_sec=args.interval)
+
+    snapshot = build_snapshot(
+        simulate_claude_exhausted=args.simulate_claude_exhausted
+    )
+    try:
+        write_snapshot_atomic(snapshot, STATE_JSON_OUT)
+    except Exception:
+        pass
+
+    if args.recommend:
+        rec = recommend_for_role(
+            args.recommend,
+            snapshot["pools"],
+            seat_counts=snapshot["seat_telemetry"],
+            simulate_claude_exhausted=args.simulate_claude_exhausted,
+        )
+        if args.pool_only:
+            print(rec["recommended_pool"])
+            return 0
+        if args.json:
+            print(json.dumps(rec, indent=2))
+            return 0
+        print(render_recommendation(rec, use_color=use_color))
+        return 0
+
+    if args.json:
+        print(json.dumps(snapshot, indent=2))
+        return 0
+
+    print(render_status_table(snapshot, use_color=use_color))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

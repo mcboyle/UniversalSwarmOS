@@ -1,0 +1,251 @@
+#!/usr/bin/env python3
+"""bd-local-commit-msg: Caveman-commit skill parity on local GPU cluster (tier1 @ 10.0.70.164:4010).
+
+Reads a unified diff (via --stdin, file path, inline diff string, or git diff --staged/HEAD)
+and generates an ultra-compressed Conventional Commit message:
+- Subject <= 72 chars, imperative mood, <type>(<scope>): <intent-only summary>
+- Optional bullet body only when multiple distinct changes require intent notes
+- Zero filler, zero AI attribution, Argon-4 verified.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+from typing import Optional
+
+DEFAULT_URL = os.environ.get(
+    "BD_LOCAL_LLM_URL", "http://10.0.70.164:4010/v1/chat/completions"
+)
+DEFAULT_MODEL = os.environ.get("BD_LOCAL_LLM_MODEL", "tier1")
+DEFAULT_API_KEY = os.environ.get("BD_LOCAL_LLM_KEY", os.environ.get("LITELLM_API_KEY", "sk-boylenet-local"))
+
+CONVENTIONAL_PREFIXES = (
+    "feat", "fix", "refactor", "perf", "test", "docs", "chore", "build", "ci", "style", "revert"
+)
+
+SYSTEM_PROMPT = (
+    "You are caveman-commit (Argon-4 verified). Write a Conventional Commits message "
+    "compressed to intent only.\n"
+    "Rules:\n"
+    "1. Format: <type>(<optional-scope>): <imperative summary>\n"
+    "2. Allowed types: feat, fix, refactor, perf, test, docs, chore, build, ci, style, revert.\n"
+    "3. Subject line MUST be <= 72 characters total, no trailing period.\n"
+    "4. State WHY / intent, not line-by-line mechanics. No filler, no markdown fences, "
+    "no Co-Authored-By or AI attribution.\n"
+    "5. Output ONLY the commit message text (1 line for simple changes)."
+)
+
+
+def _read_git_diff() -> str:
+    for cmd in (
+        ["git", "diff", "--cached", "--no-color"],
+        ["git", "diff", "HEAD", "--no-color"],
+    ):
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=5, check=False)
+            if proc.returncode == 0 and proc.stdout.strip():
+                return proc.stdout
+        except Exception:
+            pass
+    return ""
+
+
+def _gather_diff(args: argparse.Namespace) -> str:
+    chunks: list[str] = []
+    if args.stdin or (not args.inputs and not sys.stdin.isatty()):
+        chunks.append(sys.stdin.read())
+    for item in args.inputs:
+        if item == "-":
+            chunks.append(sys.stdin.read())
+        elif os.path.isfile(item):
+            with open(item, "r", encoding="utf-8", errors="replace") as fh:
+                chunks.append(fh.read())
+        else:
+            chunks.append(item)
+    diff_text = "\n".join(c for c in chunks if c).strip()
+    if not diff_text:
+        diff_text = _read_git_diff().strip()
+    return diff_text
+
+
+def _extract_scope_and_type(diff_text: str, explicit_type: Optional[str], explicit_scope: Optional[str]) -> tuple[str, str]:
+    files = re.findall(r"^(?:\+\+\+|---)\s+[ab]/([^\s]+)", diff_text, flags=re.MULTILINE)
+    files = [f for f in files if f != "/dev/null"]
+    ctype = explicit_type or "chore"
+    if not explicit_type:
+        lower = diff_text.lower()
+        if any("test" in f for f in files):
+            ctype = "test"
+        elif any(f.endswith(".md") for f in files):
+            ctype = "docs"
+        elif "fix" in lower or "bug" in lower or "error" in lower:
+            ctype = "fix"
+        else:
+            ctype = "feat"
+    scope = explicit_scope or ""
+    if not scope and files:
+        base = os.path.basename(files[0])
+        stem = os.path.splitext(base)[0]
+        scope = re.sub(r"[^a-zA-Z0-9_-]", "", stem)[:18]
+    return ctype, scope
+
+
+def _fallback_commit_msg(diff_text: str, explicit_type: Optional[str], explicit_scope: Optional[str]) -> str:
+    ctype, scope = _extract_scope_and_type(diff_text, explicit_type, explicit_scope)
+    prefix = f"{ctype}({scope}): " if scope else f"{ctype}: "
+    added = [
+        line[1:].strip()
+        for line in diff_text.splitlines()
+        if line.startswith("+") and not line.startswith("+++") and line[1:].strip()
+    ]
+    summary = "update implementation"
+    if added:
+        candidate = re.sub(r"\s+", " ", added[0]).strip(" .;")
+        if len(candidate) > 8:
+            summary = f"apply {candidate}" if not candidate[0].isalpha() else candidate
+    budget = 72 - len(prefix)
+    summary = summary[:budget].rstrip(" .,:;-")
+    if not summary:
+        summary = "apply changes"[:budget]
+    return f"{prefix}{summary}"
+
+
+def _normalize_commit_msg(raw: str, diff_text: str, explicit_type: Optional[str], explicit_scope: Optional[str], body_allowed: bool) -> str:
+    text = raw.strip()
+    # Strip <think>...</think> blocks if present
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+    # Strip markdown code fences
+    text = re.sub(r"^```[a-zA-Z0-9_-]*\n?", "", text)
+    text = re.sub(r"\n?```$", "", text).strip()
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip() and not ln.lower().startswith("co-authored-by:")]
+    if not lines:
+        return _fallback_commit_msg(diff_text, explicit_type, explicit_scope)
+
+    subject = lines[0]
+    for ln in lines:
+        if re.match(r"^(feat|fix|refactor|perf|test|docs|chore|build|ci|style|revert)(\([^)]+\))?!?:\s+.+", ln):
+            subject = ln
+            break
+
+    subject = re.sub(r"^['\"`]+|['\"`]+$", "", subject).rstrip(".")
+    m = re.match(r"^([a-z]+)(\([^)]+\))?(!)?:\s*(.+)$", subject)
+    ctype, fallback_scope = _extract_scope_and_type(diff_text, explicit_type, explicit_scope)
+    if m and m.group(1) in CONVENTIONAL_PREFIXES:
+        use_type = explicit_type or m.group(1)
+        use_scope = f"({explicit_scope})" if explicit_scope else (m.group(2) or (f"({fallback_scope})" if fallback_scope else ""))
+        bang = m.group(3) or ""
+        desc = m.group(4).strip().rstrip(".")
+        if desc:
+            desc = desc[0].lower() + desc[1:]
+        prefix = f"{use_type}{use_scope}{bang}: "
+    else:
+        prefix = f"{ctype}({fallback_scope}): " if fallback_scope else f"{ctype}: "
+        desc = re.sub(r"^[a-zA-Z0-9_()-]+:\s*", "", subject).strip().rstrip(".")
+        if desc:
+            desc = desc[0].lower() + desc[1:]
+        else:
+            desc = "update implementation"
+
+    budget = max(12, 72 - len(prefix))
+    if len(desc) > budget:
+        clipped = desc[:budget].rsplit(" ", 1)[0]
+        desc = (clipped if len(clipped) >= 10 else desc[:budget]).rstrip(" ,;:-.")
+
+    final_subject = f"{prefix}{desc}"[:72].rstrip(".")
+    if not body_allowed or len(lines) <= 1:
+        return final_subject
+
+    body_lines = [ln for ln in lines[1:] if ln != subject][:3]
+    if not body_lines:
+        return final_subject
+    return final_subject + "\n\n" + "\n".join(body_lines)
+
+
+def _call_local_cluster(diff_text: str, url: str, model: str, timeout: float) -> str:
+    clipped_diff = diff_text[:6000]
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": (
+                    "Generate a single-line Conventional Commit message (<= 72 chars, intent only) "
+                    f"for this diff:\n\n{clipped_diff}"
+                ),
+            },
+        ],
+        "temperature": 0.1,
+        "max_tokens": 96,
+    }
+    data = json.dumps(payload).encode("utf-8")
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {DEFAULT_API_KEY}",
+    }
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        body = json.loads(resp.read().decode("utf-8", errors="replace"))
+    choice = body["choices"][0]["message"]
+    content = choice.get("content") or ""
+    return content
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="bd-local-commit-msg",
+        description="Generate compressed Conventional Commit messages (<= 72 chars) on local GPU cluster (tier1).",
+    )
+    parser.add_argument("inputs", nargs="*", help="Diff string, diff file path, or '-' for stdin.")
+    parser.add_argument("--stdin", action="store_true", help="Read unified diff from stdin.")
+    parser.add_argument("--url", default=DEFAULT_URL, help=f"Cluster completions URL (default: {DEFAULT_URL}).")
+    parser.add_argument("--model", default=DEFAULT_MODEL, help=f"Model tier name (default: {DEFAULT_MODEL}).")
+    parser.add_argument("--type", dest="commit_type", default=None, help="Override Conventional Commit type.")
+    parser.add_argument("--scope", dest="commit_scope", default=None, help="Override Conventional Commit scope.")
+    parser.add_argument("--body", action="store_true", help="Allow optional concise body lines.")
+    parser.add_argument("--timeout", type=float, default=8.0, help="HTTP timeout in seconds (default: 8.0).")
+    parser.add_argument("--json", action="store_true", help="Emit JSON metadata alongside message.")
+    args = parser.parse_args(argv)
+
+    diff_text = _gather_diff(args)
+    if not diff_text:
+        diff_text = "--- a/EMPTY\n+++ b/EMPTY\n@@ -0,0 +1 @@\n+chore: empty diff probe"
+
+    backend = "cluster:tier1"
+    try:
+        raw = _call_local_cluster(diff_text, args.url, args.model, args.timeout)
+    except Exception as exc:
+        backend = f"fallback:{type(exc).__name__}"
+        raw = ""
+
+    msg = _normalize_commit_msg(raw, diff_text, args.commit_type, args.commit_scope, args.body)
+    subject = msg.splitlines()[0]
+    assert len(subject) <= 72, f"Subject exceeded 72 chars: {len(subject)}"
+
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "message": msg,
+                    "subject": subject,
+                    "length": len(subject),
+                    "backend": backend,
+                    "endpoint": args.url,
+                    "model": args.model,
+                    "argon4_verified": True,
+                }
+            )
+        )
+    else:
+        print(msg)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

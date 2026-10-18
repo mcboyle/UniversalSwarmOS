@@ -1,0 +1,17 @@
+[Unit]
+Description=Boylenet Autonomous 83-Service Self-Healing Infrastructure Sentinel (:4099)
+After=network.target docker.service
+
+[Service]
+Type=simple
+User=mboyle
+WorkingDirectory=/home/mboyle
+Environment="HOME=/home/mboyle"
+Environment="BD_SENTINEL_PORT=4099"
+Environment="BD_SENTINEL_INTERVAL=60"
+ExecStart=/usr/bin/python3 /home/mboyle/bin/bd-infra-sentinel.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

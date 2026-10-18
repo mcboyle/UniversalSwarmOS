@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# bd-fleet-quota-probe.sh -- O1157: Global Sentinel for API Quota Exhaustion
+set -uo pipefail
+
+P=${BD_QUOTA_P:-/home/mboyle/bd-persist}
+LEDGER=${BD_QUOTA_LEDGER:-$P/DISPATCH-LEDGER.tsv}
+BRIEFQ=${BD_QUOTA_BRIEFQ:-$P/harness/bd-briefq-add}
+
+# Look for standard quota error signatures across AGY, Codex, and Claude.
+ERROR_REGEX='RESOURCE_EXHAUSTED|usage limit exceeded|quota exceeded|429 Too Many Requests|usage limits|rate limit exceeded'
+
+live_seats=$(tmux ls -F '#S' 2>/dev/null || true)
+
+for seat in $live_seats; do
+  # Ignore purely administrative/local panes
+  if [[ "$seat" == "relay-test" || "$seat" == "antigravity" ]]; then continue; fi
+
+  pane=$(tmux capture-pane -p -t "$seat" 2>/dev/null || true)
+  
+  if echo "$pane" | grep -iqE "$ERROR_REGEX"; then
+    marker="$P/QUOTA-EXHAUSTED-$seat"
+    [ -e "$marker" ] && continue # Already handled
+    
+    echo "$(date -u +%FT%TZ) QUOTA EXHAUSTED: $seat" >> "$P/logs/quota-probe.log"
+    : > "$marker"
+    
+    # Identify bucket for the PM
+    bucket="UNKNOWN"
+    if [[ "$seat" == bd-agy-* ]]; then bucket="AGY"; fi
+    if [[ "$seat" == bd-cx-* ]]; then bucket="CODEX"; fi
+    if [[ "$seat" == *-A* ]]; then bucket="POOL-A"; fi
+    if [[ "$seat" == *-B* ]]; then bucket="POOL-B"; fi
+
+    # Tell the PM
+    /home/mboyle/bd-say.sh pm "QUOTA-EXHAUSTED: Seat $seat hit API limits (Bucket: $bucket). SUSPEND bucket and trigger failover routing." >/dev/null 2>&1
+    
+    # Requeue the brief if it was working on one
+    open=$(awk -F '\t' -v s="$seat" '$2==s && $4=="dispatched"{r=$3; b=$5} $2==s && $4~/done|aborted/{r="";b=""} END{if(r) print r "\t" b}' "$LEDGER" 2>/dev/null || true)
+    if [ -n "$open" ]; then
+      slug=${open%%$'\t'*}
+      brief=${open#*$'\t'}
+      grep -qE "^${slug}[[:space:]]" "$P/brief-queue.txt" 2>/dev/null || "$BRIEFQ" "$slug" "$brief" T2 >/dev/null
+    fi
+    
+    # Kill the dead seat so it doesn't spin
+    tmux kill-session -t "=$seat" 2>/dev/null || true
+    /home/mboyle/bd-role-claim.sh reap >/dev/null 2>&1
+  fi
+done

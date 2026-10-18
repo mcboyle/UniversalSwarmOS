@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+# bd-local-anthropic-smoke -- Verify Anthropic /v1/messages compatibility (Claude Code / bd-claude-local)
+set -euo pipefail
+
+URL="${BD_LOCAL_ANTHROPIC_URL:-http://10.0.70.228:4000/v1/messages}"
+API_KEY="${BD_LOCAL_ANTHROPIC_KEY:-sk-boylenet-local}"
+ANTHROPIC_VERSION="${BD_LOCAL_ANTHROPIC_VERSION:-2023-06-01}"
+MODEL="${BD_LOCAL_ANTHROPIC_MODEL:-tier1-qwen3-coder-30b-a3b}"
+TIMEOUT="${BD_LOCAL_ANTHROPIC_TIMEOUT:-30}"
+
+python3 - "$URL" "$API_KEY" "$ANTHROPIC_VERSION" "$MODEL" "$TIMEOUT" << 'PY'
+import json
+import sys
+import time
+import urllib.error
+import urllib.request
+
+url, api_key, version, model, timeout_s = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], float(sys.argv[5])
+
+payload = {
+    "model": model,
+    "max_tokens": 32,
+    "messages": [
+        {"role": "user", "content": "Reply with the exact token: OK"}
+    ],
+}
+
+req = urllib.request.Request(
+    url,
+    data=json.dumps(payload).encode("utf-8"),
+    headers={
+        "Content-Type": "application/json",
+        "x-api-key": api_key,
+        "anthropic-version": version,
+    },
+    method="POST",
+)
+
+t0 = time.monotonic()
+try:
+    with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+        status = resp.status
+        raw = resp.read().decode("utf-8", errors="replace")
+except urllib.error.HTTPError as e:
+    body = e.read().decode("utf-8", errors="replace") if e.fp else ""
+    print(f"FAIL status={e.code} url={url} model={model} err={body[:200]}", file=sys.stderr)
+    sys.exit(1)
+except Exception as e:
+    print(f"FAIL url={url} model={model} err={e}", file=sys.stderr)
+    sys.exit(1)
+
+elapsed_ms = int((time.monotonic() - t0) * 1000)
+data = json.loads(raw)
+
+msg_type = data.get("type")
+role = data.get("role")
+content = data.get("content")
+if status != 200 or msg_type != "message" or role != "assistant" or not isinstance(content, list) or len(content) == 0:
+    print(f"FAIL invalid_schema status={status} type={msg_type} role={role} raw={raw[:200]}", file=sys.stderr)
+    sys.exit(1)
+
+text_parts = [
+     str(block.get("text", "")).strip()
+    for block in content
+    if isinstance(block, dict) and block.get("type") == "text"
+]
+reply = " ".join(p for p in text_parts if p).replace("\n", " ").strip()
+
+print(
+    json.dumps(
+        {
+            "ok": True,
+            "status": status,
+            "url": url,
+            "model": data.get("model", model),
+            "id": data.get("id", ""),
+            "type": msg_type,
+            "role": role,
+            "stop_reason": data.get("stop_reason"),
+            "latency_ms": elapsed_ms,
+            "reply": reply[:80],
+        }
+    )
+)
+PY

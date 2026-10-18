@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+"""bd-local-oracle-fallback: $0 Local GPU Cluster router (tier1 @ http://10.0.70.164:4010/v1/chat/completions)
+with --escalate-oracle fallback to bd-oracle (Rule 79 BattleStation 10.0.10.137:9222).
+"""
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+
+DEFAULT_ENDPOINT = os.environ.get(
+    "BD_LOCAL_GPU_ENDPOINT", "http://10.0.70.164:4010/v1/chat/completions"
+)
+DEFAULT_MODEL = os.environ.get("BD_LOCAL_GPU_MODEL", "tier1")
+DEFAULT_API_KEY = os.environ.get("BD_LOCAL_GPU_API_KEY", os.environ.get("LITELLM_API_KEY", "sk-local-cluster"))
+BATTLESTATION_CDP = os.environ.get("BD_ORACLE_CDP", "10.0.10.137:9222")
+
+
+def query_local_gpu(prompt: str, system: str, model: str, endpoint: str, max_tokens: int, temperature: float, timeout: float) -> dict:
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt},
+        ],
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "stream": False,
+    }
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        endpoint,
+        data=data,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {DEFAULT_API_KEY}",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        raw = resp.read().decode("utf-8", errors="replace")
+        return json.loads(raw)
+
+
+def escalate_to_oracle(prompt: str, extra_args: list[str], dry_run: bool = False) -> int:
+    bd_oracle_bin = shutil.which("bd-oracle") or "/home/mboyle/bin/bd-oracle"
+    cmd = [bd_oracle_bin, "--oracle", "all", "--json"] + extra_args + [prompt]
+    env = os.environ.copy()
+    env.setdefault("BD_ORACLE_CDP", BATTLESTATION_CDP)
+    if dry_run:
+        print(json.dumps({
+            "route": "bd-oracle",
+            "cdp": BATTLESTATION_CDP,
+            "cmd": cmd,
+            "status": "DRY_RUN_READY",
+        }))
+        return 0
+    proc = subprocess.run(cmd, env=env, check=False)
+    return proc.returncode
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Route coding/review queries to $0 Local GPU Cluster (tier1) or escalate to bd-oracle (10.0.10.137:9222)."
+    )
+    parser.add_argument("prompt", nargs="*", help="Query prompt text (or read from stdin if omitted)")
+    parser.add_argument("--escalate-oracle", action="store_true", help="Forward complex architectural queries to bd-oracle (Rule 79 BattleStation 10.0.10.137:9222)")
+    parser.add_argument("--dry-run-escalate", action="store_true", help="Print escalation route metadata without invoking browser oracle")
+    parser.add_argument("--endpoint", default=DEFAULT_ENDPOINT, help=f"Local GPU cluster endpoint (default: {DEFAULT_ENDPOINT})")
+    parser.add_argument("--model", default=DEFAULT_MODEL, help=f"Model tier (default: {DEFAULT_MODEL})")
+    parser.add_argument("--system", default="You are a concise, high-precision coding and code-review assistant.", help="System prompt")
+    parser.add_argument("--max-tokens", type=int, default=512, help="Max completion tokens")
+    parser.add_argument("--temperature", type=float, default=0.1, help="Sampling temperature")
+    parser.add_argument("--timeout", type=float, default=30.0, help="HTTP timeout in seconds")
+    parser.add_argument("--json", action="store_true", help="Emit structured JSON output")
+    parser.add_argument("--auto-escalate-on-error", action="store_true", help="Automatically escalate to bd-oracle if local cluster is unreachable")
+    args, unknown = parser.parse_known_args()
+
+    prompt_text = " ".join(args.prompt).strip()
+    if not prompt_text and not sys.stdin.isatty():
+        prompt_text = sys.stdin.read().strip()
+    if not prompt_text:
+        prompt_text = "Reply with exact token: OK"
+
+    if args.escalate_oracle:
+        return escalate_to_oracle(prompt_text, unknown, dry_run=args.dry_run_escalate)
+
+    try:
+        resp = query_local_gpu(
+            prompt=prompt_text,
+            system=args.system,
+            model=args.model,
+            endpoint=args.endpoint,
+            max_tokens=args.max_tokens,
+            temperature=args.temperature,
+            timeout=args.timeout,
+        )
+        choices = resp.get("choices") or []
+        content = ""
+        if choices:
+            msg = choices[0].get("message") or {}
+            content = msg.get("content") or choices[0].get("text") or ""
+        if args.json:
+            out = {
+                "route": "local_gpu_cluster",
+                "endpoint": args.endpoint,
+                "model": resp.get("model", args.model),
+                "throughput_ref": "77.6 tok/s",
+                "cost_usd": 0.0,
+                "content": content.strip(),
+                "usage": resp.get("usage", {}),
+            }
+            print(json.dumps(out))
+        else:
+            print(content.strip())
+        return 0
+    except Exception as exc:
+        if args.auto_escalate_on_error:
+            sys.stderr.write(f"[bd-local-oracle-fallback] local cluster error ({exc}); escalating to bd-oracle ({BATTLESTATION_CDP})\n")
+            return escalate_to_oracle(prompt_text, unknown, dry_run=args.dry_run_escalate)
+        sys.stderr.write(f"[bd-local-oracle-fallback] ERROR querying {args.endpoint} (model={args.model}): {exc}\n")
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

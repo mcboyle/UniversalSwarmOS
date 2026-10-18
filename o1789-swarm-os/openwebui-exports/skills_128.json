@@ -1,0 +1,4226 @@
+[
+  {
+    "version_id": "fd80393a-ec73-4a25-bf1b-13dd6e9d6bd0",
+    "id": "codex-agent-bd-worker",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-worker",
+    "description": "BD fleet worker seat. Spawn for worker work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "1fd91ff1-82c4-4879-ac6a-88bf6dee9593",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-worker",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356278
+      }
+    ],
+    "updated_at": 1792356278,
+    "created_at": 1792353115,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "2b4325cb-d609-4ad7-9a07-0557fe6d329f",
+    "id": "codex-agent-bd-worker-b",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-worker-b",
+    "description": "BD fleet worker-b seat. Spawn for worker-b work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "1be24c6c-e06d-4983-b701-c1f0f4f7abf6",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-worker-b",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356278
+      }
+    ],
+    "updated_at": 1792356278,
+    "created_at": 1792353115,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "c52abcc4-da24-4f8a-abed-df952191e422",
+    "id": "codex-agent-bd-verify",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-verify",
+    "description": "BD fleet verify seat. Spawn for verify work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "f04d22c9-b781-4f45-a66f-28a73d072af1",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-verify",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356278
+      }
+    ],
+    "updated_at": 1792356278,
+    "created_at": 1792353115,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "748bd1dc-7885-4aab-9dbc-56e6ce86786c",
+    "id": "codex-agent-bd-usage",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-usage",
+    "description": "BD fleet usage seat. Spawn for usage work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "c4a9416c-7940-46eb-90d9-bca584199569",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-usage",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356278
+      }
+    ],
+    "updated_at": 1792356278,
+    "created_at": 1792353115,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "5e2ec99b-a8e2-44e5-a594-754e093902c0",
+    "id": "codex-agent-bd-usage-d",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-usage-d",
+    "description": "BD fleet usage-d seat. Spawn for usage-d work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "c534afe5-4d18-4669-b4e0-cfe91d7ec88c",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-usage-d",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356278
+      }
+    ],
+    "updated_at": 1792356278,
+    "created_at": 1792353115,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "2eecca81-01bf-460c-8e54-3e1c60ca0c40",
+    "id": "codex-agent-bd-usage-c",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-usage-c",
+    "description": "BD fleet usage-c seat. Spawn for usage-c work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "4437f07f-647a-4ddc-ae3c-ca3ac371efce",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-usage-c",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356278
+      }
+    ],
+    "updated_at": 1792356278,
+    "created_at": 1792353115,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "6092dde1-aad9-40b1-88d7-7d2ed23ed43d",
+    "id": "codex-agent-bd-usage-b",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-usage-b",
+    "description": "BD fleet usage-b seat. Spawn for usage-b work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "d41536ac-8d13-4666-871e-1254a4eacad7",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-usage-b",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356278
+      }
+    ],
+    "updated_at": 1792356278,
+    "created_at": 1792353115,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "979177d3-b549-4d42-8d7b-70c7058dfc0b",
+    "id": "codex-agent-bd-usage-a",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-usage-a",
+    "description": "BD fleet usage-a seat. Spawn for usage-a work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "ce99e8bf-d0a5-4288-b901-38cbc05c01ea",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-usage-a",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356278
+      }
+    ],
+    "updated_at": 1792356278,
+    "created_at": 1792353115,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "6dca4b7a-6bf9-4fd0-baa0-14c12906606c",
+    "id": "codex-agent-bd-triage",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-triage",
+    "description": "BD fleet triage seat. Spawn for triage work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "d7e99bc8-0b36-413e-af6a-4f364c6165f0",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-triage",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356278
+      }
+    ],
+    "updated_at": 1792356278,
+    "created_at": 1792353115,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "2f2aedfb-c16f-4248-a665-7a06cc23d4b2",
+    "id": "codex-agent-bd-trainer",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-trainer",
+    "description": "BD fleet trainer seat. Spawn for trainer work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "612fd6fe-2620-4162-9af1-3b0dca429737",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-trainer",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356278
+      }
+    ],
+    "updated_at": 1792356278,
+    "created_at": 1792353115,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "e9535311-aae1-4846-98d8-c24622645d2d",
+    "id": "codex-agent-bd-synthetic_test",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-synthetic_test",
+    "description": "Synthetic test role",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "3cf87389-39e3-4040-9539-d43b04b09f24",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-synthetic_test",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356278
+      }
+    ],
+    "updated_at": 1792356278,
+    "created_at": 1792353115,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "8ecbb5aa-ed16-4a14-b09a-64333ef284d6",
+    "id": "codex-agent-bd-status",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-status",
+    "description": "BD fleet status seat. Spawn for status work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "c00643b5-0e9b-4e61-8ce6-e79e2651a8c2",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-status",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356278
+      }
+    ],
+    "updated_at": 1792356278,
+    "created_at": 1792353115,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "48ccc80f-57b4-45e9-b6fc-0b5aab86005d",
+    "id": "codex-agent-bd-smoketest",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-smoketest",
+    "description": "BD fleet smoketest seat. Spawn for smoketest work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "625b4212-cc98-4e3a-96b3-b9bd7a1a75ff",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-smoketest",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356278
+      }
+    ],
+    "updated_at": 1792356278,
+    "created_at": 1792353115,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "e62b58ba-8b0e-4a22-b2b8-1c71875d3a34",
+    "id": "codex-agent-bd-sentinel",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-sentinel",
+    "description": "BD fleet sentinel seat. Spawn for sentinel work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "01456e2b-851a-420d-83c6-a1a233492f60",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-sentinel",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356278
+      }
+    ],
+    "updated_at": 1792356278,
+    "created_at": 1792353115,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "eec89903-57d1-4310-bbd1-768fad76813e",
+    "id": "codex-agent-bd-scribe",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-scribe",
+    "description": "BD fleet scribe seat. Spawn for scribe work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "6813b7e6-1c10-4c94-bf08-6f10815a57dd",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-scribe",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356278
+      }
+    ],
+    "updated_at": 1792356278,
+    "created_at": 1792353115,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "a4c2debb-1f2e-47b4-aa6a-23e3a7f6f0fd",
+    "id": "codex-agent-bd-scout648",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-scout648",
+    "description": "O666 experiment: gpt-6-astra ultra + multi_agent. Scope + blast radius for register row 648 (react-router-7 migration). READ-ONLY on the repo.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "ef8735e5-67b6-4fdf-9c6e-97078906047b",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-scout648",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356278
+      }
+    ],
+    "updated_at": 1792356278,
+    "created_at": 1792353115,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "d10cf519-64da-47e8-b2c3-5d485688c6f7",
+    "id": "codex-agent-bd-review-shape",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-review-shape",
+    "description": "BD fleet review-shape seat. Spawn for review-shape work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "90dae8ad-9a98-416e-83a3-03ed2e20c9f9",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-review-shape",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356278
+      }
+    ],
+    "updated_at": 1792356278,
+    "created_at": 1792353115,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "60816801-a97e-415a-8d68-d73f0050423c",
+    "id": "codex-agent-bd-review-lite",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-review-lite",
+    "description": "BD fleet review-lite seat. Spawn for review-lite work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "3077b5e2-3835-44a3-85aa-dfb72f5c2223",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-review-lite",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356277
+      }
+    ],
+    "updated_at": 1792356277,
+    "created_at": 1792353115,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "c1264b3a-25d7-48b4-851c-c4bee73c5eae",
+    "id": "codex-agent-bd-review-lite-b",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-review-lite-b",
+    "description": "BD fleet review-lite-b seat. Spawn for review-lite-b work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "e36d5b22-759a-4ce5-a36d-6bd154b3075a",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-review-lite-b",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356277
+      }
+    ],
+    "updated_at": 1792356277,
+    "created_at": 1792353115,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "c70b92e4-95bf-40d1-823e-2a8e306f6e24",
+    "id": "codex-agent-bd-review-correctness",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-review-correctness",
+    "description": "BD fleet review-correctness seat. Spawn for review-correctness work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "4c66181e-ff53-43b7-8973-a9c555b9cb6c",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-review-correctness",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356277
+      }
+    ],
+    "updated_at": 1792356277,
+    "created_at": 1792353114,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "bf5805c7-37b0-4592-a998-1b60f8e5ccb6",
+    "id": "codex-agent-bd-resource-monitor",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-resource-monitor",
+    "description": "BD fleet resource-monitor seat. Spawn for resource-monitor work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "f3584e32-ab7b-4283-aa23-e6645a3c1dd2",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-resource-monitor",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356277
+      }
+    ],
+    "updated_at": 1792356277,
+    "created_at": 1792353114,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "acaa7dbc-59ba-4a67-bdb0-e558aa2b184c",
+    "id": "codex-agent-bd-registrar",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-registrar",
+    "description": "BD fleet registrar seat. Spawn for registrar work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "eff1c800-7236-4ac8-93da-d08008f87b16",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-registrar",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356277
+      }
+    ],
+    "updated_at": 1792356277,
+    "created_at": 1792353114,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "5078ebc5-4c85-474a-9f3c-743653c6813d",
+    "id": "codex-agent-bd-prereview",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-prereview",
+    "description": "BD fleet prereview seat. Spawn for prereview work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "9f46be3f-9471-4c89-8d43-15646b35f109",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-prereview",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356277
+      }
+    ],
+    "updated_at": 1792356277,
+    "created_at": 1792353114,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "b96fa81b-2908-428d-801b-207443b566b9",
+    "id": "codex-agent-bd-preflight",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-preflight",
+    "description": "BD fleet preflight seat. Spawn for preflight work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "cb33ec96-2b14-4311-ae23-0e69324a40e4",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-preflight",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356277
+      }
+    ],
+    "updated_at": 1792356277,
+    "created_at": 1792353114,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "5cdbc0ed-7e1a-42a6-a6f0-57b3accf423b",
+    "id": "codex-agent-bd-pm",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-pm",
+    "description": "BD fleet pm seat. Spawn for pm work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "a2ea22b2-5cd0-435b-9c0a-78cade6d356a",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-pm",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356277
+      }
+    ],
+    "updated_at": 1792356277,
+    "created_at": 1792353114,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "fa69efd7-5ae2-45a2-8687-63651227f8cb",
+    "id": "codex-agent-bd-pm-b",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-pm-b",
+    "description": "BD fleet pm-b seat. Spawn for pm-b work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "b1aea307-185e-4eef-9cdb-dca3b36e1963",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-pm-b",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356277
+      }
+    ],
+    "updated_at": 1792356277,
+    "created_at": 1792353114,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "f2d4d171-e8b4-45f5-a726-ba1028f70381",
+    "id": "codex-agent-bd-pgops",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-pgops",
+    "description": "BD fleet pgops seat. Spawn for pgops work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "08751845-a199-4e63-bdb0-8c1cf19b3f7f",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-pgops",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356277
+      }
+    ],
+    "updated_at": 1792356277,
+    "created_at": 1792353114,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "bf0c4211-7a01-4796-9c27-ea5904cca43c",
+    "id": "codex-agent-bd-panel",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-panel",
+    "description": "BD fleet panel seat. Spawn for panel work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "3d168c0b-7667-4970-94fe-166c8498b48f",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-panel",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356277
+      }
+    ],
+    "updated_at": 1792356277,
+    "created_at": 1792353114,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "79702cd6-81c1-4644-967c-28a6577bb34d",
+    "id": "codex-agent-bd-panel-b",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-panel-b",
+    "description": "BD fleet panel-b seat. Spawn for panel-b work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "bab8ae3b-a20e-4ea9-9c18-c386799f09d6",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-panel-b",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356277
+      }
+    ],
+    "updated_at": 1792356277,
+    "created_at": 1792353114,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "051d07d4-bf6d-4a03-92de-29c22b952d98",
+    "id": "codex-agent-bd-nurse",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-nurse",
+    "description": "BD fleet nurse seat. Spawn for nurse work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "43ff5a23-f27a-4e3c-aeaf-6a37aaf16550",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-nurse",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356277
+      }
+    ],
+    "updated_at": 1792356277,
+    "created_at": 1792353114,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "72ccc6e1-f034-48ca-a65e-caf232fe9eb8",
+    "id": "codex-agent-bd-notes",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-notes",
+    "description": "BD fleet notes seat. Spawn for notes work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "530b31b9-20fa-4e79-9046-fad3cdb96c95",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-notes",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356277
+      }
+    ],
+    "updated_at": 1792356277,
+    "created_at": 1792353114,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "c0a030b0-7ce0-4058-a386-c5096ceede41",
+    "id": "codex-agent-bd-login",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-login",
+    "description": "BD fleet login seat. Spawn for login work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "47f899fb-7765-4289-8209-63fe5a5f50db",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-login",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356277
+      }
+    ],
+    "updated_at": 1792356277,
+    "created_at": 1792353114,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "8560b99e-fcb8-4900-aabc-514a98d3e0f6",
+    "id": "codex-agent-bd-local-runner",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-local-runner",
+    "description": "BD fleet local-runner seat. Spawn for local-runner work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "ce8dc313-635c-4b9a-b55c-24c649e1906e",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-local-runner",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356277
+      }
+    ],
+    "updated_at": 1792356277,
+    "created_at": 1792353114,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "9ac06c9f-a9f6-4e8b-9c93-35c313f48782",
+    "id": "codex-agent-bd-local-a",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-local-a",
+    "description": "BD fleet local-a seat. Spawn for local-a work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "04d0ef7a-07fe-4d0a-9d7d-0e338eb4d68d",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-local-a",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356277
+      }
+    ],
+    "updated_at": 1792356277,
+    "created_at": 1792353114,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "c811255a-ebef-4fc7-b231-5f3cd7302dd3",
+    "id": "codex-agent-bd-landverify",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-landverify",
+    "description": "BD fleet landverify seat. Spawn for landverify work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "5165ff9b-c1d4-45de-8028-bbf809c29819",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-landverify",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356277
+      }
+    ],
+    "updated_at": 1792356277,
+    "created_at": 1792353114,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "be77e208-1868-4725-91c3-9649065ec8f3",
+    "id": "codex-agent-bd-landverify-a",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-landverify-a",
+    "description": "BD fleet landverify-a seat. Spawn for landverify-a work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "fd3846b6-fa30-4151-aa7e-2694b13553fd",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-landverify-a",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356277
+      }
+    ],
+    "updated_at": 1792356277,
+    "created_at": 1792353114,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "74be83d6-6180-4434-890c-c180850e9e9f",
+    "id": "codex-agent-bd-landing",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-landing",
+    "description": "BD fleet landing seat. Spawn for landing work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "ad8b6608-6fcd-4e31-878f-861133241049",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-landing",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356277
+      }
+    ],
+    "updated_at": 1792356277,
+    "created_at": 1792353114,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "956f4cb0-c8ae-4a45-9d37-473c88564a30",
+    "id": "codex-agent-bd-integrator",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-integrator",
+    "description": "BD fleet integrator seat. Spawn for integrator work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "fac49077-c5cd-4806-a306-729cc3137d45",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-integrator",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356277
+      }
+    ],
+    "updated_at": 1792356277,
+    "created_at": 1792353114,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "f81f8a9b-b8ab-463f-b4f3-dcf7560aac7c",
+    "id": "codex-agent-bd-integrator-d",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-integrator-d",
+    "description": "BD fleet integrator-d seat. Spawn for integrator-d work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "7eb68a1b-fe47-4dc3-983f-898ab391f6d1",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-integrator-d",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356277
+      }
+    ],
+    "updated_at": 1792356277,
+    "created_at": 1792353114,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "c5f04536-a6b2-46fc-8da8-72e6a85c0109",
+    "id": "codex-agent-bd-integrator-c",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-integrator-c",
+    "description": "BD fleet integrator-c seat. Spawn for integrator-c work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "f93bf3f8-188b-4703-b926-11a3f0f6cb7a",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-integrator-c",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356276
+      }
+    ],
+    "updated_at": 1792356276,
+    "created_at": 1792353114,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "3f53d783-842a-41a4-9b7c-c5a483b55ada",
+    "id": "codex-agent-bd-integrator-b",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-integrator-b",
+    "description": "BD fleet integrator-b seat. Spawn for integrator-b work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "f08166dc-382e-46c9-931c-050eb5d4cca5",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-integrator-b",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356276
+      }
+    ],
+    "updated_at": 1792356276,
+    "created_at": 1792353114,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "1c2f691a-5532-411e-861d-f3608daf88aa",
+    "id": "codex-agent-bd-ideas",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-ideas",
+    "description": "BD fleet ideas seat. Spawn for ideas work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "c677b50d-7fcc-48e9-aa22-0bac9a5b8e10",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-ideas",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356276
+      }
+    ],
+    "updated_at": 1792356276,
+    "created_at": 1792353114,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "6619222c-6213-4cf3-9364-cb547f211cb7",
+    "id": "codex-agent-bd-flow",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-flow",
+    "description": "BD fleet flow seat. Spawn for flow work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "ccfcb318-afec-43e6-8142-5aa6b5608116",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-flow",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356276
+      }
+    ],
+    "updated_at": 1792356276,
+    "created_at": 1792353114,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "1da20940-c528-4968-909c-978ea6e566dc",
+    "id": "codex-agent-bd-flakecourt",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-flakecourt",
+    "description": "BD fleet flakecourt seat. Spawn for flakecourt work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "2701a682-8394-4f3b-9b37-d3cbe6607352",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-flakecourt",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356276
+      }
+    ],
+    "updated_at": 1792356276,
+    "created_at": 1792353114,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "f40336ac-6668-481d-aa90-6bdc74aa8348",
+    "id": "codex-agent-bd-flakecourt-b",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-flakecourt-b",
+    "description": "BD fleet flakecourt-b seat. Spawn for flakecourt-b work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "d6eed62a-3cde-4882-af61-f4969333a424",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-flakecourt-b",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356276
+      }
+    ],
+    "updated_at": 1792356276,
+    "created_at": 1792353114,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "0b125223-19fb-466f-adca-1b92a91f047b",
+    "id": "codex-agent-bd-flakecourt-a",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-flakecourt-a",
+    "description": "BD fleet flakecourt-a seat. Spawn for flakecourt-a work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "141e5384-d9ce-44e9-8c12-1616842230d2",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-flakecourt-a",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356276
+      }
+    ],
+    "updated_at": 1792356276,
+    "created_at": 1792353114,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "a13138ab-9f4e-4d6d-8a6f-1cccc430d8de",
+    "id": "codex-agent-bd-fixer",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-fixer",
+    "description": "BD fleet fixer seat. Spawn for fixer work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "79bec142-f388-472d-9a15-48bdfa242fa3",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-fixer",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356276
+      }
+    ],
+    "updated_at": 1792356276,
+    "created_at": 1792353114,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "3cf190ad-8fcc-4006-a72f-41b662b2839d",
+    "id": "codex-agent-bd-fable",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-fable",
+    "description": "BD fleet fable seat. Spawn for fable work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "27c8d3a5-5778-4646-93ab-c2bd3a546ca4",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-fable",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356276
+      }
+    ],
+    "updated_at": 1792356276,
+    "created_at": 1792353114,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "821b73bd-f451-4b93-8156-433cbf972ea8",
+    "id": "codex-agent-bd-fable-b",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-fable-b",
+    "description": "BD fleet fable-b seat. Spawn for fable-b work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "07435545-b713-462a-ab6f-86588a25f822",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-fable-b",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356276
+      }
+    ],
+    "updated_at": 1792356276,
+    "created_at": 1792353114,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "7c8ddbfa-802f-4c76-9311-112e82b5abf3",
+    "id": "codex-agent-bd-dispatch",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-dispatch",
+    "description": "BD fleet dispatch seat. Spawn for dispatch work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "a45b3745-9bb0-44f6-a83c-9300a2abc3f2",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-dispatch",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356276
+      }
+    ],
+    "updated_at": 1792356276,
+    "created_at": 1792353113,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "a7d7408e-4b7b-4cec-8c52-70c8df4b20d4",
+    "id": "codex-agent-bd-cx-pm",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-cx-pm",
+    "description": "BD fleet cx-pm seat. Spawn for cx-pm work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "39ed4f48-8178-4beb-9d60-1e5cbf5daefa",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-cx-pm",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356276
+      }
+    ],
+    "updated_at": 1792356276,
+    "created_at": 1792353113,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "47fbbe8b-84b2-4990-912a-3ab2ad2a29b0",
+    "id": "codex-agent-bd-council",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-council",
+    "description": "BD fleet council seat. Spawn for council work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "c1e07d61-5390-493d-9a30-153d2422ecd3",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-council",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356276
+      }
+    ],
+    "updated_at": 1792356276,
+    "created_at": 1792353113,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "5b219434-fab9-4b03-b77b-22b73286bfb5",
+    "id": "codex-agent-bd-codexwatch",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-codexwatch",
+    "description": "BD fleet codexwatch seat. Spawn for codexwatch work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "0d61524e-adb8-4b20-bba2-91805ed3fc2e",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-codexwatch",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356276
+      }
+    ],
+    "updated_at": 1792356276,
+    "created_at": 1792353113,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "4835f159-4292-4d5f-8066-c3aefdc871ee",
+    "id": "codex-agent-bd-codex-tender",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-codex-tender",
+    "description": "BD fleet codex-tender seat. Spawn for codex-tender work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "c666a8db-eb71-4d78-8602-3885460e2da1",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-codex-tender",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356276
+      }
+    ],
+    "updated_at": 1792356276,
+    "created_at": 1792353113,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "9d458b1e-fcb6-4819-8512-3cecf94eb87d",
+    "id": "codex-agent-bd-closure-audit",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-closure-audit",
+    "description": "BD fleet closure-audit seat. Spawn for closure-audit work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "d12203ed-4752-4114-9bd4-73c638fce0d8",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-closure-audit",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356276
+      }
+    ],
+    "updated_at": 1792356276,
+    "created_at": 1792353113,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "15fd19de-c0ee-4dfa-972c-e4459be3a3fa",
+    "id": "codex-agent-bd-cartograph",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-cartograph",
+    "description": "BD fleet cartograph seat. Spawn for cartograph work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "d8be54b0-37b7-4390-b251-0999880f5890",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-cartograph",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356276
+      }
+    ],
+    "updated_at": 1792356276,
+    "created_at": 1792353113,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "d6483cbb-6684-4e08-b42a-7c90bf4071ec",
+    "id": "codex-agent-bd-briefauthor",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-briefauthor",
+    "description": "BD fleet briefauthor seat. Spawn for briefauthor work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "4a305b4f-9116-4cfa-9539-0e3673e9f97a",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-briefauthor",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356276
+      }
+    ],
+    "updated_at": 1792356276,
+    "created_at": 1792353113,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "8d242f50-9fd6-4774-b727-75ea75509c18",
+    "id": "codex-agent-bd-briefauthor-2",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-briefauthor-2",
+    "description": "BD fleet briefauthor-2 seat. Spawn for briefauthor-2 work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "96da2a66-fe1a-4301-856f-759698288600",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-briefauthor-2",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356276
+      }
+    ],
+    "updated_at": 1792356276,
+    "created_at": 1792353113,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "dcd036ea-7100-48df-bb34-6e8f77b21b50",
+    "id": "codex-agent-bd-b-login",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-b-login",
+    "description": "BD fleet b-login seat. Spawn for b-login work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "c4ac4bdf-4db8-4cd5-a7b5-c67e796d4131",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-b-login",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356276
+      }
+    ],
+    "updated_at": 1792356276,
+    "created_at": 1792353113,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "5baed122-5bdb-46aa-849d-c58f7ac1037c",
+    "id": "codex-agent-bd-audit",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-audit",
+    "description": "BD fleet audit seat. Spawn for audit work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "a2c146aa-96dc-4cb7-81a3-c575ada6dd34",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-audit",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356276
+      }
+    ],
+    "updated_at": 1792356276,
+    "created_at": 1792353113,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "9bcc59ae-3b06-462e-b15c-8bd74b008b24",
+    "id": "codex-agent-bd-askbox",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-askbox",
+    "description": "BD fleet askbox seat. Spawn for askbox work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "5abd8b3c-19e8-4b45-80ff-ad6cc1b028a9",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-askbox",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356275
+      }
+    ],
+    "updated_at": 1792356275,
+    "created_at": 1792353113,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "c4ed0b0a-75d4-4947-a4a6-09d408ddbd28",
+    "id": "codex-agent-bd-antigravity",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-antigravity",
+    "description": "BD fleet antigravity seat. Spawn for antigravity work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "a1b40c98-d07e-4cce-b451-c09164e21435",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-antigravity",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356275
+      }
+    ],
+    "updated_at": 1792356275,
+    "created_at": 1792353113,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "25db75e5-5ee6-4179-9dcc-de792fdd6c6c",
+    "id": "codex-agent-bd-advisor",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-advisor",
+    "description": "BD fleet advisor seat. Spawn for advisor work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "daab8830-0a18-4374-83c9-e91f5f6e3c61",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-advisor",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356275
+      }
+    ],
+    "updated_at": 1792356275,
+    "created_at": 1792353113,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "464b95ab-54c1-42d7-a2d2-fbde73a3f0fc",
+    "id": "codex-agent-bd-advisor-b",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-advisor-b",
+    "description": "BD fleet advisor-b seat. Spawn for advisor-b work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "0ad16d1c-417b-42df-8946-9b723950c976",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-advisor-b",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356275
+      }
+    ],
+    "updated_at": 1792356275,
+    "created_at": 1792353113,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "a4167166-4c9c-465f-a8cd-ca9a40a430ce",
+    "id": "codex-agent-bd-adjudicator",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-adjudicator",
+    "description": "BD fleet adjudicator seat. Spawn for adjudicator work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "7286bdbd-eda3-478c-b638-9bfc4423d4d4",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-adjudicator",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356275
+      }
+    ],
+    "updated_at": 1792356275,
+    "created_at": 1792353113,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "d3c2ba97-7f1f-4005-9f4c-7385c0ee4523",
+    "id": "codex-agent-bd-adjudicator-b",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: bd-adjudicator-b",
+    "description": "BD fleet adjudicator-b seat. Spawn for adjudicator-b work; follows FLEET_RULE and AGENTS.md.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "90a4823a-e5ee-4891-b1df-29661fdbb343",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-bd-adjudicator-b",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356275
+      }
+    ],
+    "updated_at": 1792356275,
+    "created_at": 1792353113,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "d28de033-66c1-4c58-9252-9934c213eb09",
+    "id": "claude-cmd-bd-dispatch-ops-wt-new",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Claude Command: bd-dispatch-ops-wt-new",
+    "description": "Fleet wt-new adapter; propagate refusal and helper status",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-code-command"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "b430176e-dffe-4479-9b2f-28db70fb7c8d",
+        "resource_type": "skill",
+        "resource_id": "claude-cmd-bd-dispatch-ops-wt-new",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356275
+      }
+    ],
+    "updated_at": 1792356275,
+    "created_at": 1792353113,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "2191ae58-ff93-43a4-a170-c67bd6bb6a10",
+    "id": "claude-cmd-bd-dispatch-ops-worker-band",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Claude Command: bd-dispatch-ops-worker-band",
+    "description": "Fleet worker-band adapter; propagate refusal and helper status",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-code-command"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "5a3f6c2c-b8e1-4297-9e99-acf27cc06211",
+        "resource_type": "skill",
+        "resource_id": "claude-cmd-bd-dispatch-ops-worker-band",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356275
+      }
+    ],
+    "updated_at": 1792356275,
+    "created_at": 1792353113,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "197a56e4-1ea5-49db-95a4-f35f95e0104a",
+    "id": "claude-cmd-bd-dispatch-ops-retire-seat",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Claude Command: bd-dispatch-ops-retire-seat",
+    "description": "Fleet retire-seat adapter; propagate refusal and helper status",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-code-command"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "0d30e42d-910b-4a0f-bafb-b9f0861db22c",
+        "resource_type": "skill",
+        "resource_id": "claude-cmd-bd-dispatch-ops-retire-seat",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356275
+      }
+    ],
+    "updated_at": 1792356275,
+    "created_at": 1792353113,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "6893318d-6867-40c4-a94f-61a0f3878de1",
+    "id": "claude-cmd-bd-dispatch-ops-next-id",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Claude Command: bd-dispatch-ops-next-id",
+    "description": "Fleet next-id adapter; propagate refusal and helper status",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-code-command"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "65308679-a29c-4602-a42a-0f3b86a778d4",
+        "resource_type": "skill",
+        "resource_id": "claude-cmd-bd-dispatch-ops-next-id",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356275
+      }
+    ],
+    "updated_at": 1792356275,
+    "created_at": 1792353113,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "857e21c0-6f88-437c-a683-479e66687d58",
+    "id": "claude-cmd-bd-dispatch-ops-launch-role",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Claude Command: bd-dispatch-ops-launch-role",
+    "description": "Fleet launch-role adapter; propagate refusal and helper status",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-code-command"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "3e321603-c3f0-47dd-90dd-528177b7279d",
+        "resource_type": "skill",
+        "resource_id": "claude-cmd-bd-dispatch-ops-launch-role",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356275
+      }
+    ],
+    "updated_at": 1792356275,
+    "created_at": 1792353113,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "8be63c5d-b9bc-4be4-ade8-ecd54413ed30",
+    "id": "claude-cmd-bd-dispatch-ops-gates-parallel",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Claude Command: bd-dispatch-ops-gates-parallel",
+    "description": "Fleet gates-parallel adapter; propagate refusal and helper status",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-code-command"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "66a35f89-756a-4e05-9fa3-27b9d0517117",
+        "resource_type": "skill",
+        "resource_id": "claude-cmd-bd-dispatch-ops-gates-parallel",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356275
+      }
+    ],
+    "updated_at": 1792356275,
+    "created_at": 1792353113,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "5a39a013-1151-4ea8-908a-3e3c723d9d42",
+    "id": "claude-cmd-bd-dispatch-ops-dispatch-manifest",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Claude Command: bd-dispatch-ops-dispatch-manifest",
+    "description": "Fleet dispatch-manifest adapter; propagate refusal and helper status",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-code-command"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "b0e5b799-6368-4d31-abda-dcd6f8f89a00",
+        "resource_type": "skill",
+        "resource_id": "claude-cmd-bd-dispatch-ops-dispatch-manifest",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356275
+      }
+    ],
+    "updated_at": 1792356275,
+    "created_at": 1792353113,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "c6281faa-a9ec-4c8a-bead-a92df2cadb68",
+    "id": "claude-cmd-bd-dispatch-ops-claim",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Claude Command: bd-dispatch-ops-claim",
+    "description": "Fleet claim adapter; propagate refusal and helper status",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-code-command"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "f29176fa-7d68-42d9-9ae5-8aa1d07a1b29",
+        "resource_type": "skill",
+        "resource_id": "claude-cmd-bd-dispatch-ops-claim",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356275
+      }
+    ],
+    "updated_at": 1792356275,
+    "created_at": 1792353113,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "484b8bbd-4d17-485f-aa29-f2a327f0fca3",
+    "id": "claude-cmd-bd-dispatch-ops-brief",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Claude Command: bd-dispatch-ops-brief",
+    "description": "Fleet brief adapter; propagate refusal and helper status",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-code-command"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "2cb4044f-cd60-4678-bbd5-2bf1f7cce116",
+        "resource_type": "skill",
+        "resource_id": "claude-cmd-bd-dispatch-ops-brief",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356275
+      }
+    ],
+    "updated_at": 1792356275,
+    "created_at": 1792353113,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "b39865b9-e601-4b0f-b416-ac4045f0bf1f",
+    "id": "claude-cmd-bd-dispatch-ops-assign-lens",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Claude Command: bd-dispatch-ops-assign-lens",
+    "description": "Fleet assign-lens adapter; propagate refusal and helper status",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-code-command"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "3bb122b2-13c2-46eb-84bf-f6107ec92fba",
+        "resource_type": "skill",
+        "resource_id": "claude-cmd-bd-dispatch-ops-assign-lens",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356275
+      }
+    ],
+    "updated_at": 1792356275,
+    "created_at": 1792353113,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "d1d2e781-feb2-4b6d-969c-7744007b54b5",
+    "id": "rebase-orchestrator",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "rebase-orchestrator",
+    "description": "Measure batch overlap, preserve authored evidence during integration, and validate lens re-finalization.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "fleet-plugin-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "f9cde823-f34b-4085-bb24-0c951cd0ff2a",
+        "resource_type": "skill",
+        "resource_id": "rebase-orchestrator",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356275
+      }
+    ],
+    "updated_at": 1792356275,
+    "created_at": 1792353113,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "7abdc273-27ea-4c53-bc4c-2a4a8374a996",
+    "id": "bd-lens",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "bd-lens",
+    "description": "Review behavioral RED provenance, deployed twins, and runtime evidence using retained scratch trees.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "fleet-plugin-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "ad44e9e8-be4c-4796-9266-125d373d64b4",
+        "resource_type": "skill",
+        "resource_id": "bd-lens",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356275
+      }
+    ],
+    "updated_at": 1792356275,
+    "created_at": 1792353112,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "ccc52f5f-8d79-448f-b453-a83d01a6dd4d",
+    "id": "bd-fleet-mcp",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "bd-fleet-mcp",
+    "description": "Validate fleet premises, message attempts and role state through the shared bd-fleet MCP server.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "fleet-plugin-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "88d5b10d-d091-451e-a5d9-f5e66f506809",
+        "resource_type": "skill",
+        "resource_id": "bd-fleet-mcp",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356275
+      }
+    ],
+    "updated_at": 1792356275,
+    "created_at": 1792353112,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "f5b9e6ae-866b-45dc-88a2-9dd6d6f272e0",
+    "id": "bd-dispatch-ops",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "bd-dispatch-ops",
+    "description": "Guarded fleet command adapters for manifests, demand, review claims, preflight and remote gate execution.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "fleet-plugin-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "bb7d6110-0ec8-427a-9d85-82a8faac0cde",
+        "resource_type": "skill",
+        "resource_id": "bd-dispatch-ops",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356274
+      }
+    ],
+    "updated_at": 1792356274,
+    "created_at": 1792353112,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "f38ca2ea-24e6-4a25-beeb-651f51d245a7",
+    "id": "bd-agy-dispatch",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "bd-agy-dispatch",
+    "description": "Agentic skill for Project Managers to dispatch backlog queue rows in parallel via invoke_subagent with zero latency and O1042 ledger reconciliation parity.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "fleet-plugin-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "7c6935fe-0a78-452d-afb0-509a2ef166ec",
+        "resource_type": "skill",
+        "resource_id": "bd-agy-dispatch",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356274
+      }
+    ],
+    "updated_at": 1792356274,
+    "created_at": 1792353112,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "c35b830e-8446-44a8-8ebe-87bac148ce6d",
+    "id": "bd-harness-cut",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "bd-harness-cut",
+    "description": "Canonical FIX candidate shape and paired regression controls for harness cuts.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "fleet-plugin-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "36a780b3-7d11-45e7-a4db-83c52cc090de",
+        "resource_type": "skill",
+        "resource_id": "bd-harness-cut",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356274
+      }
+    ],
+    "updated_at": 1792356274,
+    "created_at": 1792353112,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "14cef2bd-4aa8-4a67-9dbf-13ef331338bf",
+    "id": "context-guard",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "context-guard",
+    "description": "Use explicit seat telemetry, current fleet-law slices and durable train snapshots when managing fleet context.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "fleet-plugin-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "f9c6940c-f804-4fd3-aded-5daa71a1b96e",
+        "resource_type": "skill",
+        "resource_id": "context-guard",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356274
+      }
+    ],
+    "updated_at": 1792356274,
+    "created_at": 1792353112,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "82605ae9-6f06-4e48-8ea0-e20758ad05f1",
+    "id": "bd-browser-oracle",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "bd-browser-oracle",
+    "description": "Operational runbook and technical patterns for driving dual-node Windows Chrome CDP virtual browser bridges, multi-model AI oracle fanout, credential autofill, and consensus evaluation.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "fleet-plugin-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "8442bd04-4e25-4db6-bad0-16c687ee9fc0",
+        "resource_type": "skill",
+        "resource_id": "bd-browser-oracle",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356274
+      }
+    ],
+    "updated_at": 1792356274,
+    "created_at": 1792353112,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "734ab7f7-d52c-406e-b5ce-e01b43d5929a",
+    "id": "ui-plugin-navigation",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "ui-plugin-navigation",
+    "description": "Discover UI plugin panels relevant to the current task and surface a one-click pill in chat to open (toggle) them in the side pane. Use when a running UI plugin's panel would help with what the user is doing, or right after the user enables a new UI plugin pane and a shortcut to open it is handy.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "gemini-agy-builtin-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "b02896ae-dc13-4ec0-a091-ff9f9c4dcf20",
+        "resource_type": "skill",
+        "resource_id": "ui-plugin-navigation",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356274
+      }
+    ],
+    "updated_at": 1792356274,
+    "created_at": 1792353112,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "536e3783-f694-45ba-ba70-45c7a2a0e8f0",
+    "id": "run-workflow",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "run-workflow",
+    "description": ">-",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "gemini-agy-builtin-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "f9d02139-4da2-471e-bfba-5d9ebe630d0b",
+        "resource_type": "skill",
+        "resource_id": "run-workflow",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356274
+      }
+    ],
+    "updated_at": 1792356274,
+    "created_at": 1792353112,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "6402d7dc-fc17-48c9-9342-042bd6c508a6",
+    "id": "plugin",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "plugin",
+    "description": "How to manage and create plugins — namespaced bundles of skills, agents, rules, MCP servers and hooks that install, enable and disable as a single unit. Use this skill when the user wants to enable, disable, install or uninstall a plugin, when they want to create a new plugin, or when a new customiz",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "gemini-agy-builtin-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "53a05858-5311-4aa9-9442-7ce83f4a62d6",
+        "resource_type": "skill",
+        "resource_id": "plugin",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356274
+      }
+    ],
+    "updated_at": 1792356274,
+    "created_at": 1792353112,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "39355a8e-fd36-47af-968c-4656fbd3de75",
+    "id": "permissioned-github",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "permissioned-github",
+    "description": "Guidelines for interacting with GitHub and request permissions from the user when commands fail due to restrictions in the agent environment.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "gemini-agy-builtin-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "329c5e03-bc5b-4a53-8fed-614dca70336f",
+        "resource_type": "skill",
+        "resource_id": "permissioned-github",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356274
+      }
+    ],
+    "updated_at": 1792356274,
+    "created_at": 1792353112,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "5e083830-2c93-446f-93fd-b6400eaa4662",
+    "id": "migrate-workflows",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "migrate-workflows",
+    "description": "Automatically migrate legacy workflows to modern skills across global and workspace configurations. Scans for existing workflows, creates target SKILL.md files, and safely archives old workflow files.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "gemini-agy-builtin-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "3766723b-c19f-42e0-bb26-2ef0991f0b9e",
+        "resource_type": "skill",
+        "resource_id": "migrate-workflows",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356274
+      }
+    ],
+    "updated_at": 1792356274,
+    "created_at": 1792353112,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "d5115f0d-f5ff-4afe-a951-280485812a1a",
+    "id": "generative_ui",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "generative_ui",
+    "description": "How to render rich interactive HTML widgets inline in the chat or as standalone artifacts. Use this skill when you want to show the user diagrams, data visualizations, interactive controls, educational walkthroughs, or any rich visual content beyond plain text and markdown.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "gemini-agy-builtin-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "04d509bc-c835-4f20-8dfa-c7319657aad2",
+        "resource_type": "skill",
+        "resource_id": "generative_ui",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356274
+      }
+    ],
+    "updated_at": 1792356274,
+    "created_at": 1792353112,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "790238b8-1548-4b03-8217-2767025bfd41",
+    "id": "automation",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "automation",
+    "description": "Interactive guide to design and create a scheduled background automation. Use this skill when the user wants to create an automated or recurring scheduled task (e.g. \"summarize my emails every morning\", \"every Monday send me a to-do list\"). Also triggered by the /automation slash command.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "gemini-agy-builtin-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "4d22b938-8150-4173-a6ad-b569c0645437",
+        "resource_type": "skill",
+        "resource_id": "automation",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356274
+      }
+    ],
+    "updated_at": 1792356274,
+    "created_at": 1792353112,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "cac54deb-ae6c-417b-933c-d6841e92379a",
+    "id": "antigravity_guide",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "antigravity-guide",
+    "description": "Provides a comprehensive guide, quick reference, and sitemap for Google Antigravity (AGY), including the Antigravity CLI (agy), Antigravity 2.0, Antigravity IDE, Python SDK, slash commands, keybindings, and customizations (skills, rules, MCP, sidecars). Activate this skill when the user asks questio",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "gemini-agy-builtin-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "ef52ba9b-c827-44c3-94cc-9c608bf47213",
+        "resource_type": "skill",
+        "resource_id": "antigravity_guide",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356274
+      }
+    ],
+    "updated_at": 1792356274,
+    "created_at": 1792353112,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "10cf5753-ac89-440d-95d4-85d1f5738620",
+    "id": "agy-customizations",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "agy-customizations",
+    "description": ">-",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "gemini-agy-builtin-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "661ca6b6-f013-4f30-a968-d7344746ee95",
+        "resource_type": "skill",
+        "resource_id": "agy-customizations",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356274
+      }
+    ],
+    "updated_at": 1792356274,
+    "created_at": 1792353112,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "d40e313d-317c-4d73-9ba9-0d4587d64355",
+    "id": "xlsx",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "xlsx",
+    "description": "Use this skill any time a spreadsheet file is the primary input or output. This means any task where the user wants to: open, read, edit, or fix an existing .xlsx, .xlsm, .xltx, .csv, or .tsv file (e.g., adding columns, computing formulas, formatting, charting, cleaning messy data); create a new spr",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-synced-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "01be4fe6-3df4-4308-8455-e9e80e972758",
+        "resource_type": "skill",
+        "resource_id": "xlsx",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356274
+      }
+    ],
+    "updated_at": 1792356274,
+    "created_at": 1792353112,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "7871513b-b48d-4e51-b6ea-452d94cfbc2a",
+    "id": "skill-creator",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "skill-creator",
+    "description": "Create new skills, modify and improve existing skills, and measure skill performance. Use when users want to create a skill from scratch, edit, or optimize an existing skill, run evals to test a skill, benchmark skill performance with variance analysis, or optimize a skill's description for better t",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-synced-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "5089b0a1-dc4d-4652-81b5-d8b11823fa64",
+        "resource_type": "skill",
+        "resource_id": "skill-creator",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356274
+      }
+    ],
+    "updated_at": 1792356274,
+    "created_at": 1792353112,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "385ca30e-0550-4734-9eb0-13a335ca57bb",
+    "id": "pptx",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "pptx",
+    "description": "Use this skill any time a .pptx or .potx file is involved in any way — as input, output, or both. This includes: creating slide decks, pitch decks, or presentations as PowerPoint (.pptx) files; reading, parsing, or extracting text from any .pptx or .potx file (even if the extracted content will be u",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-synced-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "c4e95cd5-bae9-40ab-a01f-2749b8691c98",
+        "resource_type": "skill",
+        "resource_id": "pptx",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356274
+      }
+    ],
+    "updated_at": 1792356274,
+    "created_at": 1792353112,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "020acf0b-fdf2-45ed-9194-b66563be413a",
+    "id": "pdf",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "pdf",
+    "description": "Use this skill whenever the user wants to do anything with PDF files. This includes reading or extracting text/tables from PDFs, combining or merging multiple PDFs into one, splitting PDFs apart, rotating pages, adding watermarks, creating new PDFs, filling PDF forms, encrypting/decrypting PDFs, ext",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-synced-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "0cf4379a-16cc-4a46-ac10-b78c8785e5f6",
+        "resource_type": "skill",
+        "resource_id": "pdf",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356274
+      }
+    ],
+    "updated_at": 1792356274,
+    "created_at": 1792353112,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "592a5972-d7be-4b0f-9b5a-d023b6736cdf",
+    "id": "morning",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "morning",
+    "description": "Render the user's morning brief as a styled HTML artifact, or set it up as a recurring weekday task. Use only when the user explicitly asks to run, see, or set up their morning brief, or if they invoke /morning by name. A question about their day, schedule, or calendar is not by itself a request for",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-synced-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "f0d54ee7-7d64-4b99-836f-0f17a5464a34",
+        "resource_type": "skill",
+        "resource_id": "morning",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356274
+      }
+    ],
+    "updated_at": 1792356274,
+    "created_at": 1792353112,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "4629ad77-b794-43e3-b49c-8f1ade31a5df",
+    "id": "import-memory",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "import-memory",
+    "description": "Import a memory export from another AI assistant into Claude's memory — conversationally, additively, and with the content treated as data.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-synced-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "be0c2c6f-236f-43dd-be1b-540cfca7014b",
+        "resource_type": "skill",
+        "resource_id": "import-memory",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356274
+      }
+    ],
+    "updated_at": 1792356274,
+    "created_at": 1792353112,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "c9da1e2b-15e0-452b-a2ba-8e65e310dc63",
+    "id": "google-workspace",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "google-workspace",
+    "description": "Read this before the first Google Drive, Docs, Sheets or Slides connector call whenever the task creates or changes a Google file. Use this skill whenever the user wants to create or change a Google Doc, Sheet or Slides file in their Google Drive. Triggers include: a request that names Google Docs, ",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-synced-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "d60a3ed6-20d3-47b7-94ba-650e8fd7585c",
+        "resource_type": "skill",
+        "resource_id": "google-workspace",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356274
+      }
+    ],
+    "updated_at": 1792356274,
+    "created_at": 1792353112,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "d531925b-363e-4263-a5f6-efd722fba57c",
+    "id": "docx",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "docx",
+    "description": "Use this skill whenever the user wants to create, read, edit, or manipulate Word documents (.docx) or Word templates (.dotx). Triggers include: any mention of Microsoft Word Documents, such as 'Word doc', 'word document', '.docx', '.dotx', 'microsoft doc'. Also use when extracting or reorganizing co",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-synced-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "5720f876-5a8e-4edb-a9ea-0fd45f160fe9",
+        "resource_type": "skill",
+        "resource_id": "docx",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356274
+      }
+    ],
+    "updated_at": 1792356274,
+    "created_at": 1792353112,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "14c08a5e-8c94-45c6-8e9e-773d8572e583",
+    "id": "docs",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "docs",
+    "description": "docs (editable docs people share and comment on; the default for any document, named as a doc or not: a document, report, proposal, resume, cover letter, letter, contract, policy, form, template, worksheet, essay, handbook, guide, how-to, cheat sheet, SOP or other writing to keep, share, collaborate",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-synced-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "d1ab2543-10c8-45c0-a990-43bb1ab0f872",
+        "resource_type": "skill",
+        "resource_id": "docs",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356273
+      }
+    ],
+    "updated_at": 1792356273,
+    "created_at": 1792353112,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "b87fb3b4-e0ae-4e1a-a4ca-fc1c172f355c",
+    "id": "verify-and-stop",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "verify-and-stop",
+    "description": "Prove existing work meets acceptance conditions without expanding scope. Use for validation-only tasks, completion checks, focused gate runs, and last-mile proof.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-codex-agy-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "441c7943-40cc-46f8-bf66-8b72ad48536b",
+        "resource_type": "skill",
+        "resource_id": "verify-and-stop",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356273
+      }
+    ],
+    "updated_at": 1792356273,
+    "created_at": 1792353112,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "cd3e3cd5-77c1-40ee-8ac9-f3e24995d7a8",
+    "id": "surgical-patch",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "surgical-patch",
+    "description": "Fix bugs and small behavior changes at the narrowest responsible layer. Use when regression proof, preserved surrounding behavior, and task-relevant tests matter.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-codex-agy-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "4769c78a-6702-4291-83eb-a3a5e060ec29",
+        "resource_type": "skill",
+        "resource_id": "surgical-patch",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356273
+      }
+    ],
+    "updated_at": 1792356273,
+    "created_at": 1792353112,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "0d696f65-87c6-49a4-a107-c590994bdc8f",
+    "id": "safe-refactor",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "safe-refactor",
+    "description": "Restructure code while preserving behavior. Use for extraction, consolidation, ownership moves, or cleanup where verification must bracket structural edits.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-codex-agy-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "551ff274-5923-47ee-a5f7-920e3b490033",
+        "resource_type": "skill",
+        "resource_id": "safe-refactor",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356273
+      }
+    ],
+    "updated_at": 1792356273,
+    "created_at": 1792353112,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "a386e00b-75fd-40d9-af4d-9bfe3bc77740",
+    "id": "migration",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "migration",
+    "description": "Implement reversible compatibility-safe transitions. Use for schema, data, API, protocol, configuration, or dependency migrations requiring rollback and preservation proof.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-codex-agy-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "f6443155-a574-476a-b076-9e8d8d6096bc",
+        "resource_type": "skill",
+        "resource_id": "migration",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356273
+      }
+    ],
+    "updated_at": 1792356273,
+    "created_at": 1792353112,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "fbf46d8f-e8a8-48b4-96a6-06c686cb73fc",
+    "id": "lean-build",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "lean-build",
+    "description": "Build feature work with high overbuilding risk. Use for new behavior, product slices, or integrations where repository reuse, strict scope, and an explicit stop condition matter.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-codex-agy-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "cc187218-24ba-425e-98ed-14b90e3fd336",
+        "resource_type": "skill",
+        "resource_id": "lean-build",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356273
+      }
+    ],
+    "updated_at": 1792356273,
+    "created_at": 1792353111,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "d6e3dfa3-3f1d-4336-a57f-59ec8941a9ce",
+    "id": "investigate-first",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "investigate-first",
+    "description": "Diagnose ambiguous failures before editing. Use for unknown causes, intermittent behavior, performance regressions, or investigations needing evidence-ranked hypotheses.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-codex-agy-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "704afef6-e834-4c5c-b4cc-591a1281fec9",
+        "resource_type": "skill",
+        "resource_id": "investigate-first",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356273
+      }
+    ],
+    "updated_at": 1792356273,
+    "created_at": 1792353111,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "d03e27b0-93be-4335-b2fe-2a9b22d78528",
+    "id": "fleet-satellite-orchestration",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "fleet-satellite-orchestration",
+    "description": "Comprehensive operational guide, diagnostic runbooks, and automation procedures for the 27-node Boylenet cluster mesh, VMware ESXi hypervisors (govc), satellite AI containers (TEI, Ollama, Langfuse, LiteLLM), local caching registries, and fleet health verification. Use when managing, debugging, audi",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-codex-agy-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "dbfe4df9-db4d-4942-8727-886abd1d3453",
+        "resource_type": "skill",
+        "resource_id": "fleet-satellite-orchestration",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356273
+      }
+    ],
+    "updated_at": 1792356273,
+    "created_at": 1792353111,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "f5e7e645-6290-4950-aedd-86f674bb7cba",
+    "id": "fleet-gridlock-recovery",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "fleet-gridlock-recovery",
+    "description": "Operational runbooks to unstick the Boylenet massive agent swarm, reset the dispatcher queue, bypass Claude CLI safety freezes, and dynamically offload CI to VMware clones.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-codex-agy-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "2a72e9af-76b5-4d78-b023-7e757ca0b8db",
+        "resource_type": "skill",
+        "resource_id": "fleet-gridlock-recovery",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356273
+      }
+    ],
+    "updated_at": 1792356273,
+    "created_at": 1792353111,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "fe3e3a4c-c26b-467b-824d-80fb16b6ad07",
+    "id": "find-skills",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "find-skills",
+    "description": "Helps users discover and install agent skills when they ask questions like \"how do I do X\", \"find a skill for X\", \"is there a skill that can...\", or express interest in extending capabilities. This skill should be used when the user is looking for functionality that might exist as an installable ski",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-codex-agy-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "4f0f4c85-fb64-46fc-b152-22b91cdbb1a4",
+        "resource_type": "skill",
+        "resource_id": "find-skills",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356273
+      }
+    ],
+    "updated_at": 1792356273,
+    "created_at": 1792353111,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "98588304-53b5-4630-b50e-437d87bb2303",
+    "id": "cdp-frame-scroll-controls",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "cdp-frame-scroll-controls",
+    "description": "Validate CDP FPS and auto-scroll audit observations with visible-window",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-codex-agy-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "886e1e17-51b5-4532-be7f-146c21f9a225",
+        "resource_type": "skill",
+        "resource_id": "cdp-frame-scroll-controls",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356273
+      }
+    ],
+    "updated_at": 1792356273,
+    "created_at": 1792353111,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "76f9ea20-086c-477b-b77a-b0e0ce9a5fda",
+    "id": "caveman",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "caveman",
+    "description": ">",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-codex-agy-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "e9974629-83aa-4ad7-8021-35bdd9d7bd31",
+        "resource_type": "skill",
+        "resource_id": "caveman",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356273
+      }
+    ],
+    "updated_at": 1792356273,
+    "created_at": 1792353111,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "4eb7f9f2-8e93-4148-99c2-e1819357c13d",
+    "id": "caveman-stats",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "caveman-stats",
+    "description": ">",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-codex-agy-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "889cedb7-96e1-41a5-b332-26af02dd901d",
+        "resource_type": "skill",
+        "resource_id": "caveman-stats",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356273
+      }
+    ],
+    "updated_at": 1792356273,
+    "created_at": 1792353111,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "827750bb-f63c-4506-a220-f03a3f4f4280",
+    "id": "caveman-setup",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "caveman-setup",
+    "description": ">",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-codex-agy-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "4296b410-38fe-4347-a29f-c1930f73c8bb",
+        "resource_type": "skill",
+        "resource_id": "caveman-setup",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356273
+      }
+    ],
+    "updated_at": 1792356273,
+    "created_at": 1792353111,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "a81f5038-7ce6-477b-a3c3-7780ef6f4013",
+    "id": "caveman-review",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "caveman-review",
+    "description": ">",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-codex-agy-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "0c75aa2e-91f0-41be-b765-d705869c9967",
+        "resource_type": "skill",
+        "resource_id": "caveman-review",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356273
+      }
+    ],
+    "updated_at": 1792356273,
+    "created_at": 1792353111,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "bab01109-3cee-4321-a264-fc59280c11e0",
+    "id": "caveman-optimize",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "caveman-optimize",
+    "description": ">",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-codex-agy-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "9cebb470-ee92-448a-8b52-61a9de337a79",
+        "resource_type": "skill",
+        "resource_id": "caveman-optimize",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356273
+      }
+    ],
+    "updated_at": 1792356273,
+    "created_at": 1792353111,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "5d0ebb84-b104-46c6-9fcb-1a015f9abec0",
+    "id": "caveman-manage",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "caveman-manage",
+    "description": ">",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-codex-agy-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "736ab173-9ca3-4005-b9b0-008fd70f061f",
+        "resource_type": "skill",
+        "resource_id": "caveman-manage",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356273
+      }
+    ],
+    "updated_at": 1792356273,
+    "created_at": 1792353111,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "82e815d2-aad3-4617-b7bb-13cf0eb61c26",
+    "id": "caveman-learn",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "caveman-learn",
+    "description": "Act on a Caveman learn report - review the ranked token sinks, apply cost-lowering fixes with per-edit consent, and report what those fixes returned. Use when asked to lower an agent's token cost, what caveman has saved, to trim a heavy CLAUDE.md, or to offload re-pasted context into cavemem.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-codex-agy-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "334180d0-e08d-4e2a-8722-bc4011fcf5e6",
+        "resource_type": "skill",
+        "resource_id": "caveman-learn",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356273
+      }
+    ],
+    "updated_at": 1792356273,
+    "created_at": 1792353111,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "812e1f71-accd-462d-9f61-2027628be690",
+    "id": "caveman-help",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "caveman-help",
+    "description": ">",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-codex-agy-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "e7482b00-fa2a-41ae-b01f-72a596819c97",
+        "resource_type": "skill",
+        "resource_id": "caveman-help",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356273
+      }
+    ],
+    "updated_at": 1792356273,
+    "created_at": 1792353111,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "f6417c8f-45d9-41f0-a148-5584dbb70694",
+    "id": "caveman-explore",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "caveman-explore",
+    "description": "Read-only repository explorer for cold-start orientation, broad cross-file localization, or when a direct search failed. Skip it when the exact file or symbol is already named. Returns path:line citations only; its reads stay out of main context.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-codex-agy-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "3a0880d0-364a-4345-bc1c-1b2cb9650b72",
+        "resource_type": "skill",
+        "resource_id": "caveman-explore",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356273
+      }
+    ],
+    "updated_at": 1792356273,
+    "created_at": 1792353111,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "ca9f6acc-188c-4f32-80c3-035d1a6929a4",
+    "id": "caveman-evidence-review",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "caveman-evidence-review",
+    "description": ">",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-codex-agy-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "ec99b458-6334-4ebf-865b-95d8c1184a7e",
+        "resource_type": "skill",
+        "resource_id": "caveman-evidence-review",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356273
+      }
+    ],
+    "updated_at": 1792356273,
+    "created_at": 1792353111,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "b2fd80aa-317d-4058-bdfc-ebfe21c9eaf5",
+    "id": "caveman-discover",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "caveman-discover",
+    "description": ">",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-codex-agy-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "90acfa51-9063-4ee5-9b07-5d7652ef2ef7",
+        "resource_type": "skill",
+        "resource_id": "caveman-discover",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356273
+      }
+    ],
+    "updated_at": 1792356273,
+    "created_at": 1792353111,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "d9e0bcb1-b9b8-468c-9dbe-2af0bc69b2aa",
+    "id": "caveman-compress",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "caveman-compress",
+    "description": ">",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-codex-agy-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "c68141e5-518b-4304-a5d1-203ca6a31e13",
+        "resource_type": "skill",
+        "resource_id": "caveman-compress",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356273
+      }
+    ],
+    "updated_at": 1792356273,
+    "created_at": 1792353111,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "f6b8283f-71fe-4de2-a076-687ae0e6b346",
+    "id": "caveman-commit",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "caveman-commit",
+    "description": ">",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-codex-agy-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "da214c0d-1916-4593-8d2c-85fdeade95be",
+        "resource_type": "skill",
+        "resource_id": "caveman-commit",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356273
+      }
+    ],
+    "updated_at": 1792356273,
+    "created_at": 1792353111,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "f17a4b1f-ae7b-4e17-8366-332bab540851",
+    "id": "cavecrew",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "cavecrew",
+    "description": ">",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-codex-agy-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "58e3a869-907f-45e1-8fcf-76c89588faff",
+        "resource_type": "skill",
+        "resource_id": "cavecrew",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356272
+      }
+    ],
+    "updated_at": 1792356272,
+    "created_at": 1792353111,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "67e55710-2c16-408c-bd90-83f770196fdf",
+    "id": "boylenet-architect",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "boylenet-architect",
+    "description": "Master context and operating manual for the Boylenet 27-node swarm. Contains the exact recovery patterns, O1740 routing laws, and NFS hot-swap architecture developed during the Great Train Recovery. Activate this when managing, debugging, or orchestrating the Boylenet fleet.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-codex-agy-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "61a4e4e4-32b6-4e1a-be6d-a649a3cdaf03",
+        "resource_type": "skill",
+        "resource_id": "boylenet-architect",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356272
+      }
+    ],
+    "updated_at": 1792356272,
+    "created_at": 1792353111,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "64493c8f-28a9-4b95-b141-770058bd0dbe",
+    "id": "bd-ci-taxonomy",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "bd-ci-taxonomy",
+    "description": "Comprehensive CI failure taxonomy, error signature diagnostic tree, step-by-step resolution playbooks, prevention invariants (Fleet Rules 41-47), and verification commands for BulkDownloader CI shard and precut failures. Use when diagnosing CI failures, runner timeouts, flaky test runs, dirty workin",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-codex-agy-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "0e57615c-3608-400c-a065-30bc8b249563",
+        "resource_type": "skill",
+        "resource_id": "bd-ci-taxonomy",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792356272
+      }
+    ],
+    "updated_at": 1792356272,
+    "created_at": 1792353111,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  }
+]

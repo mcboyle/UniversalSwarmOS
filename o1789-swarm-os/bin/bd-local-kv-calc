@@ -1,0 +1,356 @@
+#!/usr/bin/env python3
+"""
+bd-local-kv-calc: Exact KV-Cache VRAM & Max Concurrent Agent Slot (--parallel N) Calculator
+Hardware Target:
+  - 4x NVIDIA Tesla T4 GPUs = 59,648 MiB usable GDDR6 VRAM (4 x 14,912 MiB)
+  - 27-Node Boylenet Cluster = 1,730 GiB (1,771,520 MiB) Locked DDR4 System RAM
+Supports KV Cache Quantization Types: FP16 (2.0 B/elem), Q8_0 (1.0625 B/elem), Q4_0 (0.5625 B/elem)
+Covers Tier 1 (Pure VRAM Dense/MoE), Tier 2 (Hybrid GPU+DDR4 MoE Offload), and Tier 3 (Cluster-Scale Giant Models).
+"""
+
+import argparse
+import json
+import math
+import sys
+from dataclasses import dataclass
+from typing import Dict, List
+
+# Hardware Constants
+T4_COUNT = 4
+T4_VRAM_PER_GPU_MIB = 14912.0
+TOTAL_VRAM_MIB = 59648.0  # 4 x 14,912 MiB usable GDDR6
+TOTAL_DDR4_GIB = 1730.0   # Locked DDR4 across cluster
+TOTAL_DDR4_MIB = TOTAL_DDR4_GIB * 1024.0
+DEFAULT_CUDA_OVERHEAD_MIB = 2048.0  # 512 MiB per GPU compute/scratch buffer
+
+# GGML KV cache bytes per element (including block scale overhead for Q8_0/Q4_0 block_size=32)
+# FP16: 2.0 bytes/elem
+# Q8_0: 34 bytes / 32 elems = 1.0625 bytes/elem (or 1.0 nominal; we compute exact GGML block bytes)
+# Q4_0: 18 bytes / 32 elems = 0.5625 bytes/elem
+KV_TYPES: Dict[str, float] = {
+    "FP16": 2.0,
+    "Q8_0": 34.0 / 32.0,
+    "Q4_0": 18.0 / 32.0,
+}
+
+
+@dataclass
+class ModelSpec:
+    name: str
+    tier: int
+    arch: str
+    n_layers: int
+    n_kv_heads: int
+    head_dim: int
+    is_mla: bool
+    mla_elements_per_token: int  # If MLA (DeepSeek V2.5/V3/R1), elements per layer per token (e.g. 576)
+    vram_weights_mib: float      # Resident weights + compute graph in 59,648 MiB GDDR6
+    ddr4_weights_gib: float      # Offloaded expert/cold weights in 1,730 GiB Locked DDR4
+    default_ctx_per_slot: int    # Standard per-slot context window (tokens)
+    notes: str
+
+    def kv_elements_per_token_per_layer(self) -> int:
+        if self.is_mla:
+            return self.mla_elements_per_token
+        # Standard GQA: 2 (K and V) * n_kv_heads * head_dim
+        return 2 * self.n_kv_heads * self.head_dim
+
+    def kv_mib_per_1k_tokens(self, kv_type: str) -> float:
+        bytes_per_elem = KV_TYPES[kv_type]
+        elems_per_tok = self.n_layers * self.kv_elements_per_token_per_layer()
+        bytes_per_1k = elems_per_tok * 1024.0 * bytes_per_elem
+        return bytes_per_1k / (1024.0 * 1024.0)
+
+
+MODELS: List[ModelSpec] = [
+    # Tier 1: 100% GDDR6 VRAM-Resident Fast Builders / Coding / Reasoning
+    ModelSpec(
+        name="Qwen2.5-Coder-32B-Instruct-Q4_K_M",
+        tier=1,
+        arch="GQA",
+        n_layers=64,
+        n_kv_heads=8,
+        head_dim=128,
+        is_mla=False,
+        mla_elements_per_token=0,
+        vram_weights_mib=19200.0,
+        ddr4_weights_gib=0.0,
+        default_ctx_per_slot=16384,
+        notes="Primary 4xT4 VRAM-resident coding workhorse",
+    ),
+    ModelSpec(
+        name="DeepSeek-R1-Distill-Qwen-32B-Q4_K_M",
+        tier=1,
+        arch="GQA",
+        n_layers=64,
+        n_kv_heads=8,
+        head_dim=128,
+        is_mla=False,
+        mla_elements_per_token=0,
+        vram_weights_mib=19200.0,
+        ddr4_weights_gib=0.0,
+        default_ctx_per_slot=16384,
+        notes="Primary 4xT4 VRAM-resident reasoning verifier",
+    ),
+    ModelSpec(
+        name="Qwen3-30B-A3B-Q4_K_M",
+        tier=1,
+        arch="MoE-GQA",
+        n_layers=48,
+        n_kv_heads=4,
+        head_dim=128,
+        is_mla=False,
+        mla_elements_per_token=0,
+        vram_weights_mib=17920.0,
+        ddr4_weights_gib=0.0,
+        default_ctx_per_slot=16384,
+        notes="Fast MoE 100% resident in 4xT4 GDDR6",
+    ),
+    ModelSpec(
+        name="Qwen2.5-Coder-14B-Instruct-Q8_0",
+        tier=1,
+        arch="GQA",
+        n_layers=48,
+        n_kv_heads=8,
+        head_dim=128,
+        is_mla=False,
+        mla_elements_per_token=0,
+        vram_weights_mib=15100.0,
+        ddr4_weights_gib=0.0,
+        default_ctx_per_slot=16384,
+        notes="High-precision Q8_0 mid-tier fast builder",
+    ),
+    ModelSpec(
+        name="Qwen2.5-Coder-7B-Instruct-Q8_0",
+        tier=1,
+        arch="GQA",
+        n_layers=28,
+        n_kv_heads=4,
+        head_dim=128,
+        is_mla=False,
+        mla_elements_per_token=0,
+        vram_weights_mib=7800.0,
+        ddr4_weights_gib=0.0,
+        default_ctx_per_slot=16384,
+        notes="Ultra-high concurrency lightweight probe / lint worker",
+    ),
+    # Tier 2: Large Dense / Hybrid MoE Offload (Hot Attention+KV in 59,648 MiB VRAM, Cold Experts in Locked DDR4)
+    ModelSpec(
+        name="Llama-3.3-70B-Instruct-Q4_K_M",
+        tier=2,
+        arch="GQA",
+        n_layers=80,
+        n_kv_heads=8,
+        head_dim=128,
+        is_mla=False,
+        mla_elements_per_token=0,
+        vram_weights_mib=41472.0,
+        ddr4_weights_gib=0.0,
+        default_ctx_per_slot=16384,
+        notes="70B dense across 4xT4 tensor/layer split",
+    ),
+    ModelSpec(
+        name="Qwen2.5-72B-Instruct-Q4_K_M",
+        tier=2,
+        arch="GQA",
+        n_layers=80,
+        n_kv_heads=8,
+        head_dim=128,
+        is_mla=False,
+        mla_elements_per_token=0,
+        vram_weights_mib=42200.0,
+        ddr4_weights_gib=0.0,
+        default_ctx_per_slot=16384,
+        notes="72B dense verifier in 4xT4 GDDR6",
+    ),
+    ModelSpec(
+        name="Qwen3-235B-A22B-Q4_K_M",
+        tier=2,
+        arch="MoE-GQA",
+        n_layers=94,
+        n_kv_heads=4,
+        head_dim=128,
+        is_mla=False,
+        mla_elements_per_token=0,
+        vram_weights_mib=18432.0,
+        ddr4_weights_gib=124.0,
+        default_ctx_per_slot=16384,
+        notes="ktransformers/llama.cpp hybrid: Attention+Router in T4 VRAM, Routed Experts in DDR4",
+    ),
+    # Tier 3: Cluster-Scale Flagship MoE / Frontier Models (59,648 MiB VRAM Hot + 1,730 GiB Locked DDR4)
+    ModelSpec(
+        name="DeepSeek-V3-0324-Q4_K_M",
+        tier=3,
+        arch="MoE-MLA",
+        n_layers=61,
+        n_kv_heads=1,
+        head_dim=576,
+        is_mla=True,
+        mla_elements_per_token=576,
+        vram_weights_mib=16384.0,
+        ddr4_weights_gib=385.0,
+        default_ctx_per_slot=16384,
+        notes="671B MLA (512 latent + 64 RoPE); hot MLA+shared experts in T4 VRAM, routed experts in Locked DDR4",
+    ),
+    ModelSpec(
+        name="DeepSeek-R1-671B-Q4_K_M",
+        tier=3,
+        arch="MoE-MLA",
+        n_layers=61,
+        n_kv_heads=1,
+        head_dim=576,
+        is_mla=True,
+        mla_elements_per_token=576,
+        vram_weights_mib=16384.0,
+        ddr4_weights_gib=385.0,
+        default_ctx_per_slot=16384,
+        notes="671B Reasoning MLA; compressed KV cache in 4xT4 GDDR6, cold experts pinned in 1,730 GiB DDR4",
+    ),
+    ModelSpec(
+        name="Llama-3.1-405B-Instruct-Q4_K_M",
+        tier=3,
+        arch="GQA-Hybrid",
+        n_layers=126,
+        n_kv_heads=8,
+        head_dim=128,
+        is_mla=False,
+        mla_elements_per_token=0,
+        vram_weights_mib=32768.0,
+        ddr4_weights_gib=215.0,
+        default_ctx_per_slot=16384,
+        notes="Distributed RPC + 4xT4 KV/hot-layer offload across Locked DDR4 pool",
+    ),
+]
+
+
+def compute_model_metrics(
+    spec: ModelSpec,
+    ctx_per_slot: int,
+    vram_total_mib: float,
+    cuda_overhead_mib: float,
+) -> dict:
+    usable_kv_vram_mib = max(0.0, vram_total_mib - cuda_overhead_mib - spec.vram_weights_mib)
+    ddr4_free_gib = max(0.0, TOTAL_DDR4_GIB - spec.ddr4_weights_gib)
+
+    kv_metrics = {}
+    for kv_type in ("FP16", "Q8_0", "Q4_0"):
+        mib_per_1k = spec.kv_mib_per_1k_tokens(kv_type)
+        slot_kv_mib = mib_per_1k * (ctx_per_slot / 1024.0)
+        max_parallel = int(math.floor(usable_kv_vram_mib / slot_kv_mib)) if slot_kv_mib > 0 else 0
+        max_total_ctx_k = int(math.floor((usable_kv_vram_mib / mib_per_1k))) if mib_per_1k > 0 else 0
+        kv_metrics[kv_type] = {
+            "mib_per_1k_tok": round(mib_per_1k, 3),
+            "slot_kv_mib": round(slot_kv_mib, 2),
+            "max_parallel_slots": max_parallel,
+            "recommended_parallel_flag": f"--parallel {max_parallel}",
+            "max_total_ctx_tokens": max_total_ctx_k * 1024,
+            "vram_utilized_mib": round(
+                spec.vram_weights_mib + cuda_overhead_mib + (max_parallel * slot_kv_mib), 1
+            ),
+            "vram_headroom_mib": round(
+                vram_total_mib - (spec.vram_weights_mib + cuda_overhead_mib + (max_parallel * slot_kv_mib)), 1
+            ),
+        }
+
+    return {
+        "model": spec.name,
+        "tier": spec.tier,
+        "arch": spec.arch,
+        "layers": spec.n_layers,
+        "kv_heads": spec.n_kv_heads,
+        "head_dim": spec.head_dim,
+        "vram_weights_mib": spec.vram_weights_mib,
+        "ddr4_weights_gib": spec.ddr4_weights_gib,
+        "ddr4_remaining_gib": round(ddr4_free_gib, 1),
+        "usable_kv_vram_mib": round(usable_kv_vram_mib, 1),
+        "ctx_per_slot": ctx_per_slot,
+        "kv_types": kv_metrics,
+        "notes": spec.notes,
+    }
+
+
+def print_table(results: List[dict], ctx_per_slot: int, vram_total_mib: float, cuda_overhead_mib: float) -> None:
+    print("=" * 132)
+    print(
+        f"BOYLENET KV-CACHE & CONCURRENCY CALCULATOR | 4x Tesla T4 ({vram_total_mib:,.0f} MiB GDDR6) + "
+        f"{TOTAL_DDR4_GIB:,.0f} GiB Locked DDR4 | Slot Ctx: {ctx_per_slot:,} tok"
+    )
+    print(
+        f"CUDA/Compute Reserve: {cuda_overhead_mib:,.0f} MiB | KV Element Sizes: "
+        f"FP16=2.000 B, Q8_0=1.0625 B (GGML blk32), Q4_0=0.5625 B (GGML blk32)"
+    )
+    print("=" * 132)
+    header = (
+        f"{'Tier':<4} | {'Model':<35} | {'Arch':<9} | {'VRAM Wt':>8} | {'DDR4 Wt':>7} | {'KV Pool':>8} | "
+        f"{'FP16 Slot / N':>16} | {'Q8_0 Slot / N':>16} | {'Q4_0 Slot / N':>16}"
+    )
+    print(header)
+    print("-" * 132)
+    current_tier = None
+    for r in results:
+        if current_tier is not None and r["tier"] != current_tier:
+            print("-" * 132)
+        current_tier = r["tier"]
+        fp16 = r["kv_types"]["FP16"]
+        q8 = r["kv_types"]["Q8_0"]
+        q4 = r["kv_types"]["Q4_0"]
+        fp16_str = f"{fp16['slot_kv_mib']:>6.0f}M / p={fp16['max_parallel_slots']:<3}"
+        q8_str = f"{q8['slot_kv_mib']:>6.0f}M / p={q8['max_parallel_slots']:<3}"
+        q4_str = f"{q4['slot_kv_mib']:>6.0f}M / p={q4['max_parallel_slots']:<3}"
+        print(
+            f"T{r['tier']:<3} | {r['model']:<35} | {r['arch']:<9} | "
+            f"{r['vram_weights_mib']:>7.0f}M | {r['ddr4_weights_gib']:>6.0f}G | "
+            f"{r['usable_kv_vram_mib']:>7.0f}M | {fp16_str:>16} | {q8_str:>16} | {q4_str:>16}"
+        )
+    print("=" * 132)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Exact KV-cache VRAM & max concurrent agent slot (--parallel N) calculator for 4x Tesla T4 + 1,730 GiB Locked DDR4."
+    )
+    parser.add_argument("--ctx", type=int, default=16384, help="Context tokens per agent slot (default: 16384)")
+    parser.add_argument("--tier", type=int, choices=[1, 2, 3], help="Filter by model tier (1, 2, or 3)")
+    parser.add_argument("--model", type=str, help="Substring filter for model name")
+    parser.add_argument("--vram-mib", type=float, default=TOTAL_VRAM_MIB, help="Total usable VRAM in MiB (default: 59648)")
+    parser.add_argument(
+        "--overhead-mib",
+        type=float,
+        default=DEFAULT_CUDA_OVERHEAD_MIB,
+        help="Total CUDA/compute buffer overhead across 4x T4 in MiB (default: 2048)",
+    )
+    parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON output")
+    args = parser.parse_args()
+
+    selected = MODELS
+    if args.tier is not None:
+        selected = [m for m in selected if m.tier == args.tier]
+    if args.model:
+        q = args.model.lower()
+        selected = [m for m in selected if q in m.name.lower()]
+
+    results = [
+        compute_model_metrics(m, args.ctx, args.vram_mib, args.overhead_mib)
+        for m in selected
+    ]
+
+    if args.json:
+        payload = {
+            "cluster_hardware": {
+                "gpu_nodes": "4x NVIDIA Tesla T4",
+                "usable_vram_mib": args.vram_mib,
+                "cuda_overhead_mib": args.overhead_mib,
+                "locked_ddr4_gib": TOTAL_DDR4_GIB,
+            },
+            "ctx_per_slot": args.ctx,
+            "models": results,
+        }
+        print(json.dumps(payload, indent=2))
+    else:
+        print_table(results, args.ctx, args.vram_mib, args.overhead_mib)
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

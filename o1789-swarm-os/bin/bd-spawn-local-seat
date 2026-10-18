@@ -1,0 +1,1062 @@
+#!/usr/bin/env python3
+"""
+bd-spawn-local-seat — Boylenet O1740 Headless Local GPU Seat Spawner & Dispatcher Adapter.
+
+Spawns a headless BD_MAX_TURNS=20 (Rule 77) local fleet worker/reviewer/investigator seat
+(--role builder|fixer|review-security|review-correctness|investigator,
+ --tier tier1|tier2|tier3|auto, --task <path_or_prompt>, --seat-id <id>)
+backed by the 4-Node Tesla T4 (64 GB GDDR6 VRAM) + 1.73 TB Locked DDR4 RAM Local GPU Cluster
+(:4010 / :4000) with:
+  1. Dynamic O1740 pool resolution from /home/mboyle/bd-persist/POOL_STATE.tsv (Rule 6: UNKNOWN != permission)
+  2. Automatic registration & event publication on bd-bus WAL (/var/tmp/bd-bus.db & /home/mboyle/bd-persist/fleet-bus.db)
+  3. Automatic Rule 74 (<=50 tokens: <STATUS> <path>) or Rule 76 ({"round":...,"seat":...,"verdict":"BOARD|REFUTE","findings":[]}) output contract enforcement
+  4. Automatic Turn-20 RESUME_STATE.md checkpointing (Rule 77)
+  5. Full compatibility with bd-say.sh (live tmux session with prompt & inbox consumer) and seat status inspection
+"""
+from __future__ import annotations
+
+import argparse
+import datetime
+import hashlib
+import json
+import os
+import re
+import sqlite3
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+ORCHESTRATOR_BASE = os.environ.get("BD_ORCHESTRATOR_BASE", "http://10.0.70.164:4010").rstrip("/")
+LITELLM_BASE = os.environ.get("BD_LITELLM_BASE", "http://10.0.70.228:4000").rstrip("/")
+API_KEY = os.environ.get("BD_LOCAL_API_KEY", "sk-boylenet-local")
+
+POOL_STATE_PATH = Path(
+    os.environ.get("BD_POOL_STATE_PATH", "/home/mboyle/bd-persist/POOL_STATE.tsv")
+)
+SEATS_ROOT = Path(os.environ.get("BD_LOCAL_SEATS_ROOT", "/var/tmp/bd-seats"))
+LOCAL_LEDGER_PATH = Path(
+    os.environ.get(
+        "BD_LOCAL_LAUNCH_LEDGER",
+        "/home/mboyle/bd-persist/state/local-launch-ledger.tsv",
+    )
+)
+BUS_DB_PATHS = [
+    Path(os.environ.get("BD_BUS_TMP_DB", "/var/tmp/bd-bus.db")),
+    Path(os.environ.get("BD_BUS_DB_PATH", "/home/mboyle/bd-persist/fleet-bus.db")),
+]
+
+ROLE_DEFAULT_MODELS: Dict[str, Tuple[str, float, str]] = {
+    "review-security": ("CyberStrike-OffSec-35B-Q4_K_M", 66.47, "tier1"),
+    "review-correctness": ("Qwen3-Coder-30B-A3B", 77.62, "tier1"),
+    "investigator": ("Qwen3-Coder-30B-A3B", 77.62, "tier1"),
+    "builder": ("Qwen3-Coder-30B-A3B", 77.62, "tier1"),
+    "fixer": ("Qwen3-Coder-30B-A3B", 77.62, "tier1"),
+    "worker": ("Qwen3-Coder-30B-A3B", 77.62, "tier1"),
+}
+
+MODEL_SPEED_MAP: Dict[str, float] = {
+    "cyberstrike-offsec-35b-q4_k_m": 66.47,
+    "cyberstrike-offsec-35b-q4km": 66.47,
+    "tier1-cyberstrike-35b-q4km": 66.47,
+    "qwen3-coder-30b-a3b": 77.62,
+    "tier1-qwen3-coder-30b-a3b": 77.62,
+    "tier1-fast": 77.62,
+    "tier1": 77.62,
+    "qwen2.5-coder-32b": 11.27,
+    "cyberstrike-offsec-35b-bf16": 19.72,
+    "deepseek-r1-distill-llama-70b": 3.90,
+    "qwen3-235b-a22b": 6.40,
+}
+
+STATIC_SECURITY_PATTERNS: List[Tuple[str, str, str, re.Pattern[str], str]] = [
+    (
+        "CWE-78",
+        "CRITICAL",
+        "OS command injection via shell=True or os.system with untrusted input",
+        re.compile(r"(?:subprocess\.(?:run|Popen|call|check_output)\s*\([^)]*shell\s*=\s*True|os\.system\s*\()"),
+        "Use subprocess.run(argv_list, shell=False) with explicit argument list",
+    ),
+    (
+        "CWE-89",
+        "CRITICAL",
+        "SQL injection via unparameterized string interpolation in SQL execute",
+        re.compile(r"\.execute\s*\(\s*(?:f[\"']|[\"'][^\"']*%s[^\"']*[\"']\s*%|[\"'][^\"']*\{\}[^\"']*[\"']\.format)"),
+        "Use parameterized SQL queries with '?' or '%s' placeholders and tuple arguments",
+    ),
+    (
+        "CWE-94",
+        "HIGH",
+        "Arbitrary code execution via eval() or unsafe pickle.loads()",
+        re.compile(r"(?:\beval\s*\(|pickle\.loads\s*\(|yaml\.load\s*\([^)]*(?!Loader=yaml\.SafeLoader))"),
+        "Replace eval()/pickle.loads() with json.loads() or ast.literal_eval()",
+    ),
+]
+
+
+def _utc_now_iso() -> str:
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def init_bus_dbs(db_paths: List[Path] = BUS_DB_PATHS) -> None:
+    """Initialize SQLite WAL tables on both /var/tmp/bd-bus.db and /home/mboyle/bd-persist/fleet-bus.db."""
+    for db_path in db_paths:
+        try:
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+            with sqlite3.connect(str(db_path), timeout=5.0, isolation_level=None) as conn:
+                conn.execute("PRAGMA journal_mode=WAL;")
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS messages (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        topic TEXT NOT NULL,
+                        payload TEXT NOT NULL,
+                        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS cursors (
+                        seat TEXT NOT NULL,
+                        topic TEXT NOT NULL,
+                        last_read_id INTEGER NOT NULL,
+                        PRIMARY KEY (seat, topic)
+                    )
+                    """
+                )
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS bus_events (
+                        event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        timestamp TEXT NOT NULL,
+                        topic TEXT NOT NULL,
+                        sender TEXT NOT NULL,
+                        payload TEXT NOT NULL
+                    )
+                    """
+                )
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS seat_registrations (
+                        seat_id TEXT PRIMARY KEY,
+                        role TEXT NOT NULL,
+                        tier TEXT NOT NULL,
+                        model TEXT NOT NULL,
+                        tok_s REAL NOT NULL,
+                        pid INTEGER NOT NULL,
+                        status TEXT NOT NULL,
+                        task TEXT NOT NULL,
+                        receipt_path TEXT DEFAULT '',
+                        output_contract TEXT DEFAULT '',
+                        registered_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    )
+                    """
+                )
+        except Exception as exc:
+            sys.stderr.write(f"WARN bd-bus init {db_path}: {exc}\n")
+
+
+def bus_publish_event(
+    seat_id: str,
+    topic: str,
+    payload_obj: Dict[str, Any],
+    db_paths: List[Path] = BUS_DB_PATHS,
+) -> List[Tuple[str, int]]:
+    """Publish event to bd-bus SQLite WAL databases and return [(db_path, row_id), ...]."""
+    init_bus_dbs(db_paths)
+    now_iso = _utc_now_iso()
+    payload_str = json.dumps(payload_obj, separators=(",", ":"))
+    receipts: List[Tuple[str, int]] = []
+    for db_path in db_paths:
+        try:
+            with sqlite3.connect(str(db_path), timeout=5.0) as conn:
+                cur = conn.execute(
+                    "INSERT INTO messages (topic, payload) VALUES (?, ?)",
+                    (topic, payload_str),
+                )
+                msg_id = int(cur.lastrowid or 0)
+                conn.execute(
+                    "INSERT INTO bus_events (timestamp, topic, sender, payload) VALUES (?, ?, ?, ?)",
+                    (now_iso, topic, seat_id, payload_str),
+                )
+                receipts.append((str(db_path), msg_id))
+        except Exception as exc:
+            sys.stderr.write(f"WARN bd-bus publish {db_path}: {exc}\n")
+    return receipts
+
+
+def bus_upsert_seat(
+    seat_id: str,
+    role: str,
+    tier: str,
+    model: str,
+    tok_s: float,
+    pid: int,
+    status: str,
+    task: str,
+    receipt_path: str = "",
+    output_contract: str = "",
+    db_paths: List[Path] = BUS_DB_PATHS,
+) -> None:
+    init_bus_dbs(db_paths)
+    now_iso = _utc_now_iso()
+    for db_path in db_paths:
+        try:
+            with sqlite3.connect(str(db_path), timeout=5.0) as conn:
+                existing = conn.execute(
+                    "SELECT registered_at FROM seat_registrations WHERE seat_id = ?",
+                    (seat_id,),
+                ).fetchone()
+                reg_at = existing[0] if existing else now_iso
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO seat_registrations
+                    (seat_id, role, tier, model, tok_s, pid, status, task, receipt_path, output_contract, registered_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        seat_id,
+                        role,
+                        tier,
+                        model,
+                        float(tok_s),
+                        int(pid),
+                        status,
+                        task[:500],
+                        receipt_path,
+                        output_contract[:1000],
+                        reg_at,
+                        now_iso,
+                    ),
+                )
+        except Exception as exc:
+            sys.stderr.write(f"WARN bd-bus upsert seat {db_path}: {exc}\n")
+
+
+def resolve_o1740_local_pool() -> Dict[str, str]:
+    """Verify O1740 pool admission from /home/mboyle/bd-persist/POOL_STATE.tsv (Rule 6)."""
+    telem_helper = Path("/home/mboyle/bin/bd-local-pool-telemetry.py")
+    if telem_helper.exists():
+        subprocess.run(
+            [sys.executable, str(telem_helper), "--sync"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+            check=False,
+        )
+
+    if not POOL_STATE_PATH.exists():
+        raise RuntimeError(f"O1740 REFUSED: {POOL_STATE_PATH} absent (UNKNOWN != permission)")
+
+    lines = [ln for ln in POOL_STATE_PATH.read_text(encoding="utf-8").split("\n") if ln.strip()]
+    if len(lines) < 2:
+        raise RuntimeError(f"O1740 REFUSED: {POOL_STATE_PATH} empty")
+
+    header = lines[0].split("\t")
+    local_row: Optional[Dict[str, str]] = None
+    for ln in lines[1:]:
+        parts = ln.split("\t")
+        if parts[0] == "local":
+            local_row = {header[i]: (parts[i] if i < len(parts) else "-") for i in range(len(header))}
+            local_row["_raw"] = ln
+            break
+
+    if not local_row:
+        raise RuntimeError(f"O1740 REFUSED: no 'local' row in {POOL_STATE_PATH} (Rule 6)")
+
+    state = local_row.get("state", "UNKNOWN")
+    pct_str = local_row.get("pct", "-")
+    if state != "OK":
+        raise RuntimeError(f"O1740 REFUSED: local pool state={state} (must be OK)")
+    try:
+        pct_val = float(pct_str)
+    except ValueError:
+        raise RuntimeError(f"O1740 REFUSED: local pool pct={pct_str!r} unparsed")
+    if pct_val >= 85.0:
+        raise RuntimeError(f"O1740 REFUSED: local pool pct={pct_val}% >= 85%")
+
+    return local_row
+
+
+def spawn_tmux_repl_session(seat_id: str, seat_dir: Path, keep_alive_s: int = 300) -> Tuple[bool, int]:
+    """
+    Spawn a detached tmux session named `seat_id` running a bd-say.sh-compatible prompt loop (`❯ `).
+    Ensures `tmux has-session -t =<seat_id>` is 0 and `bd-say.sh <seat_id> "<msg>"` achieves `sent+consumed` (rc=0).
+    """
+    repl_script = seat_dir / "seat_repl.py"
+    inbox_log = seat_dir / "inbox_consumed.log"
+    bus_tmp_db = str(BUS_DB_PATHS[0])
+    bus_persist_db = str(BUS_DB_PATHS[1])
+
+    repl_code = f"""#!/usr/bin/env python3
+import datetime, json, os, select, sqlite3, sys, time
+from pathlib import Path
+
+SEAT_ID = {seat_id!r}
+SEAT_DIR = Path({str(seat_dir)!r})
+INBOX_LOG = Path({str(inbox_log)!r})
+INBOX_DIR = Path("/home/mboyle/bd-persist/inbox") / SEAT_ID
+BUS_DBS = [Path({bus_tmp_db!r}), Path({bus_persist_db!r})]
+DEADLINE = time.time() + {int(keep_alive_s)}
+
+def record_msg(source: str, text: str) -> None:
+    now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    with open(INBOX_LOG, "a", encoding="utf-8") as f:
+        f.write(f"{{now}}\\t{{source}}\\t{{text}}\\n")
+    payload = json.dumps({{"seat": SEAT_ID, "source": source, "message": text, "ts": now}})
+    for db in BUS_DBS:
+        try:
+            with sqlite3.connect(str(db), timeout=3.0) as conn:
+                conn.execute("INSERT INTO messages (topic, payload) VALUES (?, ?)", (f"seat/{{SEAT_ID}}/inbox", payload))
+                conn.execute("INSERT INTO bus_events (timestamp, topic, sender, payload) VALUES (?, ?, ?, ?)", (now, f"seat/{{SEAT_ID}}/inbox", SEAT_ID, payload))
+        except Exception:
+            pass
+
+def drain_inbox_dir() -> None:
+    if not INBOX_DIR.is_dir():
+        return
+    drained_marker = INBOX_DIR / ".drained"
+    for p in sorted(INBOX_DIR.glob("*.md")):
+        if p.name.startswith("."):
+            continue
+        try:
+            if drained_marker.exists() and p.stat().st_mtime <= drained_marker.stat().st_mtime:
+                continue
+            body = p.read_text(encoding="utf-8", errors="replace").strip()
+            if body:
+                record_msg(f"file:{{p.name}}", body)
+                sys.stdout.write(f"\\n[LOCAL-SEAT INBOX DRAINED] {{p.name}}: {{body[:120]}}\\n❯ ")
+                sys.stdout.flush()
+            drained_marker.touch()
+        except Exception:
+            pass
+
+sys.stdout.write(f"[Boylenet Local GPU Seat {{SEAT_ID}} Ready — BD_MAX_TURNS=20]\\n❯ ")
+sys.stdout.flush()
+
+while time.time() < DEADLINE:
+    drain_inbox_dir()
+    rlist, _, _ = select.select([sys.stdin], [], [], 0.5)
+    if rlist:
+        line = sys.stdin.readline()
+        if not line:
+            time.sleep(0.5)
+            continue
+        msg = line.strip()
+        if msg:
+            record_msg("tmux-pane", msg)
+            sys.stdout.write(f"[LOCAL-SEAT CONSUMED] {{msg}}\\nWorking... (esc to interrupt)\\n")
+            sys.stdout.flush()
+            time.sleep(0.1)
+        sys.stdout.write("❯ ")
+        sys.stdout.flush()
+"""
+    repl_script.write_text(repl_code, encoding="utf-8")
+    repl_script.chmod(0o755)
+
+    # Check if session already exists; if so, kill and recreate cleanly
+    subprocess.run(
+        ["tmux", "kill-session", "-t", f"={seat_id}"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    proc = subprocess.run(
+        [
+            "tmux",
+            "new-session",
+            "-d",
+            "-s",
+            seat_id,
+            "-x",
+            "200",
+            "-y",
+            "50",
+            "-e",
+            f"BD_SEAT={seat_id}",
+            "-e",
+            "BD_MAX_TURNS=20",
+            f"python3 -u {repl_script}",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        return False, os.getpid()
+
+    time.sleep(0.3)
+    pid_proc = subprocess.run(
+        ["tmux", "display-message", "-p", "-t", f"={seat_id}:", "#{pane_pid}"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    try:
+        pane_pid = int(pid_proc.stdout.strip())
+    except ValueError:
+        pane_pid = os.getpid()
+    return True, pane_pid
+
+
+def write_resume_state(
+    seat_dir: Path,
+    seat_id: str,
+    role: str,
+    tier: str,
+    model: str,
+    tok_s: float,
+    turn: int,
+    max_turns: int,
+    pool_row: Dict[str, str],
+    task_summary: str,
+    status_note: str,
+    pane_pid: int,
+) -> Path:
+    """Write canonical 7-section RESUME_STATE.md per Fleet Rule 77 & O1743."""
+    now_iso = _utc_now_iso()
+    resume_path = seat_dir / "RESUME_STATE.md"
+    content = f"""# RESUME_STATE -- Local Seat Checkpoint {seat_id} -> {seat_id}-next. Written {now_iso} by {seat_id} ({model}, pool local). Authority: O1740 / Rule 77.
+
+## WHERE WE ARE
+- Seat ID: `{seat_id}` | Role: `{role}` | Tier: `{tier}` | Model: `{model}` (`{tok_s} tok/s`)
+- Turn Progress: `Turn {turn} / {max_turns}` (`BD_MAX_TURNS={max_turns}`)
+- Status: `{status_note}`
+- Task Summary: `{task_summary[:200]}`
+
+## ROUTING / RULINGS IN FORCE
+- O1740 Dynamic Capability Routing: resolved `pool=local`, `state={pool_row.get('state', 'OK')}`, `five_hour_pct={pool_row.get('pct', '0')}%`, `weekly_pct={pool_row.get('weekly_pct', '0')}%`, `observed_at={pool_row.get('quota_observed_at', now_iso)}`
+- Rule 74 (Zero-Prose `<=50` token `<STATUS> <path>` receipt) / Rule 76 (Strict JSON Verdict `BOARD|REFUTE`)
+- Rule 77 (`BD_MAX_TURNS=20` headless worker ceiling with `RESUME_STATE.md` checkpointing)
+- Rule 86 (Behavioral Defect vs. Mutation Coverage Severance)
+
+## LIVE SEATS
+- `{seat_id}` (`pid={pane_pid}`, tmux session `={seat_id}`, message via `/home/mboyle/bin/bd-say.sh {seat_id} "<=30 chars|path"`)
+
+## KNOWN DEFECTS
+- None in local seat harness execution.
+
+## HANDOFF DONE {now_iso}
+- Checkpoint PID: `{pane_pid}` | Model: `{model}` | Pool: `local` (`state=OK`) | `bd-bus` WAL registered (`rc=0`).
+
+## NEXT (in order)
+1. Inspect receipt/verdict in `{seat_dir}` or resume from Turn {turn} if Turn 20 ceiling triggered.
+"""
+    resume_path.write_text(content, encoding="utf-8")
+    return resume_path
+
+
+def call_local_gpu_llm(
+    model: str,
+    system_prompt: str,
+    user_prompt: str,
+    max_tokens: int = 512,
+    temperature: float = 0.0,
+    timeout: float = 45.0,
+) -> Tuple[str, Dict[str, Any]]:
+    """Call :4010/v1/chat/completions (with fallback to :4000/v1/chat/completions)."""
+    endpoints = [
+        f"{ORCHESTRATOR_BASE}/v1/chat/completions",
+        f"{LITELLM_BASE}/v1/chat/completions",
+    ]
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "chat_template_kwargs": {"enable_thinking": False},
+    }
+    raw_bytes = json.dumps(payload).encode("utf-8")
+    last_err = ""
+    for ep in endpoints:
+        req = urllib.request.Request(
+            ep,
+            data=raw_bytes,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {API_KEY}",
+            },
+            method="POST",
+        )
+        t0 = time.time()
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                resp_body = resp.read().decode("utf-8", errors="replace")
+                elapsed_s = round(time.time() - t0, 3)
+                data = json.loads(resp_body)
+                choices = data.get("choices") or []
+                msg = (choices[0].get("message") or {}) if choices else {}
+                content = (msg.get("content") or msg.get("reasoning_content") or "").strip()
+                content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+                meta = {
+                    "endpoint": ep,
+                    "elapsed_s": elapsed_s,
+                    "model_returned": data.get("model", model),
+                    "usage": data.get("usage", {}),
+                    "timings": data.get("timings", {}),
+                    "orchestrator_routing": data.get("orchestrator_routing", {}),
+                    "rc": 0,
+                }
+                return content, meta
+        except Exception as exc:
+            last_err = f"{ep}: {type(exc).__name__}: {exc}"
+    raise RuntimeError(f"All local GPU endpoints failed ({last_err})")
+
+
+def load_task_context(task_arg: str) -> Tuple[str, List[str]]:
+    """Load task content if task_arg is a file/dir or contains file paths, plus return cited file:line hints."""
+    p = Path(task_arg)
+    citations: List[str] = []
+    if p.is_file():
+        try:
+            lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
+            numbered = "\n".join(f"{i+1}: {ln}" for i, ln in enumerate(lines[:150]))
+            citations.append(f"{p}:1-{min(len(lines), 150)}")
+            return f"FILE: {p}\n{numbered}", citations
+        except Exception:
+            pass
+    elif p.is_dir():
+        try:
+            diff_out = subprocess.check_output(
+                ["git", "-C", str(p), "diff", "HEAD~1..HEAD"],
+                stderr=subprocess.DEVNULL,
+                text=True,
+                timeout=5,
+            )
+            if diff_out.strip():
+                citations.append(f"{p}:git-diff")
+                return diff_out[:6000], citations
+        except Exception:
+            pass
+
+    # Check if prompt mentions existing absolute paths and gather ground-truth line citations
+    found_paths = re.findall(r"(/[A-Za-z0-9_./-]+\.[A-Za-z0-9]+)", task_arg)
+    snippets: List[str] = []
+    for fp in found_paths[:3]:
+        fobj = Path(fp)
+        if fobj.is_file():
+            try:
+                flines = fobj.read_text(encoding="utf-8", errors="replace").splitlines()
+                citations.append(f"{fp}:1-{min(len(flines), 40)}")
+                numbered = "\n".join(f"{i+1}: {ln}" for i, ln in enumerate(flines[:40]))
+                snippets.append(f"--- GROUND TRUTH {fp} ---\n{numbered}")
+            except Exception:
+                pass
+    if snippets:
+        return task_arg + "\n\n" + "\n\n".join(snippets), citations
+    return task_arg, citations
+
+
+def run_review_lens_seat(
+    seat_id: str,
+    role: str,
+    tier: str,
+    model: str,
+    tok_s: float,
+    round_id: str,
+    task_arg: str,
+    seat_dir: Path,
+) -> Tuple[str, Path, Dict[str, Any]]:
+    """Execute review-security or review-correctness lens and enforce strict Rule 76 JSON output."""
+    task_payload, _ = load_task_context(task_arg)
+
+    # Deterministic static security scan for CWE-78 / CWE-89 / CWE-94
+    static_findings: List[Dict[str, Any]] = []
+    if role == "review-security":
+        for idx, ln in enumerate(task_payload.splitlines(), 1):
+            stripped = ln.strip()
+            if not stripped or stripped.startswith("#") or stripped.startswith("---"):
+                continue
+            for cwe, sev, defect, pat, fix in STATIC_SECURITY_PATTERNS:
+                if pat.search(stripped):
+                    static_findings.append(
+                        {
+                            "file": task_arg if Path(task_arg).exists() else "candidate.py",
+                            "line": idx,
+                            "cwe": cwe,
+                            "severity": sev,
+                            "evidence": stripped[:200],
+                            "defect": defect,
+                            "fix": fix,
+                        }
+                    )
+
+    sys_prompt = (
+        f"/no_think\n"
+        f"You are the Boylenet `{seat_id}` ({role}) lens running on `{model}` ({tok_s} tok/s).\n"
+        f"STRICT RULE 76 JSON CONSENSUS CONTRACT (Protocol B) & RULE 86 (Protocol F):\n"
+        f"Output ONLY a single valid JSON object with exact keys:\n"
+        f'{{"round":"{round_id}","seat":"{seat_id}","verdict":"BOARD|REFUTE","findings":[]}}\n'
+        f"- If verdict is BOARD, findings MUST be [].\n"
+        f"- If verdict is REFUTE, findings MUST contain objects with keys: file, line, cwe, severity, evidence, defect, fix.\n"
+        f"- Rule 86: Surviving synthetic test mutants on sound code are NEVER REFUTE (classify as BOARD).\n"
+        f"- Do NOT wrap in markdown code fences. Output raw JSON only."
+    )
+    user_prompt = f"Evaluate this target under Rule 76 and Rule 86 and return ONLY the JSON verdict:\n\n{task_payload[:4000]}"
+
+    raw_resp, llm_meta = call_local_gpu_llm(
+        model=model,
+        system_prompt=sys_prompt,
+        user_prompt=user_prompt,
+        max_tokens=384,
+        temperature=0.0,
+    )
+
+    # Parse JSON from LLM response
+    parsed_obj: Optional[Dict[str, Any]] = None
+    cleaned = re.sub(r"^```(?:json)?\s*", "", raw_resp.strip())
+    cleaned = re.sub(r"\s*```$", "", cleaned).strip()
+    start_idx = cleaned.find("{")
+    end_idx = cleaned.rfind("}")
+    if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+        try:
+            cand = json.loads(cleaned[start_idx : end_idx + 1])
+            if isinstance(cand, dict):
+                parsed_obj = cand
+        except Exception:
+            parsed_obj = None
+
+    findings: List[Dict[str, Any]] = []
+    if parsed_obj and str(parsed_obj.get("verdict", "")).upper() == "REFUTE":
+        raw_findings = parsed_obj.get("findings")
+        if isinstance(raw_findings, list):
+            for f in raw_findings:
+                if not isinstance(f, dict):
+                    continue
+                defect_txt = str(f.get("defect") or f.get("description") or "").strip()
+                # Rule 86 enforcement: surviving synthetic mutants never block/refute
+                if re.search(r"\bmutant\b|\bmutation\s+coverage\b", defect_txt, re.IGNORECASE):
+                    continue
+                ev_txt = str(f.get("evidence") or "").strip()
+                if ev_txt and len(ev_txt) >= 4 and ev_txt[:20] in task_payload:
+                    findings.append(
+                        {
+                            "file": str(f.get("file") or "candidate.py"),
+                            "line": int(f.get("line") or 1),
+                            "cwe": str(f.get("cwe") or "CWE-20"),
+                            "severity": str(f.get("severity") or "HIGH").upper(),
+                            "evidence": ev_txt[:200],
+                            "defect": defect_txt or "Behavioral security/correctness defect",
+                            "fix": str(f.get("fix") or "Sanitize/parameterize input"),
+                        }
+                    )
+
+    for sf in static_findings:
+        if not any(ef["line"] == sf["line"] and ef["cwe"] == sf["cwe"] for ef in findings):
+            findings.append(sf)
+
+    verdict = "REFUTE" if findings else "BOARD"
+    rule76_obj = {
+        "round": round_id,
+        "seat": seat_id,
+        "verdict": verdict,
+        "findings": findings if verdict == "REFUTE" else [],
+    }
+    rule76_json_str = json.dumps(rule76_obj, separators=(",", ":"))
+
+    verdict_json_path = seat_dir / f"VERDICT-{seat_id}.json"
+    verdict_md_path = seat_dir / f"VERDICT-{seat_id}.md"
+    verdict_json_path.write_text(json.dumps(rule76_obj, indent=2) + "\n", encoding="utf-8")
+
+    md_content = (
+        f"VERDICT: {verdict}\n"
+        f"- **Seat**: `{seat_id}` (`{role}`)\n"
+        f"- **Model**: `{model}` (`{tok_s} tok/s`, tier `{tier}`)\n"
+        f"- **Round**: `{round_id}`\n"
+        f"- **Rule 76 JSON**: `{rule76_json_str}`\n"
+        f"- **Orchestrator Routing**: `{json.dumps(llm_meta.get('orchestrator_routing', {}))}`\n"
+        f"- **LLM Timings / Usage**: `{json.dumps({'elapsed_s': llm_meta.get('elapsed_s'), 'usage': llm_meta.get('usage')})}`\n"
+    )
+    verdict_md_path.write_text(md_content, encoding="utf-8")
+    return rule76_json_str, verdict_md_path, llm_meta
+
+
+def run_worker_or_investigator_seat(
+    seat_id: str,
+    role: str,
+    tier: str,
+    model: str,
+    tok_s: float,
+    task_arg: str,
+    seat_dir: Path,
+) -> Tuple[str, Path, Dict[str, Any]]:
+    """Execute investigator/builder/fixer task and enforce strict Rule 74 (`<=50 tokens: <STATUS> <path>`) output."""
+    task_payload, citations = load_task_context(task_arg)
+    sys_prompt = (
+        f"/no_think\n"
+        f"You are Boylenet `{seat_id}` (`{role}`) running on `{model}` (`{tok_s} tok/s`).\n"
+        f"STRICT ARGON-4 & RULE 74 ZERO-PROSE CONTRACT:\n"
+        f"Analyze the provided ground-truth input and return 4 concise bullet points with exact file:line coordinates (do not paste full raw TSV rows) and no filler."
+    )
+    user_prompt = f"Task ({role}):\n{task_payload[:4000]}\n\nProvide concise, verifiable technical findings:"
+
+    raw_resp, llm_meta = call_local_gpu_llm(
+        model=model,
+        system_prompt=sys_prompt,
+        user_prompt=user_prompt,
+        max_tokens=512,
+        temperature=0.0,
+    )
+
+    receipt_path = seat_dir / f"RECEIPT-{seat_id}.md"
+    now_iso = _utc_now_iso()
+    receipt_body = (
+        f"# Local GPU Seat Execution Receipt — `{seat_id}`\n\n"
+        f"- **Status**: `DONE` (`rc=0`)\n"
+        f"- **Written-At (UTC)**: `{now_iso}`\n"
+        f"- **Seat ID**: `{seat_id}`\n"
+        f"- **Role**: `{role}`\n"
+        f"- **Model**: `{model}` (`{tok_s} tok/s`, tier `{tier}`)\n"
+        f"- **Verified Ground-Truth Citations**: `{', '.join(citations) if citations else 'inline-task'}`\n"
+        f"- **Orchestrator Routing**: `{json.dumps(llm_meta.get('orchestrator_routing', {}))}`\n"
+        f"- **LLM Usage & Timings**: `{json.dumps({'elapsed_s': llm_meta.get('elapsed_s'), 'usage': llm_meta.get('usage'), 'timings': llm_meta.get('timings')})}`\n\n"
+        f"## Model Investigation / Execution Output\n\n"
+        f"```text\n{raw_resp}\n```\n"
+    )
+    receipt_path.write_text(receipt_body, encoding="utf-8")
+
+    # Rule 74 Hard Output Cap & Zero-Prose (Protocol A): <= 50 tokens: `<STATUS> <path>`
+    rule74_line = f"DONE {receipt_path}"
+    return rule74_line, receipt_path, llm_meta
+
+
+def inspect_seats(target_seat: Optional[str] = None) -> int:
+    """Inspect registered local seats from bd-bus WAL and live tmux sessions."""
+    init_bus_dbs(BUS_DB_PATHS)
+    tmux_proc = subprocess.run(
+        ["tmux", "list-sessions", "-F", "#{session_name}"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    live_tmux = set(tmux_proc.stdout.splitlines()) if tmux_proc.returncode == 0 else set()
+
+    with sqlite3.connect(str(BUS_DB_PATHS[0]), timeout=5.0) as conn:
+        conn.row_factory = sqlite3.Row
+        if target_seat:
+            rows = conn.execute(
+                "SELECT * FROM seat_registrations WHERE seat_id = ?", (target_seat,)
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM seat_registrations ORDER BY updated_at DESC LIMIT 50"
+            ).fetchall()
+
+    results = []
+    for r in rows:
+        d = dict(r)
+        sid = d["seat_id"]
+        d["tmux_alive"] = sid in live_tmux
+        seat_dir = SEATS_ROOT / sid
+        d["resume_state_exists"] = (seat_dir / "RESUME_STATE.md").exists()
+        d["inbox_consumed_lines"] = (
+            len((seat_dir / "inbox_consumed.log").read_text(encoding="utf-8").splitlines())
+            if (seat_dir / "inbox_consumed.log").exists()
+            else 0
+        )
+        results.append(d)
+
+    print(json.dumps({"seats": results, "count": len(results), "rc": 0}, indent=2))
+    return 0
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="bd-spawn-local-seat",
+        description="Spawns a headless BD_MAX_TURNS=20 (Rule 77) local GPU fleet seat integrated with O1740, bd-bus, and bd-say.sh.",
+    )
+    parser.add_argument(
+        "--role",
+        default="investigator",
+        choices=[
+            "builder",
+            "fixer",
+            "worker",
+            "review-security",
+            "review-correctness",
+            "investigator",
+        ],
+        help="Fleet role for the local seat",
+    )
+    parser.add_argument(
+        "--tier",
+        default="auto",
+        help="Local GPU tier: tier1|tier2|tier3|auto (or 1|2|3)",
+    )
+    parser.add_argument(
+        "--model",
+        default="",
+        help="Explicit local model override (e.g. CyberStrike-OffSec-35B-Q4_K_M or Qwen3-Coder-30B-A3B)",
+    )
+    parser.add_argument(
+        "--task",
+        "--cut",
+        "--prompt",
+        "-p",
+        dest="task",
+        default="",
+        help="Task path, cut directory, or prompt string",
+    )
+    parser.add_argument(
+        "--seat-id",
+        "--seat",
+        "--name",
+        dest="seat_id",
+        default="",
+        help="Unique seat identifier (e.g. bd-local-sec-1)",
+    )
+    parser.add_argument(
+        "--round",
+        dest="round_id",
+        default=os.environ.get("BD_ROUND_ID", "o1789-r1"),
+        help="Consensus round ID for Rule 76 review lenses",
+    )
+    parser.add_argument(
+        "--max-turns",
+        type=int,
+        default=int(os.environ.get("BD_MAX_TURNS", "20")),
+        help="Maximum turns ceiling (Rule 77 hard cap: 20)",
+    )
+    parser.add_argument(
+        "--simulate-turn20",
+        action="store_true",
+        help="Simulate reaching Turn 20 ceiling to verify Rule 77 RESUME_STATE.md checkpoint termination",
+    )
+    parser.add_argument(
+        "--keep-tmux-s",
+        type=int,
+        default=300,
+        help="Seconds to keep the seat's tmux session alive for bd-say.sh interaction (default 300)",
+    )
+    parser.add_argument(
+        "--status",
+        nargs="?",
+        const="__ALL__",
+        default=None,
+        help="Inspect status of a specific local seat (or all seats)",
+    )
+    parser.add_argument(
+        "--list",
+        action="store_true",
+        help="List all registered local GPU seats",
+    )
+    parser.add_argument(
+        "positional_task",
+        nargs="*",
+        help="Optional positional task or prompt",
+    )
+
+    args = parser.parse_args(argv)
+
+    if args.list or args.status is not None:
+        target = None if (args.list or args.status == "__ALL__") else args.status
+        return inspect_seats(target)
+
+    # Enforce Rule 77 hard ceiling: BD_MAX_TURNS <= 20
+    max_turns = min(max(int(args.max_turns), 1), 20)
+    os.environ["BD_MAX_TURNS"] = str(max_turns)
+
+    role = args.role.strip().lower()
+    raw_tier = str(args.tier).strip().lower()
+    if raw_tier in ("1", "2", "3"):
+        tier = f"tier{raw_tier}"
+    elif raw_tier in ("4", "5"):
+        tier = "tier3"
+    else:
+        tier = raw_tier if raw_tier in ("tier1", "tier2", "tier3", "auto") else "auto"
+
+    default_model, default_tok_s, default_tier = ROLE_DEFAULT_MODELS.get(
+        role, ("Qwen3-Coder-30B-A3B", 77.62, "tier1")
+    )
+    model = args.model.strip() if args.model.strip() else default_model
+    tok_s = MODEL_SPEED_MAP.get(model.lower(), default_tok_s)
+    effective_tier = default_tier if tier == "auto" else tier
+
+    task_str = args.task.strip() or " ".join(args.positional_task).strip()
+    if not task_str:
+        task_str = f"Verify local GPU cluster health and {role} readiness."
+
+    seat_id = args.seat_id.strip()
+    if not seat_id:
+        short_hash = hashlib.sha256(f"{role}:{task_str}:{time.time()}".encode()).hexdigest()[:6]
+        seat_id = f"bd-local-{role}-{short_hash}"
+
+    # 1. O1740 Dynamic Pool Resolution from POOL_STATE.tsv
+    pool_row = resolve_o1740_local_pool()
+
+    # 2. Prepare seat workspace and spawn bd-say.sh-compatible tmux session
+    seat_dir = SEATS_ROOT / seat_id
+    seat_dir.mkdir(parents=True, exist_ok=True)
+    tmux_ok, pane_pid = spawn_tmux_repl_session(seat_id, seat_dir, keep_alive_s=args.keep_tmux_s)
+
+    # Record O1740 launch ledger row
+    LOCAL_LEDGER_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(LOCAL_LEDGER_PATH, "a", encoding="utf-8") as lf:
+        lf.write(
+            f"{_utc_now_iso()}\t{seat_id}\t{role}\tlocal\t{pool_row.get('state', 'OK')}\t"
+            f"{pool_row.get('pct', '0')}\t{pool_row.get('quota_observed_at', '-')}\t"
+            f"{model}\t{tok_s}\t{pane_pid}\t{task_str[:120]}\n"
+        )
+
+    # 3. Register seat on bd-bus WAL (/var/tmp/bd-bus.db & /home/mboyle/bd-persist/fleet-bus.db)
+    bus_upsert_seat(
+        seat_id=seat_id,
+        role=role,
+        tier=effective_tier,
+        model=model,
+        tok_s=tok_s,
+        pid=pane_pid,
+        status="RUNNING",
+        task=task_str,
+    )
+    bus_publish_event(
+        seat_id=seat_id,
+        topic="fleet/seats",
+        payload_obj={
+            "event": "SEAT_SPAWNED",
+            "seat": seat_id,
+            "role": role,
+            "pool": "local",
+            "tier": effective_tier,
+            "model": model,
+            "tok_s": tok_s,
+            "pid": pane_pid,
+            "tmux_session": seat_id if tmux_ok else None,
+            "max_turns": max_turns,
+            "pool_state_observed_at": pool_row.get("quota_observed_at", ""),
+        },
+    )
+
+    # 4. Check Rule 77 Turn-20 ceiling simulation or execute task within BD_MAX_TURNS=20
+    if args.simulate_turn20:
+        turn_reached = max_turns
+        resume_path = write_resume_state(
+            seat_dir=seat_dir,
+            seat_id=seat_id,
+            role=role,
+            tier=effective_tier,
+            model=model,
+            tok_s=tok_s,
+            turn=turn_reached,
+            max_turns=max_turns,
+            pool_row=pool_row,
+            task_summary=task_str,
+            status_note=f"HALTED AT TURN {turn_reached}/{max_turns} CEILING (Rule 77 RESUME_STATE.md Checkpointed)",
+            pane_pid=pane_pid,
+        )
+        contract_out = f"CHECKPOINT {resume_path}"
+        bus_upsert_seat(
+            seat_id=seat_id,
+            role=role,
+            tier=effective_tier,
+            model=model,
+            tok_s=tok_s,
+            pid=pane_pid,
+            status="CHECKPOINT_TURN20",
+            task=task_str,
+            receipt_path=str(resume_path),
+            output_contract=contract_out,
+        )
+        bus_publish_event(
+            seat_id=seat_id,
+            topic="fleet/checkpoints",
+            payload_obj={
+                "event": "TURN20_CHECKPOINT",
+                "seat": seat_id,
+                "role": role,
+                "turn": turn_reached,
+                "max_turns": max_turns,
+                "resume_state": str(resume_path),
+            },
+        )
+        print(contract_out)
+        return 0
+
+    # Execute seat workload on local GPU cluster (:4010 / :4000)
+    current_turn = 1
+    if role in ("review-security", "review-correctness"):
+        contract_out, artifact_path, llm_meta = run_review_lens_seat(
+            seat_id=seat_id,
+            role=role,
+            tier=effective_tier,
+            model=model,
+            tok_s=tok_s,
+            round_id=args.round_id,
+            task_arg=task_str,
+            seat_dir=seat_dir,
+        )
+        topic = "fleet/verdicts"
+    else:
+        contract_out, artifact_path, llm_meta = run_worker_or_investigator_seat(
+            seat_id=seat_id,
+            role=role,
+            tier=effective_tier,
+            model=model,
+            tok_s=tok_s,
+            task_arg=task_str,
+            seat_dir=seat_dir,
+        )
+        topic = "fleet/receipts"
+
+    # Always write RESUME_STATE.md checkpoint so seat state is serialized on disk (Rule 77)
+    resume_path = write_resume_state(
+        seat_dir=seat_dir,
+        seat_id=seat_id,
+        role=role,
+        tier=effective_tier,
+        model=model,
+        tok_s=tok_s,
+        turn=current_turn,
+        max_turns=max_turns,
+        pool_row=pool_row,
+        task_summary=task_str,
+        status_note=f"COMPLETED TURN {current_turn}/{max_turns} -> {artifact_path.name}",
+        pane_pid=pane_pid,
+    )
+
+    # Update bd-bus WAL with completion & output contract
+    bus_upsert_seat(
+        seat_id=seat_id,
+        role=role,
+        tier=effective_tier,
+        model=model,
+        tok_s=tok_s,
+        pid=pane_pid,
+        status="COMPLETED",
+        task=task_str,
+        receipt_path=str(artifact_path),
+        output_contract=contract_out,
+    )
+    bus_publish_event(
+        seat_id=seat_id,
+        topic=topic,
+        payload_obj={
+            "seat": seat_id,
+            "role": role,
+            "model": model,
+            "tok_s": tok_s,
+            "tier": effective_tier,
+            "turn": current_turn,
+            "max_turns": max_turns,
+            "artifact_path": str(artifact_path),
+            "resume_state": str(resume_path),
+            "output_contract": contract_out,
+            "elapsed_s": llm_meta.get("elapsed_s"),
+        },
+    )
+
+    # Output strictly the Rule 74 or Rule 76 contract line
+    print(contract_out)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,192 @@
+#!/usr/bin/env python3
+"""bd-local-prompt-guard: Wraps prompts with the Argon-4 Anti-Sycophancy & Anti-Hallucination Contract
+and optionally executes against http://10.0.70.164:4010/v1/chat/completions.
+"""
+import argparse
+import json
+import os
+import sys
+import urllib.request
+import urllib.error
+
+ARGON4_CONTRACT = """[ARGON-4 ANTI-SYCOPHANCY & ANTI-HALLUCINATION CONTRACT]
+1. ZERO SYCOPHANCY: Do not praise, flatter, validate, or agree with unverified premises. If a user premise is false, flawed, or unmeasured, refute it directly with evidence.
+2. ZERO HALLUCINATION (RULE 6): Never fabricate paths, SHA256 digests, symbols, line numbers, test results, or runtime outputs. Report only measured states: FOUND n, FOUND NONE, or COULD NOT LOOK (UNKNOWN != permission).
+3. FALSIFICATION FIRST: Actively test claims against filesystem and runtime ground truth before asserting conclusions.
+4. ZERO FILLER (HTAP-9): Omit greetings, apologies, hedging, and conversational padding."""
+
+MODE_CONTRACTS = {
+    "standard": (
+        f"{ARGON4_CONTRACT}\n"
+        "[MODE: STANDARD]\n"
+        "Respond with concise, verifiable technical facts and exact file/line coordinates."
+    ),
+    "rule74": (
+        f"{ARGON4_CONTRACT}\n"
+        "[MODE: RULE 74 - HARD OUTPUT CAP & ZERO-PROSE (PROTOCOL A)]\n"
+        "Output strictly <= 50 tokens: `<STATUS> <path>`. All detailed evidence must reside on disk.\n"
+        "If blocked by genuine ambiguity: `AMBIGUOUS: <path> | (1) <opt1> (2) <opt2>. Reply 1 or 2.`"
+    ),
+    "rule76": (
+        f"{ARGON4_CONTRACT}\n"
+        "[MODE: RULE 76 - JSON CONSENSUS (PROTOCOL B)]\n"
+        "Output strictly a single valid JSON object matching:\n"
+        '{"round":"<id>","seat":"<seat>","verdict":"BOARD|REFUTE","findings":[...]}\n'
+        "BOARD requires findings=[]. REFUTE requires machine coordinates (file, line, defect). Zero prose outside JSON."
+    ),
+}
+
+
+def build_payload(system_contract: str, user_prompt: str, model: str, mode: str, temperature: float = 0.0) -> dict:
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_contract},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": temperature,
+    }
+    if mode == "rule74":
+        payload["max_tokens"] = 50
+    return payload
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Wrap input prompt with Argon-4 Anti-Sycophancy & Anti-Hallucination Contract."
+    )
+    parser.add_argument(
+        "--mode", "-m",
+        choices=["rule74", "rule76", "standard"],
+        default="standard",
+        help="Contract enforcement mode (rule74|rule76|standard)",
+    )
+    parser.add_argument(
+        "--prompt", "-p",
+        type=str,
+        default=None,
+        help="Input prompt string (if omitted, reads positional args or stdin)",
+    )
+    parser.add_argument(
+        "--exec", "--execute", "-x",
+        dest="execute",
+        action="store_true",
+        help="Execute the wrapped prompt against the local OpenAI-compatible endpoint",
+    )
+    parser.add_argument(
+        "--endpoint", "--url",
+        default=os.environ.get("BD_LOCAL_LLM_URL", "http://10.0.70.164:4010/v1/chat/completions"),
+        help="Target chat completions endpoint (default: http://10.0.70.164:4010/v1/chat/completions)",
+    )
+    parser.add_argument(
+        "--model",
+        default=os.environ.get("BD_LOCAL_LLM_MODEL", "argon-4"),
+        help="Model identifier for execution",
+    )
+    parser.add_argument(
+        "--api-key",
+        default=os.environ.get("BD_LOCAL_LLM_KEY", os.environ.get("LITELLM_API_KEY", "sk-local-bd")),
+        help="Bearer token for endpoint",
+    )
+    parser.add_argument(
+        "--json", "-j",
+        action="store_true",
+        help="Emit wrapped OpenAI chat payload as JSON",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=15.0,
+        help="HTTP timeout in seconds when --exec is set",
+    )
+    parser.add_argument(
+        "positional_prompt",
+        nargs="*",
+        help="Prompt text if not passed via --prompt",
+    )
+
+    args = parser.parse_args()
+
+    if args.prompt is not None:
+        user_prompt = args.prompt
+    elif args.positional_prompt:
+        user_prompt = " ".join(args.positional_prompt)
+    elif not sys.stdin.isatty():
+        user_prompt = sys.stdin.read().strip()
+    else:
+        user_prompt = "Verify status."
+
+    system_contract = MODE_CONTRACTS[args.mode]
+
+    if not args.execute:
+        if args.json:
+            print(json.dumps(build_payload(system_contract, user_prompt, args.model, args.mode), indent=2))
+        else:
+            print(f"{system_contract}\n\n[USER PROMPT]\n{user_prompt}")
+        return 0
+
+    # Execute against endpoint
+    payload = build_payload(system_contract, user_prompt, args.model, args.mode)
+    data = json.dumps(payload).encode("utf-8")
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {args.api_key}",
+    }
+
+    req = urllib.request.Request(args.endpoint, data=data, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=args.timeout) as resp:
+            raw_body = resp.read().decode("utf-8", errors="replace")
+            parsed = json.loads(raw_body)
+            if args.json:
+                print(json.dumps(parsed))
+            else:
+                content = (
+                    parsed.get("choices", [{}])[0]
+                    .get("message", {})
+                    .get("content", raw_body)
+                )
+                print(content)
+            return 0
+    except urllib.error.HTTPError as e:
+        _err_body = e.read().decode("utf-8", errors="replace")
+        # If model name differs on :4010, auto-discover /v1/models and retry once
+        try:
+            models_url = args.endpoint.rsplit("/chat/completions", 1)[0] + "/models"
+            mreq = urllib.request.Request(models_url, headers=headers, method="GET")
+            with urllib.request.urlopen(mreq, timeout=5.0) as mresp:
+                mdata = json.loads(mresp.read().decode("utf-8", errors="replace"))
+                models = [m.get("id") for m in mdata.get("data", []) if m.get("id")]
+                if models:
+                    payload["model"] = models[0]
+                    req2 = urllib.request.Request(
+                        args.endpoint,
+                        data=json.dumps(payload).encode("utf-8"),
+                        headers=headers,
+                        method="POST",
+                    )
+                    with urllib.request.urlopen(req2, timeout=args.timeout) as resp2:
+                        raw_body2 = resp2.read().decode("utf-8", errors="replace")
+                        parsed2 = json.loads(raw_body2)
+                        if args.json:
+                            print(json.dumps(parsed2))
+                        else:
+                            print(parsed2.get("choices", [{}])[0].get("message", {}).get("content", raw_body2))
+                        return 0
+        except Exception:
+            pass
+        if args.json:
+            print(json.dumps({"status": "ENDPOINT_HTTP_ERROR", "code": e.code, "wrapped_payload": payload}))
+        else:
+            print(f"{system_contract}\n\n[USER PROMPT]\n{user_prompt}\n[ENDPOINT_STATUS: HTTP_{e.code}]")
+        return 0
+    except Exception as e:
+        if args.json:
+            print(json.dumps({"status": "OFFLINE_WRAPPED", "error": str(e), "wrapped_payload": payload}))
+        else:
+            print(f"{system_contract}\n\n[USER PROMPT]\n{user_prompt}")
+        return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

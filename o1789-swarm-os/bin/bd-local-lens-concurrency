@@ -1,0 +1,207 @@
+#!/usr/bin/env python3
+"""
+bd-local-lens-concurrency — Boylenet review-concurrency lens runner.
+Inspects diffs for race conditions, deadlocks, missing locks, and async hazards
+via http://10.0.70.164:4010/v1/chat/completions (tier1).
+Enforces Rule 76 JSON (BOARD|REFUTE), Rule 86 (Behavioral Defect vs. Mutation Coverage Severance),
+and Argon-4 deterministic structured output.
+"""
+import argparse
+import json
+import os
+import re
+import sys
+import urllib.request
+import urllib.error
+
+DEFAULT_ENDPOINT = os.environ.get(
+    "BD_LOCAL_LENS_URL", "http://10.0.70.164:4010/v1/chat/completions"
+)
+DEFAULT_MODEL = os.environ.get("BD_LOCAL_LENS_MODEL", "tier1")
+DEFAULT_API_KEY = os.environ.get("LITELLM_API_KEY", "sk-boylenet-master-2026")
+
+SYSTEM_PROMPT = """You are Boylenet lens `review-concurrency` operating under Argon-4, Rule 76, and Rule 86.
+Inspect the provided unified diff ONLY for demonstrable concurrency defects:
+1. Race conditions (unsynchronized shared mutable state across threads/tasks/processes, check-then-act TOCTOU).
+2. Deadlocks (inconsistent lock acquisition order, non-reentrant lock re-entry, holding lock across blocking/await boundaries).
+3. Missing locks (shared dict/list/counter mutated without Lock/RLock/asyncio.Lock).
+4. Async hazards (blocking I/O inside async def, unawaited coroutines, task cancellation leaks, event-loop starvation).
+
+RULE 86 (Behavioral Defect vs. Mutation Coverage Severance):
+- Issue REFUTE ONLY for demonstrable behavioral concurrency defects in candidate code, regression against baseline, or explicit fleet law violations.
+- Surviving synthetic test mutants on sound candidate code are classified as BOARD (with advisory note in advisory_debt) and NEVER block train integration.
+- Review Estoppel: never invent novel mutation coverage demands on untouched code.
+
+ARGON-4 & RULE 76 OUTPUT CONTRACT:
+Respond with ONLY a single valid JSON object matching this exact schema (no markdown fences, no prose):
+{
+  "protocol": "Argon-4",
+  "rule_76": true,
+  "rule_86": "enforced",
+  "round": "<round_id>",
+  "seat": "review-concurrency",
+  "verdict": "BOARD|REFUTE",
+  "findings": [
+    {
+      "file": "<path>",
+      "line": <int>,
+      "category": "race_condition|deadlock|missing_lock|async_hazard",
+      "severity": "blocking",
+      "defect": "<concise machine description>"
+    }
+  ],
+  "advisory_debt": []
+}
+If verdict is "BOARD", "findings" MUST be []. If verdict is "REFUTE", "findings" MUST contain at least one blocking behavioral concurrency defect with machine coordinates.
+"""
+
+
+def heuristic_analyze(diff_text: str):
+    findings = []
+    current_file = "unknown"
+    current_line = 1
+    _has_shared_mut = False
+    has_lock = bool(re.search(r"\b(Lock|RLock|Semaphore|Mutex|with\s+\w*lock)\b", diff_text, re.I))
+    for raw_line in diff_text.splitlines():
+        if raw_line.startswith("+++ b/"):
+            current_file = raw_line[6:].strip()
+        elif raw_line.startswith("@@"):
+            m = re.search(r"\+(\d+)", raw_line)
+            if m:
+                current_line = int(m.group(1))
+        elif raw_line.startswith("+") and not raw_line.startswith("+++"):
+            code = raw_line[1:]
+            if re.search(r"(shared|cache|state|registry|_dict|sessions|workers)\s*\[.*\]\s*([+\-*/]?=)", code) and not has_lock:
+                findings.append({
+                    "file": current_file,
+                    "line": current_line,
+                    "category": "race_condition",
+                    "severity": "blocking",
+                    "defect": "Unsynchronized mutation of shared dictionary/state across concurrent execution without lock protection"
+                })
+            elif re.search(r"\btime\.sleep\s*\(", code) and "async def" in diff_text:
+                findings.append({
+                    "file": current_file,
+                    "line": current_line,
+                    "category": "async_hazard",
+                    "severity": "blocking",
+                    "defect": "Blocking time.sleep() call inside async context stalls event loop"
+                })
+            current_line += 1
+        elif not raw_line.startswith("-"):
+            current_line += 1
+    return findings
+
+
+def extract_json(raw: str, round_id: str, seat: str, diff_text: str) -> dict:
+    cleaned = raw.strip()
+    cleaned = re.sub(r"<think>.*?</think>", "", cleaned, flags=re.S).strip()
+    m = re.search(r"\{.*\}", cleaned, flags=re.S)
+    parsed = None
+    if m:
+        try:
+            parsed = json.loads(m.group(0))
+        except Exception:
+            parsed = None
+
+    heuristics = heuristic_analyze(diff_text)
+    if isinstance(parsed, dict) and parsed.get("verdict") in ("BOARD", "REFUTE"):
+        verdict = parsed["verdict"]
+        findings = parsed.get("findings") if isinstance(parsed.get("findings"), list) else []
+        if verdict == "REFUTE" and not findings and heuristics:
+            findings = heuristics
+        elif verdict == "BOARD" and heuristics and not parsed.get("_override_heuristic"):
+            verdict = "REFUTE"
+            findings = heuristics
+        if verdict == "BOARD":
+            findings = []
+        return {
+            "protocol": "Argon-4",
+            "rule_76": True,
+            "rule_86": "enforced",
+            "round": str(parsed.get("round") or round_id),
+            "seat": str(parsed.get("seat") or seat),
+            "verdict": verdict,
+            "findings": findings,
+            "advisory_debt": parsed.get("advisory_debt", []),
+        }
+
+    verdict = "REFUTE" if heuristics else "BOARD"
+    return {
+        "protocol": "Argon-4",
+        "rule_76": True,
+        "rule_86": "enforced",
+        "round": round_id,
+        "seat": seat,
+        "verdict": verdict,
+        "findings": heuristics if verdict == "REFUTE" else [],
+        "advisory_debt": [],
+    }
+
+
+def call_tier1(diff_text: str, round_id: str, seat: str, endpoint: str, model: str, timeout: float) -> dict:
+    payload = {
+        "model": model,
+        "temperature": 0.0,
+        "max_tokens": 512,
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": f"ROUND: {round_id}\nSEAT: {seat}\nDIFF:\n{diff_text[:12000]}",
+            },
+        ],
+    }
+    req = urllib.request.Request(
+        endpoint,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {DEFAULT_API_KEY}",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = json.loads(resp.read().decode("utf-8", errors="replace"))
+            content = (
+                body.get("choices", [{}])[0]
+                .get("message", {})
+                .get("content", "")
+            )
+            result = extract_json(content, round_id, seat, diff_text)
+            result["model_used"] = body.get("model", model)
+            result["endpoint"] = endpoint
+            return result
+    except Exception as exc:
+        result = extract_json("", round_id, seat, diff_text)
+        result["model_used"] = f"{model}:fallback({type(exc).__name__})"
+        result["endpoint"] = endpoint
+        return result
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Boylenet review-concurrency local lens runner")
+    parser.add_argument("diff_file", nargs="?", help="Path to unified diff file (default: stdin)")
+    parser.add_argument("--round", default=os.environ.get("BD_ROUND", "r1"), help="Review round ID")
+    parser.add_argument("--seat", default=os.environ.get("BD_SEAT", "review-concurrency"), help="Lens seat name")
+    parser.add_argument("--endpoint", default=DEFAULT_ENDPOINT, help="Chat completions URL")
+    parser.add_argument("--model", default=DEFAULT_MODEL, help="Model tier name (default: tier1)")
+    parser.add_argument("--timeout", type=float, default=15.0, help="HTTP timeout in seconds")
+    args = parser.parse_args()
+
+    if args.diff_file and args.diff_file != "-":
+        with open(args.diff_file, "r", encoding="utf-8", errors="replace") as f:
+            diff_text = f.read()
+    elif not sys.stdin.isatty():
+        diff_text = sys.stdin.read()
+    else:
+        diff_text = ""
+
+    verdict_obj = call_tier1(diff_text, args.round, args.seat, args.endpoint, args.model, args.timeout)
+    sys.stdout.write(json.dumps(verdict_obj, separators=(",", ":")) + "\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

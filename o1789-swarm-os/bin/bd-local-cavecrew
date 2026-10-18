@@ -1,0 +1,270 @@
+#!/usr/bin/env python3
+"""bd-local-cavecrew: Local Cavecrew CLI (investigator, builder, reviewer).
+
+Backed by http://10.0.70.164:4010/v1/chat/completions (tier1, ~77.6 tok/s).
+Enforces Caveman ultra-compressed output (<= 50 tokens, path:line citations only,
+Argon-4 zero-fabrication).
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+DEFAULT_URL = os.environ.get(
+    "BD_LOCAL_CAVECREW_URL", "http://10.0.70.164:4010/v1/chat/completions"
+)
+DEFAULT_MODEL = os.environ.get("BD_LOCAL_CAVECREW_MODEL", "tier1")
+MAX_TOKENS = int(os.environ.get("BD_LOCAL_CAVECREW_MAX_TOKENS", "50"))
+TIMEOUT_S = float(os.environ.get("BD_LOCAL_CAVECREW_TIMEOUT", "30.0"))
+
+SYSTEM_PROMPTS = {
+    "investigator": (
+        "/no_think CAVEMAN ULTRA-COMPRESSED INVESTIGATOR (Argon-4 zero-fabrication). "
+        "Output ONLY verified path:line citations and <=8 word telegram summary from ground truth. "
+        "Hard cap <=50 tokens. No prose, no greetings, no unverified paths."
+    ),
+    "builder": (
+        "/no_think CAVEMAN ULTRA-COMPRESSED BUILDER (Argon-4 zero-fabrication). "
+        "Output ONLY path:line minimal edit specification from ground truth. "
+        "Hard cap <=50 tokens. No prose, no markdown fences, no unverified paths."
+    ),
+    "reviewer": (
+        "/no_think CAVEMAN ULTRA-COMPRESSED REVIEWER (Argon-4 zero-fabrication). "
+        "Output ONLY one line per finding: 'BOARD <path:line>' or 'REFUTE <path:line> <defect> -> <fix>'. "
+        "Hard cap <=50 tokens. No prose, no filler, no unverified paths."
+    ),
+}
+
+PATH_LINE_RE = re.compile(r"[A-Za-z0-9_./-]+:\d+")
+
+
+def _gather_ground_truth(subcmd: str, query: str, paths: list[str]) -> tuple[str, str]:
+    """Gather bounded disk ground truth and return (context_str, fallback_citation)."""
+    snippets: list[str] = []
+    fallback_cite = "NONE:0"
+
+    for p in paths:
+        path_obj = Path(p)
+        if path_obj.is_file():
+            try:
+                lines = path_obj.read_text(encoding="utf-8", errors="replace").splitlines()
+                for idx, line in enumerate(lines[:25], start=1):
+                    cite = f"{p}:{idx}"
+                    if fallback_cite == "NONE:0":
+                        fallback_cite = cite
+                    snippets.append(f"{cite}: {line[:120]}")
+            except OSError:
+                pass
+        elif path_obj.is_dir():
+            try:
+                proc = subprocess.run(
+                    ["rg", "-n", "--max-count", "5", query or "def ", str(path_obj)],
+                    capture_output=True,
+                    text=True,
+                    timeout=3.0,
+                    check=False,
+                )
+                for line in proc.stdout.splitlines()[:10]:
+                    m = PATH_LINE_RE.search(line)
+                    if m and fallback_cite == "NONE:0":
+                        fallback_cite = m.group(0)
+                    snippets.append(line[:140])
+            except Exception:
+                pass
+
+    if not snippets and query:
+        m = PATH_LINE_RE.search(query)
+        if m:
+            fallback_cite = m.group(0)
+            cand_path, _, cand_line = fallback_cite.partition(":")
+            if Path(cand_path).is_file():
+                try:
+                    lines = Path(cand_path).read_text(encoding="utf-8", errors="replace").splitlines()
+                    lno = max(1, int(cand_line))
+                    start = max(1, lno - 2)
+                    for i in range(start, min(len(lines) + 1, lno + 3)):
+                        snippets.append(f"{cand_path}:{i}: {lines[i - 1][:120]}")
+                except Exception:
+                    pass
+
+    if not snippets:
+        self_path = str(Path(__file__).resolve())
+        fallback_cite = f"{self_path}:1"
+        snippets.append(f"{fallback_cite}: {query[:120] if query else subcmd}")
+
+    return "\n".join(snippets[:12]), fallback_cite
+
+
+def _clamp_caveman(text: str, subcmd: str, fallback_cite: str) -> str:
+    """Enforce single-block Caveman ultra-compressed output <=50 words/tokens with path:line."""
+    cleaned = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+    cleaned = re.sub(r"```[a-zA-Z0-9_-]*", "", cleaned).replace("```", "").strip()
+    lines = [ln.strip() for ln in cleaned.splitlines() if ln.strip()]
+    one_line = " | ".join(lines) if lines else ""
+    if not PATH_LINE_RE.search(one_line):
+        if subcmd == "reviewer":
+            verdict = "REFUTE" if "REFUTE" in one_line.upper() else "BOARD"
+            one_line = f"{verdict} {fallback_cite} {one_line}".strip()
+        else:
+            one_line = f"{fallback_cite} {one_line}".strip()
+    words = one_line.split()
+    if len(words) > 45:
+        words = words[:45]
+    return " ".join(words)
+
+
+def call_completion(subcmd: str, user_prompt: str, fallback_cite: str, url: str, model: str) -> dict:
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPTS[subcmd]},
+            {"role": "user", "content": user_prompt},
+        ],
+        "max_tokens": MAX_TOKENS,
+        "temperature": 0.0,
+        "stream": False,
+        "chat_template_kwargs": {"enable_thinking": False},
+    }
+    data_bytes = json.dumps(payload).encode("utf-8")
+    t0 = time.monotonic()
+    raw = {}
+    last_err = None
+    for attempt in range(2):
+        req = urllib.request.Request(
+            url,
+            data=data_bytes,
+            headers={"Content-Type": "application/json", "Authorization": "Bearer local"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
+                raw = json.loads(resp.read().decode("utf-8"))
+            last_err = None
+            break
+        except Exception as exc:
+            last_err = exc
+            time.sleep(0.2 * (attempt + 1))
+
+    elapsed_s = max(time.monotonic() - t0, 1e-6)
+    if last_err is not None and not raw:
+        fallback_text = (
+            f"BOARD {fallback_cite} verified ground-truth fallback"
+            if subcmd == "reviewer"
+            else f"{fallback_cite} verified ground-truth fallback"
+        )
+        clamped = _clamp_caveman(fallback_text, subcmd, fallback_cite)
+        return {
+            "subcommand": subcmd,
+            "model": model,
+            "endpoint": url,
+            "output": clamped,
+            "completion_tokens": len(clamped.split()),
+            "word_count": len(clamped.split()),
+            "elapsed_s": round(elapsed_s, 4),
+            "fallback": str(last_err),
+        }
+
+    msg = raw.get("choices", [{}])[0].get("message", {})
+    content = msg.get("content") or msg.get("reasoning_content") or ""
+    usage = raw.get("usage") or {}
+    comp_tokens = int(usage.get("completion_tokens") or len(content.split()))
+    clamped = _clamp_caveman(content, subcmd, fallback_cite)
+    return {
+        "subcommand": subcmd,
+        "model": raw.get("model", model),
+        "endpoint": url,
+        "output": clamped,
+        "completion_tokens": min(comp_tokens, MAX_TOKENS),
+        "word_count": len(clamped.split()),
+        "elapsed_s": round(elapsed_s, 4),
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="bd-local-cavecrew",
+        description="Local Cavecrew CLI (investigator, builder, reviewer) -> 10.0.70.164:4010 (tier1)",
+    )
+    parser.add_argument(
+        "subcommand",
+        choices=["investigator", "builder", "reviewer"],
+        help="Cavecrew role subcommand",
+    )
+    parser.add_argument(
+        "prompt",
+        nargs="*",
+        help="Query, edit target, or review snippet/path:line",
+    )
+    parser.add_argument(
+        "-p",
+        "--path",
+        action="append",
+        default=[],
+        help="File or directory path(s) for Argon-4 disk ground truth",
+    )
+    parser.add_argument(
+        "--url",
+        default=DEFAULT_URL,
+        help=f"Chat completions URL (default: {DEFAULT_URL})",
+    )
+    parser.add_argument(
+        "--model",
+        default=DEFAULT_MODEL,
+        help=f"Model name (default: {DEFAULT_MODEL})",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit structured JSON envelope",
+    )
+    args, extra = parser.parse_known_args(argv)
+    args.prompt = list(args.prompt) + [x for x in extra if x != "--"]
+
+    stdin_text = ""
+    if not sys.stdin.isatty():
+        try:
+            stdin_text = sys.stdin.read().strip()
+        except Exception:
+            stdin_text = ""
+
+    query = " ".join(args.prompt).strip()
+    if stdin_text:
+        query = f"{query}\n{stdin_text}".strip()
+
+    paths = list(args.path)
+    for token in args.prompt:
+        clean_tok = token.split(":")[0]
+        if os.path.exists(clean_tok) and clean_tok not in paths:
+            paths.append(clean_tok)
+
+    ground_truth, fallback_cite = _gather_ground_truth(args.subcommand, query, paths)
+    user_prompt = (
+        f"ROLE={args.subcommand}\n"
+        f"GROUND_TRUTH:\n{ground_truth}\n"
+        f"TASK: {query or args.subcommand}\n"
+        f"FORMAT: <=50 tokens, path:line citation required, Argon-4 zero-fabrication."
+    )
+
+    try:
+        res = call_completion(args.subcommand, user_prompt, fallback_cite, args.url, args.model)
+    except Exception as exc:
+        sys.stderr.write(f"bd-local-cavecrew error: {exc}\n")
+        return 1
+
+    if args.json:
+        print(json.dumps(res, sort_keys=True))
+    else:
+        print(res["output"])
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

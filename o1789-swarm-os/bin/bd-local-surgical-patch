@@ -1,0 +1,235 @@
+#!/usr/bin/env python3
+"""bd-local-surgical-patch: Local GPU cluster surgical-patch skill runner.
+
+Slices only --lines start:end from --file, dispatches the narrow fix request to
+http://10.0.70.164:4010/v1/chat/completions (tier1 / qwen3-coder-30b-a3b),
+validates the patched file with ast.parse, and emits a minimal unified diff.
+"""
+from __future__ import annotations
+
+import argparse
+import ast
+import difflib
+import json
+import os
+import re
+import sys
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+DEFAULT_ENDPOINT = os.environ.get(
+    "BD_LOCAL_LLM_URL", "http://10.0.70.164:4010/v1/chat/completions"
+)
+DEFAULT_MODEL = os.environ.get("BD_LOCAL_LLM_MODEL", "qwen3-coder-30b-a3b")
+DEFAULT_TIER = os.environ.get("BD_LOCAL_LLM_TIER", "tier1")
+API_KEY = (
+    os.environ.get("LITELLM_API_KEY")
+    or os.environ.get("OPENAI_API_KEY")
+    or "sk-local-cluster"
+)
+
+SYSTEM_PROMPT = (
+    "You are a surgical-patch code generator (tier1 qwen3-coder-30b-a3b).\n"
+    "Rules:\n"
+    "1. Fix the bug or requested behavior change at the narrowest responsible layer.\n"
+    "2. Preserve surrounding behavior, indentation, and signatures.\n"
+    "3. Modify ONLY the provided line slice.\n"
+    "4. Output ONLY the replacement Python code for the provided slice "
+    "(no prose, no explanations, no markdown fences)."
+)
+
+
+def parse_line_range(spec: str, total_lines: int) -> tuple[int, int]:
+    m = re.match(r"^\s*(\d+)\s*[:\-]\s*(\d+|end|eof)\s*$", spec, re.IGNORECASE)
+    if not m:
+        raise ValueError(f"Invalid --lines specification '{spec}' (expected start:end)")
+    start = max(1, int(m.group(1)))
+    end_raw = m.group(2).lower()
+    end = total_lines if end_raw in ("end", "eof") else min(total_lines, int( end_raw ))
+    if start > end or start > total_lines:
+        raise ValueError(
+            f"Line range {start}:{end} out of bounds for file with {total_lines} lines"
+        )
+    return start, end
+
+
+def strip_fences(text: str) -> str:
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+    fence_match = re.search(r"```(?:python|py|diff)?\s*\n(.*?)```", text, re.DOTALL)
+    if fence_match:
+        return fence_match.group(1).rstrip("\n") + "\n"
+    return text.rstrip("\n") + "\n"
+
+
+def extract_from_diff_if_needed(raw_block: str, orig_slice: list[str]) -> list[str]:
+    lines = raw_block.splitlines(keepends=True)
+    if any(l.startswith("@@") or l.startswith("---") or l.startswith("+++") for l in lines):
+        out: list[str] = []
+        for l in lines:
+            if l.startswith(("+++", "---", "@@")):
+                continue
+            if l.startswith("+"):
+                out.append(l[1:])
+            elif l.startswith(" "):
+                out.append(l[1:])
+            elif not l.startswith("-"):
+                out.append(l)
+        if out:
+            return out
+    return lines
+
+
+def call_local_cluster(
+    endpoint: str,
+    model: str,
+    tier: str,
+    file_path: str,
+    start: int,
+    end: int,
+    slice_text: str,
+    fix_instruction: str,
+    timeout: float,
+) -> tuple[str, str]:
+    user_prompt = (
+        f"File: {file_path} (lines {start}:{end})\n"
+        f"Surgical Fix Requirement: {fix_instruction}\n\n"
+        f"Original slice (lines {start}:{end}):\n"
+        f"{slice_text}\n"
+        f"Return ONLY the replacement Python lines for lines {start}:{end}, preserving exact base indentation."
+    )
+    models_to_try = []
+    for candidate in (model, tier, "qwen3-coder-30b-a3b", "tier1"):
+        if candidate and candidate not in models_to_try:
+            models_to_try.append(candidate)
+
+    last_err = ""
+    for mdl in models_to_try:
+        payload = {
+            "model": mdl,
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": 0.0,
+            "max_tokens": 1024,
+            "metadata": {"tier": tier, "skill": "surgical-patch"},
+        }
+        req = urllib.request.Request(
+            endpoint,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {API_KEY}",
+                "X-BD-Tier": tier,
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+                content = body["choices"][0]["message"]["content"]
+                return content, mdl
+        except Exception as exc:
+            last_err = f"{mdl}: {exc}"
+    raise RuntimeError(f"Local GPU cluster call failed ({endpoint}): {last_err}")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Surgical patch generator backed by local GPU cluster (tier1 qwen3-coder-30b-a3b)"
+    )
+    parser.add_argument("--file", required=True, help="Target Python file path")
+    parser.add_argument("--lines", required=True, help="1-indexed line slice start:end")
+    parser.add_argument("--fix", required=True, help="Surgical fix instruction")
+    parser.add_argument("--endpoint", default=DEFAULT_ENDPOINT, help="Cluster chat completions URL")
+    parser.add_argument("--model", default=DEFAULT_MODEL, help="Model name (default: qwen3-coder-30b-a3b)")
+    parser.add_argument("--tier", default=DEFAULT_TIER, help="Cluster routing tier (default: tier1)")
+    parser.add_argument("--timeout", type=float, default=30.0, help="HTTP timeout in seconds")
+    parser.add_argument("--apply", action="store_true", help="Apply surgical patch in-place if ast.parse succeeds")
+    args = parser.parse_args()
+
+    target = Path(args.file)
+    if not target.is_file():
+        print(f"ERROR: file not found: {args.file}", file=sys.stderr)
+        return 2
+
+    orig_text = target.read_text(encoding="utf-8")
+    orig_lines = orig_text.splitlines(keepends=True)
+    if orig_lines and not orig_lines[-1].endswith("\n"):
+        orig_lines[-1] += "\n"
+
+    try:
+        start, end = parse_line_range(args.lines, len(orig_lines))
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+
+    orig_slice = orig_lines[start - 1 : end]
+    slice_text = "".join(orig_slice)
+
+    # Preserve leading indentation of first non-empty line in slice
+    base_indent = ""
+    for line in orig_slice:
+        if line.strip():
+            base_indent = line[: len(line) - len(line.lstrip())]
+            break
+
+    raw_reply, used_model = call_local_cluster(
+        endpoint=args.endpoint,
+        model=args.model,
+        tier=args.tier,
+        file_path=str(target),
+        start=start,
+        end=end,
+        slice_text=slice_text,
+        fix_instruction=args.fix,
+        timeout=args.timeout,
+    )
+
+    cleaned = strip_fences(raw_reply)
+    replacement_lines = extract_from_diff_if_needed(cleaned, orig_slice)
+
+    # Re-align base indentation if model stripped leading indentation
+    first_nonempty = next((l for l in replacement_lines if l.strip()), "")
+    if base_indent and first_nonempty and not first_nonempty.startswith((" ", "\t")):
+        replacement_lines = [
+            (base_indent + l if l.strip() else l) for l in replacement_lines
+        ]
+
+    candidate_lines = orig_lines[: start - 1] + replacement_lines + orig_lines[end:]
+    candidate_text = "".join(candidate_lines)
+
+    try:
+        ast.parse(candidate_text, filename=str(target))
+    except SyntaxError as syn_err:
+        print(
+            f"ERROR: ast.parse syntax check failed on patched candidate "
+            f"(line {syn_err.lineno}, offset {syn_err.offset}): {syn_err.msg}",
+            file=sys.stderr,
+        )
+        return 1
+
+    diff_lines = list(
+        difflib.unified_diff(
+            orig_lines,
+            candidate_lines,
+            fromfile=f"a/{target.name}",
+            tofile=f"b/{target.name}",
+            n=3,
+        )
+    )
+
+    if args.apply and diff_lines:
+        target.write_text(candidate_text, encoding="utf-8")
+
+    sys.stdout.write("".join(diff_lines))
+    print(
+        f"# SURGICAL-PATCH OK | model={used_model} | slice={start}:{end} | ast.parse=PASS",
+        file=sys.stderr,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

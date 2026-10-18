@@ -1,0 +1,283 @@
+#!/usr/bin/env bash
+# bd-local-speculative-bench — CLI runner for llama.cpp speculative decoding benchmarks
+# Executes /opt/llama-rpc/llama-speculative or /opt/llama-rpc/llama-completion --model-draft
+# across 10.0.70.72 / 10.0.70.83 pairing target GGUF (-m) with draft GGUF (-md).
+set -eo pipefail
+
+NODES=("10.0.70.72" "10.0.70.83")
+DEFAULT_NODE="10.0.70.72"
+LLAMA_DIR="/opt/llama-rpc"
+BIN_SPEC="${LLAMA_DIR}/llama-speculative"
+BIN_COMP="${LLAMA_DIR}/llama-completion"
+SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=3 -o StrictHostKeyChecking=no)
+
+NODE="${BD_SPEC_NODE:-$DEFAULT_NODE}"
+RUNNER_MODE="speculative" # speculative | completion
+TARGET_MODEL=""
+DRAFT_MODEL=""
+PROMPT="Explain speculative decoding in distributed GGUF inference and why draft acceptance rates govern token latency."
+N_PREDICT=128
+DRAFT_MAX=16
+DRAFT_MIN=5
+DRAFT_P_MIN=0.75
+THREADS=16
+NGL=99
+CTX_SIZE=4096
+RPC_SERVERS=""
+DRY_RUN=0
+JSON_OUT=0
+ACTION="run"
+
+usage() {
+  cat <<USAGE
+Usage: $(basename "$0") [OPTIONS]
+
+CLI runner for speculative decoding benchmarks on 10.0.70.72 / 10.0.70.83
+using ${BIN_SPEC} or ${BIN_COMP} --model-draft.
+
+Modes / Queries:
+  --status              Probe nodes (10.0.70.72, 10.0.70.83), binaries, and GGUF inventory
+  --list-pairs          Output recommended target (-m) + draft (-md) GGUF pairings
+  --dry-run             Print resolved remote SSH execution command without running
+  --json                Emit machine-readable JSON output for --status / --list-pairs / --dry-run
+  -h, --help            Show this help message
+
+Benchmark Options:
+  --node <ip>           Target execution host (default: ${DEFAULT_NODE}; allowed: 10.0.70.72, 10.0.70.83)
+  --runner <mode>       Binary mode: 'speculative' (llama-speculative) or 'completion' (llama-completion --model-draft)
+  -m, --model <path>    Target GGUF model path or basename
+  -md, --model-draft <path>
+                        Draft GGUF model path or basename (e.g. dspark-DeepSeek-V4-Flash-0731-BF16.gguf or Qwythos-9B-Q8_0.gguf)
+  --pair <name>         Named preset pair (deepseek-v4-flash | qwythos-9b | qwen-coder | default)
+  -p, --prompt <text>   Benchmark prompt string
+  -n, --n-predict <int> Number of tokens to predict (default: ${N_PREDICT})
+  --draft-max <int>     Max draft tokens per step (--draft-max, default: ${DRAFT_MAX})
+  --draft-min <int>     Min draft tokens per step (--draft-min, default: ${DRAFT_MIN})
+  --draft-p-min <float> Min speculative acceptance probability (default: ${DRAFT_P_MIN})
+  -t, --threads <int>   Thread count (default: ${THREADS})
+  -ngl <int>            GPU layers for target/draft (default: ${NGL})
+  -c, --ctx-size <int>  Context length (default: ${CTX_SIZE})
+  --rpc <endpoints>     Optional comma-separated RPC endpoints passed to --rpc
+USAGE
+}
+
+resolve_model_path() {
+  local host="$1"
+  local spec="$2"
+  if [[ "$spec" == /* ]]; then
+    printf '%s\n' "$spec"
+    return 0
+  fi
+  local found=""
+  found=$(ssh "${SSH_OPTS[@]}" "$host" "find /models /opt /srv /var/lib /home /mnt /data -maxdepth 4 -name '$spec' 2>/dev/null | head -n 1" 2>/dev/null || true)
+  if [[ -n "$found" ]]; then
+    printf '%s\n' "$found"
+  else
+    printf '/models/%s\n' "$spec"
+  fi
+}
+
+cmd_list_pairs() {
+  if [[ "$JSON_OUT" -eq 1 ]]; then
+    cat <<JSON
+{
+  "nodes": ["10.0.70.72", "10.0.70.83"],
+  "runners": [
+    "/opt/llama-rpc/llama-speculative",
+    "/opt/llama-rpc/llama-completion --model-draft"
+  ],
+  "pairs": [
+    {
+      "id": "deepseek-v4-flash",
+      "host": "10.0.70.72",
+      "runner": "/opt/llama-rpc/llama-speculative",
+      "target_model": "DeepSeek-V4-0731-Q4_K_M.gguf",
+      "draft_model": "dspark-DeepSeek-V4-Flash-0731-BF16.gguf",
+      "draft_max": 16,
+      "draft_min": 5
+    },
+    {
+      "id": "qwythos-9b",
+      "host": "10.0.70.83",
+      "runner": "/opt/llama-rpc/llama-completion --model-draft",
+      "target_model": "Qwen2.5-72B-Instruct-Q4_K_M.gguf",
+      "draft_model": "Qwythos-9B-Q8_0.gguf",
+      "draft_max": 16,
+      "draft_min": 5
+    },
+    {
+      "id": "cross-node-qwythos-draft",
+      "host": "10.0.70.72",
+      "runner": "/opt/llama-rpc/llama-speculative",
+      "target_model": "dspark-DeepSeek-V4-Flash-0731-BF16.gguf",
+      "draft_model": "Qwythos-9B-Q8_0.gguf",
+      "draft_max": 12,
+      "draft_min": 4
+    }
+  ]
+}
+JSON
+    return 0
+  fi
+
+  cat <<TABLE
+PAIR_ID                    HOST         RUNNER                                       TARGET (-m)                                DRAFT (-md)
+deepseek-v4-flash          10.0.70.72   /opt/llama-rpc/llama-speculative             DeepSeek-V4-0731-Q4_K_M.gguf               dspark-DeepSeek-V4-Flash-0731-BF16.gguf
+qwythos-9b                 10.0.70.83   /opt/llama-rpc/llama-completion --model-draft Qwen2.5-72B-Instruct-Q4_K_M.gguf           Qwythos-9B-Q8_0.gguf
+cross-node-qwythos-draft   10.0.70.72   /opt/llama-rpc/llama-speculative             dspark-DeepSeek-V4-Flash-0731-BF16.gguf    Qwythos-9B-Q8_0.gguf
+TABLE
+}
+
+cmd_status() {
+  local n
+  local rows=()
+  for n in "${NODES[@]}"; do
+    local probe=""
+    probe=$(ssh "${SSH_OPTS[@]}" "$n" "
+      spec_ok=no; comp_ok=no
+      [ -x '$BIN_SPEC' ] && spec_ok=yes
+      [ -x '$BIN_COMP' ] && comp_ok=yes
+      ggufs=\$(find /models /opt /srv /var/lib /home /mnt /data -maxdepth 4 -name '*.gguf' 2>/dev/null | xargs -r -n1 basename | sort -u | tr '\n' ',' | sed 's/,\$//')
+      [ -z \"\$ggufs\" ] && ggufs='none-indexed'
+      printf 'REACHABLE|spec=%s|comp=%s|gguf=%s\n' \"\$spec_ok\" \"\$comp_ok\" \"\$ggufs\"
+    " 2>/dev/null || printf 'UNREACHABLE_OR_OFFLINE|spec=probe_skipped|comp=probe_skipped|gguf=cached_catalog\n')
+    rows+=("${n}|${probe}")
+  done
+
+  if [[ "$JSON_OUT" -eq 1 ]]; then
+    printf '{"tool":"bd-local-speculative-bench","binaries":["%s","%s"],"nodes":[' "$BIN_SPEC" "$BIN_COMP"
+    local first=1
+    for r in "${rows[@]}"; do
+      IFS='|' read -r host reach spec comp gguf <<<"$r"
+      [[ "$first" -eq 0 ]] && printf ','
+      first=0
+      printf '{"node":"%s","status":"%s","llama_speculative":"%s","llama_completion":"%s","models":"%s"}' \
+        "$host" "$reach" "${spec#spec=}" "${comp#comp=}" "${gguf#gguf=}"
+    done
+    printf ']}\n'
+    return 0
+  fi
+
+  printf 'bd-local-speculative-bench status (runners: %s | %s --model-draft)\n' "$BIN_SPEC" "$BIN_COMP"
+  for r in "${rows[@]}"; do
+    IFS='|' read -r host reach spec comp gguf <<<"$r"
+    printf '  NODE %-12s %-22s %-18s %-18s %s\n' "$host" "$reach" "$spec" "$comp" "$gguf"
+  done
+}
+
+apply_pair_preset() {
+  local preset="$1"
+  case "$preset" in
+    deepseek-v4-flash|default)
+      NODE="10.0.70.72"
+      RUNNER_MODE="speculative"
+      [[ -z "$TARGET_MODEL" ]] && TARGET_MODEL="DeepSeek-V4-0731-Q4_K_M.gguf"
+      [[ -z "$DRAFT_MODEL" ]] && DRAFT_MODEL="dspark-DeepSeek-V4-Flash-0731-BF16.gguf"
+      ;;
+    qwythos-9b)
+      NODE="10.0.70.83"
+      RUNNER_MODE="completion"
+      [[ -z "$TARGET_MODEL" ]] && TARGET_MODEL="Qwen2.5-72B-Instruct-Q4_K_M.gguf"
+      [[ -z "$DRAFT_MODEL" ]] && DRAFT_MODEL="Qwythos-9B-Q8_0.gguf"
+      ;;
+    cross-node-qwythos-draft)
+      NODE="10.0.70.72"
+      RUNNER_MODE="speculative"
+      [[ -z "$TARGET_MODEL" ]] && TARGET_MODEL="dspark-DeepSeek-V4-Flash-0731-BF16.gguf"
+      [[ -z "$DRAFT_MODEL" ]] && DRAFT_MODEL="Qwythos-9B-Q8_0.gguf"
+      ;;
+    *)
+      echo "ERROR: unknown --pair preset '$preset'" >&2
+      exit 2
+      ;;
+  esac
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --status) ACTION="status"; shift ;;
+    --list-pairs) ACTION="list-pairs"; shift ;;
+    --dry-run) DRY_RUN=1; shift ;;
+    --json) JSON_OUT=1; shift ;;
+    --node) NODE="$2"; shift 2 ;;
+    --runner) RUNNER_MODE="$2"; shift 2 ;;
+    -m|--model) TARGET_MODEL="$2"; shift 2 ;;
+    -md|--model-draft) DRAFT_MODEL="$2"; shift 2 ;;
+    --pair) apply_pair_preset "$2"; shift 2 ;;
+    -p|--prompt) PROMPT="$2"; shift 2 ;;
+    -n|--n-predict) N_PREDICT="$2"; shift 2 ;;
+    --draft-max) DRAFT_MAX="$2"; shift 2 ;;
+    --draft-min) DRAFT_MIN="$2"; shift 2 ;;
+    --draft-p-min) DRAFT_P_MIN="$2"; shift 2 ;;
+    -t|--threads) THREADS="$2"; shift 2 ;;
+    -ngl) NGL="$2"; shift 2 ;;
+    -c|--ctx-size) CTX_SIZE="$2"; shift 2 ;;
+    --rpc) RPC_SERVERS="$2"; shift 2 ;;
+    -h|--help) usage; exit 0 ;;
+    *)
+      echo "ERROR: unrecognized argument '$1'" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+case "$ACTION" in
+  status) cmd_status; exit 0 ;;
+  list-pairs) cmd_list_pairs; exit 0 ;;
+esac
+
+if [[ "$NODE" != "10.0.70.72" && "$NODE" != "10.0.70.83" ]]; then
+  echo "ERROR: --node must be 10.0.70.72 or 10.0.70.83 (got: $NODE)" >&2
+  exit 2
+fi
+
+if [[ -z "$TARGET_MODEL" || -z "$DRAFT_MODEL" ]]; then
+  apply_pair_preset "default"
+fi
+
+RESOLVED_TARGET=$(resolve_model_path "$NODE" "$TARGET_MODEL")
+RESOLVED_DRAFT=$(resolve_model_path "$NODE" "$DRAFT_MODEL")
+
+if [[ "$RUNNER_MODE" == "speculative" ]]; then
+  REMOTE_BIN="$BIN_SPEC"
+elif [[ "$RUNNER_MODE" == "completion" ]]; then
+  REMOTE_BIN="$BIN_COMP"
+else
+  echo "ERROR: --runner must be 'speculative' or 'completion' (got: $RUNNER_MODE)" >&2
+  exit 2
+fi
+
+REMOTE_ARGS=(
+  "$REMOTE_BIN"
+  -m "$RESOLVED_TARGET"
+  -md "$RESOLVED_DRAFT"
+  -p "$PROMPT"
+  -n "$N_PREDICT"
+  --draft-max "$DRAFT_MAX"
+  --draft-min "$DRAFT_MIN"
+  --draft-p-min "$DRAFT_P_MIN"
+  -t "$THREADS"
+  -ngl "$NGL"
+  -ngld "$NGL"
+  -c "$CTX_SIZE"
+  --temp 0.0
+  --no-cnv
+)
+
+if [[ -n "$RPC_SERVERS" ]]; then
+  REMOTE_ARGS+=(--rpc "$RPC_SERVERS")
+fi
+
+if [[ "$DRY_RUN" -eq 1 ]]; then
+  if [[ "$JSON_OUT" -eq 1 ]]; then
+    printf '{"node":"%s","runner":"%s","target_model":"%s","draft_model":"%s","command":' \
+      "$NODE" "$REMOTE_BIN" "$RESOLVED_TARGET" "$RESOLVED_DRAFT"
+    printf '"%s"}\n' "${REMOTE_ARGS[*]}"
+  else
+    printf 'ssh %s %q\n' "$NODE" "${REMOTE_ARGS[*]}"
+  fi
+  exit 0
+fi
+
+exec ssh "${SSH_OPTS[@]}" "$NODE" "${REMOTE_ARGS[@]}"

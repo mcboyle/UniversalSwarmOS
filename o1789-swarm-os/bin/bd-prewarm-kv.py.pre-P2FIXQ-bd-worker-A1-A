@@ -1,0 +1,583 @@
+#!/usr/bin/env python3
+"""bd-prewarm-kv.py: Cluster-Wide Satellite KV Cache Pre-Warming Daemon (Milestone 3 / R3).
+
+Maintains warm prefix caches across the Boylenet LiteLLM gateway and satellite
+inference nodes (ai-ollama01, ai-infer01) by dispatching silent 1-token completions
+every 240 seconds against static Layer 0/1 prefix blocks.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import os
+import signal
+import sys
+import subprocess
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+DEFAULT_GATEWAY_URL = os.environ.get("LITELLM_GATEWAY_URL", "http://127.0.0.1:4000")
+DEFAULT_API_KEY = os.environ.get("LITELLM_MASTER_KEY", os.environ.get("LITELLM_API_KEY", "sk-fleet-local"))
+DEFAULT_INTERVAL_SECONDS = 240
+DEFAULT_TIMEOUT_SECONDS = 15.0
+DEFAULT_LOG_PATH = "/home/mboyle/bd-persist/logs/prewarm.log"
+DEFAULT_GUARD_LOG_PATH = "/home/mboyle/bd-persist/logs/ollama-guard.log"
+CONSECUTIVE_FAILURE_THRESHOLD = 2
+DEFAULT_FAILURE_THRESHOLD = 2
+
+DEFAULT_MODELS = [
+    "qwen2.5-coder-7b",
+    "qwen2.5-coder-7b-16k",
+    "qwen3-8b",
+    "llama-guard3-8b",
+]
+
+SATELLITE_ROUTING_MAP = {
+    "qwen2.5-coder-7b": {
+        "satellite": "ai-ollama01",
+        "url": "http://10.0.70.228:11434/api/chat",
+        "ollama_model": "qwen2.5-coder:7b",
+    },
+    "qwen2.5-coder-7b-16k": {
+        "satellite": "BattleStation",
+        "url": "http://10.0.10.137:11434/api/chat",
+        "ollama_model": "qwen2.5-coder:7b-16k",
+    },
+    "qwen2.5-coder-14b": {
+        "satellite": "ai-ollama01",
+        "url": "http://10.0.70.228:11434/api/chat",
+        "ollama_model": "qwen2.5-coder:14b",
+    },
+    "qwen3-8b": {
+        "satellite": "ai-infer01",
+        "url": "http://10.0.70.125:11434/api/chat",
+        "ollama_model": "qwen3:8b",
+    },
+    "llama-guard3-8b": {
+        "satellite": "ai-infer01",
+        "url": "http://10.0.70.125:11434/api/chat",
+        "ollama_model": "llama-guard3:8b",
+    },
+}
+
+FALLBACK_STATIC_PREFIX = """## MACHINE PERSONA OVERRIDE (CRITICAL)
+[SYSTEM DIRECTIVE]: YOU ARE A HEADLESS TERMINAL AUTOMATION PIPELINE (HTAP-9).
+- NO GREETINGS. NO EXPLANATIONS. NO APOLOGIES. NO FILLER.
+- Output ONLY the raw required command, file path, or 30-char status code.
+- Minimal change, shortest code path, no adjacent tidying.
+- AST Slicing: use ratf.ctx_slice instead of full file reads.
+- Fast-fail linting: ruff and mypy must pass before committing.
+- Compaction ceilings: worker/lens <= 150k tokens, orchestrators <= 250k tokens.
+- Binary serialization: use bd-binary-payload for MessagePack tabular payloads.
+"""
+
+
+def load_static_prefix(custom_path: str | None = None) -> str:
+    """Load the static prefix block from disk or fallback to the built-in constitution."""
+    candidate_paths: list[Path] = []
+    if custom_path:
+        candidate_paths.append(Path(custom_path))
+    candidate_paths.extend([
+        Path("/home/mboyle/teamwork_projects/frontier_efficiency/config/pm.frozen.systemprompt"),
+        Path("/home/mboyle/teamwork_projects/frontier_efficiency/config/worker.frozen.systemprompt"),
+        Path("/home/mboyle/bd-persist/FLEET_RULE-FLOOR.md"),
+    ])
+
+    for p in candidate_paths:
+        try:
+            if p.is_file() and p.stat().st_size > 0:
+                content = p.read_text(encoding="utf-8").strip()
+                if content:
+                    return content
+        except OSError:
+            continue
+
+    return FALLBACK_STATIC_PREFIX
+
+
+def setup_logger(log_file: str | None = None, verbose: bool = False) -> logging.Logger:
+    """Configure structured logging for daemon and once-mode output."""
+    logger = logging.getLogger("bd-prewarm-kv")
+    logger.setLevel(logging.DEBUG if verbose else logging.INFO)
+    logger.handlers.clear()
+
+    formatter = logging.Formatter(
+        "[%(asctime)s] [%(levelname)s] [bd-prewarm-kv] %(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%SZ",
+    )
+    formatter.converter = time.gmtime
+
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setFormatter(formatter)
+    logger.addHandler(stream_handler)
+
+    target_log = log_file or DEFAULT_LOG_PATH
+    try:
+        log_path = Path(target_log)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        file_handler = logging.FileHandler(str(log_path), encoding="utf-8")
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+    except OSError as e:
+        logger.warning(f"Could not initialize file logger at {target_log}: {e}")
+
+    return logger
+
+
+@dataclass
+class PrewarmResult:
+    target_type: str
+    model: str
+    endpoint: str
+    status: str
+    latency_ms: float
+    status_code: int | None = None
+    tokens: dict[str, Any] | None = None
+    error: str | None = None
+
+
+class PrewarmManager:
+    """Orchestrates pre-warming requests to LiteLLM gateway and satellite endpoints."""
+
+    def __init__(
+        self,
+        gateway_url: str = DEFAULT_GATEWAY_URL,
+        api_key: str = DEFAULT_API_KEY,
+        timeout: float = DEFAULT_TIMEOUT_SECONDS,
+        prefix_content: str | None = None,
+        logger: logging.Logger | None = None,
+    ) -> None:
+        self.gateway_url = gateway_url.rstrip("/")
+        if not self.gateway_url.endswith("/v1/chat/completions"):
+            self.completions_url = f"{self.gateway_url}/v1/chat/completions"
+        else:
+            self.completions_url = self.gateway_url
+        self.api_key = api_key
+        self.timeout = timeout
+        self.prefix_content = prefix_content or load_static_prefix()
+        self.logger = logger or logging.getLogger("bd-prewarm-kv")
+        self.guard_log_path = DEFAULT_GUARD_LOG_PATH
+        self.failure_threshold = CONSECUTIVE_FAILURE_THRESHOLD
+        self.fails: dict[str, int] = {}
+
+    def _get_consecutive_fails(self, ip: str) -> int:
+        st_file = Path(f"/tmp/bd-ollama-guard.{ip}.fails")
+        try:
+            if st_file.exists():
+                return int(st_file.read_text().strip() or "0")
+        except Exception:
+            pass
+        return self.fails.get(ip, 0)
+
+    def _set_consecutive_fails(self, ip: str, n: int) -> None:
+        self.fails[ip] = n
+        st_file = Path(f"/tmp/bd-ollama-guard.{ip}.fails")
+        try:
+            st_file.write_text(f"{n}\n")
+        except Exception:
+            pass
+
+    def _append_guard_log(self, line: str) -> None:
+        try:
+            os.makedirs(os.path.dirname(self.guard_log_path), exist_ok=True)
+            with open(self.guard_log_path, "a") as f:
+                f.write(line)
+        except Exception as e:
+            self.logger.warning(f"Failed to append to guard log {self.guard_log_path}: {e}")
+
+    def _handle_guard_success(self, ip: str, latency_s: float) -> None:
+        self._set_consecutive_fails(ip, 0)
+        utc_ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        self._append_guard_log(f"{utc_ts} OK {ip} {int(latency_s)}s\n")
+
+    def _handle_guard_failure(
+        self,
+        ip: str,
+        status_code: int | None,
+        latency_s: float,
+        error_msg: str,
+    ) -> None:
+        n = self._get_consecutive_fails(ip) + 1
+        self._set_consecutive_fails(ip, n)
+        utc_ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        code_str = f"{status_code}" if status_code is not None else "000"
+        self._append_guard_log(f"{utc_ts} FAIL {ip} code={code_str} {int(latency_s)}s consecutive={n}\n")
+
+        if n >= self.failure_threshold:
+            self._attempt_watchdog_recovery(ip, n, code_str, latency_s)
+
+    def _attempt_watchdog_recovery(
+        self,
+        ip: str,
+        n: int,
+        code_str: str,
+        latency_s: float,
+    ) -> None:
+        utc_ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        if ip in ("10.0.70.125", "10.0.70.228"):
+            # Check journalctl for progress in the last 4 minutes (H336)
+            try:
+                busy_proc = subprocess.run(
+                    [
+                        "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=4", ip,
+                        'lines=$(journalctl -u ollama --since "-4 min" --no-pager 2>/dev/null) || exit $?; '
+                        'printf "%s\\n" "$lines" | command grep -cE "print_timing|prompt processing|new prompt|eval time" || true'
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=15,
+                    check=False,
+                )
+                if busy_proc.returncode != 0:
+                    self._append_guard_log(f"{utc_ts} JOURNAL-UNKNOWN {ip} rc={busy_proc.returncode} (no restart)\n")
+                    return
+
+                progress_lines = int(busy_proc.stdout.strip() or "0")
+                if progress_lines > 0:
+                    self._append_guard_log(f"{utc_ts} BUSY-NOT-WEDGED {ip} journal-progress-lines={progress_lines} (no restart)\n")
+                    self._set_consecutive_fails(ip, 0)
+                    return
+            except Exception as e:
+                self._append_guard_log(f"{utc_ts} JOURNAL-ERROR {ip} error={e} (no restart)\n")
+                return
+
+            # No progress observed: restart ollama daemon (H330)
+            try:
+                restart_proc = subprocess.run(
+                    [
+                        "ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=4", ip,
+                        "sudo -n systemctl restart ollama 2>&1 && echo restarted"
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=40,
+                    check=False,
+                )
+                out_lines = restart_proc.stdout.strip().splitlines()
+                last_line = out_lines[-1] if out_lines else f"rc={restart_proc.returncode}"
+                if restart_proc.returncode != 0:
+                    self._append_guard_log(f"{utc_ts} RESTART-FAILED {ip} rc={restart_proc.returncode} -> {last_line}\n")
+                else:
+                    self._append_guard_log(f"{utc_ts} RESTART {ip} -> {last_line}\n")
+                    self._set_consecutive_fails(ip, 0)
+                    # Record operator event via bd-od-append.sh
+                    event_msg = (
+                        f"OLLAMA-RESTART ({utc_ts}, bd-prewarm-kv.py, H330): {ip} ollama restarted "
+                        f"after {n} consecutive probe failures (last code={code_str} {int(latency_s)}s); "
+                        f"log {self.guard_log_path}"
+                    )
+                    od_append_path = "/home/mboyle/bd-persist/harness/bd-od-append.sh"
+                    if os.path.exists(od_append_path):
+                        subprocess.run(
+                            ["bash", od_append_path, "event", event_msg],
+                            check=False,
+                            capture_output=True,
+                        )
+            except Exception as e:
+                self._append_guard_log(f"{utc_ts} RESTART-EXCEPTION {ip} error={e}\n")
+        else:
+            self._append_guard_log(f"{utc_ts} SATELLITE-FAIL {ip} consecutive={n} (non-systemd host, restart skipped)\n")
+
+    def prewarm_litellm(self, model: str) -> PrewarmResult:
+        """Issue a 1-token silent chat completion request to the LiteLLM gateway."""
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": self.prefix_content},
+                {"role": "user", "content": "ping"},
+            ],
+            "max_tokens": 1,
+            "temperature": 0.0,
+        }
+        body_bytes = json.dumps(payload).encode("utf-8")
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "User-Agent": "bd-prewarm-kv/1.0",
+        }
+        req = urllib.request.Request(self.completions_url, data=body_bytes, headers=headers)
+
+        t0 = time.perf_counter()
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                raw_resp = resp.read().decode("utf-8")
+                latency_ms = (time.perf_counter() - t0) * 1000.0
+                status_code = resp.status
+                data = json.loads(raw_resp) if raw_resp else {}
+                usage = data.get("usage", {})
+                self.logger.info(
+                    f"LiteLLM prewarm PASS: model={model} code={status_code} latency={latency_ms:.1f}ms tokens={usage}"
+                )
+                return PrewarmResult(
+                    target_type="litellm",
+                    model=model,
+                    endpoint=self.completions_url,
+                    status="PASS",
+                    latency_ms=latency_ms,
+                    status_code=status_code,
+                    tokens=usage,
+                )
+        except urllib.error.HTTPError as e:
+            latency_ms = (time.perf_counter() - t0) * 1000.0
+            err_msg = f"HTTP {e.code}: {e.reason}"
+            self.logger.warning(
+                f"LiteLLM prewarm WARN: model={model} code={e.code} latency={latency_ms:.1f}ms error={err_msg}"
+            )
+            return PrewarmResult(
+                target_type="litellm",
+                model=model,
+                endpoint=self.completions_url,
+                status="FAIL",
+                latency_ms=latency_ms,
+                status_code=e.code,
+                error=err_msg,
+            )
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError) as e:
+            latency_ms = (time.perf_counter() - t0) * 1000.0
+            err_msg = str(e) or type(e).__name__
+            self.logger.warning(
+                f"LiteLLM prewarm WARN: model={model} latency={latency_ms:.1f}ms error={err_msg}"
+            )
+            return PrewarmResult(
+                target_type="litellm",
+                model=model,
+                endpoint=self.completions_url,
+                status="ERROR",
+                latency_ms=latency_ms,
+                error=err_msg,
+            )
+
+    def prewarm_satellite(self, model: str) -> PrewarmResult:
+        """Issue a direct completion request to the native satellite Ollama instance."""
+        route = SATELLITE_ROUTING_MAP.get(model)
+        if not route:
+            return PrewarmResult(
+                target_type="satellite",
+                model=model,
+                endpoint="unknown",
+                status="SKIPPED",
+                latency_ms=0.0,
+                error=f"No satellite route defined for model {model}",
+            )
+
+        endpoint = route["url"]
+        ollama_model = route["ollama_model"]
+        ip = urllib.parse.urlsplit(endpoint).hostname or route.get("satellite", "unknown")
+        payload = {
+            "model": ollama_model,
+            "messages": [
+                {"role": "system", "content": self.prefix_content},
+                {"role": "user", "content": "ping"},
+            ],
+            "stream": False,
+            "options": {
+                "num_predict": 1,
+                "temperature": 0.0,
+            },
+        }
+        body_bytes = json.dumps(payload).encode("utf-8")
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "bd-prewarm-kv/1.0",
+        }
+        req = urllib.request.Request(endpoint, data=body_bytes, headers=headers)
+
+        t0 = time.perf_counter()
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                raw_resp = resp.read().decode("utf-8")
+                latency_ms = (time.perf_counter() - t0) * 1000.0
+                status_code = resp.status
+                data = json.loads(raw_resp) if raw_resp else {}
+                usage = {
+                    "prompt_eval_count": data.get("prompt_eval_count"),
+                    "eval_count": data.get("eval_count"),
+                }
+                self.logger.info(
+                    f"Satellite prewarm PASS: model={ollama_model} host={route['satellite']} code={status_code} latency={latency_ms:.1f}ms"
+                )
+                self._handle_guard_success(ip, latency_s=latency_ms / 1000.0)
+                return PrewarmResult(
+                    target_type="satellite",
+                    model=model,
+                    endpoint=endpoint,
+                    status="PASS",
+                    latency_ms=latency_ms,
+                    status_code=status_code,
+                    tokens=usage,
+                )
+        except urllib.error.HTTPError as e:
+            latency_ms = (time.perf_counter() - t0) * 1000.0
+            err_msg = f"HTTP {e.code}: {e.reason}"
+            self.logger.warning(
+                f"Satellite prewarm WARN: model={ollama_model} host={route['satellite']} code={e.code} error={err_msg}"
+            )
+            self._handle_guard_failure(ip, status_code=e.code, latency_s=latency_ms / 1000.0, error_msg=err_msg)
+            return PrewarmResult(
+                target_type="satellite",
+                model=model,
+                endpoint=endpoint,
+                status="FAIL",
+                latency_ms=latency_ms,
+                status_code=e.code,
+                error=err_msg,
+            )
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError, json.JSONDecodeError) as e:
+            latency_ms = (time.perf_counter() - t0) * 1000.0
+            err_msg = str(e) or type(e).__name__
+            self.logger.warning(
+                f"Satellite prewarm WARN: model={ollama_model} host={route['satellite']} error={err_msg}"
+            )
+            self._handle_guard_failure(ip, status_code=None, latency_s=latency_ms / 1000.0, error_msg=err_msg)
+            return PrewarmResult(
+                target_type="satellite",
+                model=model,
+                endpoint=endpoint,
+                status="ERROR",
+                latency_ms=latency_ms,
+                error=err_msg,
+            )
+
+    def run_cycle(self, models: list[str], target_mode: str = "litellm") -> list[PrewarmResult]:
+        """Execute a full pre-warming sweep across requested models and target modes."""
+        results: list[PrewarmResult] = []
+        for model in models:
+            if target_mode in ("litellm", "all"):
+                results.append(self.prewarm_litellm(model))
+            if target_mode in ("satellite", "all"):
+                results.append(self.prewarm_satellite(model))
+        return results
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Satellite KV Cache Pre-Warming Daemon")
+    parser.add_argument("--once", action="store_true", help="Execute single pre-warming pass and exit")
+    parser.add_argument("--daemon", action="store_true", help="Run continuously in background daemon mode")
+    parser.add_argument(
+        "--interval",
+        type=int,
+        default=DEFAULT_INTERVAL_SECONDS,
+        help=f"Pre-warm interval in seconds (default: {DEFAULT_INTERVAL_SECONDS}s)",
+    )
+    parser.add_argument(
+        "--target",
+        choices=["litellm", "satellite", "all"],
+        default="all",
+        help="Routing destination (litellm gateway, direct satellite, or all; default: all)",
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="Target model or comma-separated list of models (default: qwen2.5-coder-7b,qwen3-8b,llama-guard3-8b)",
+    )
+    parser.add_argument(
+        "--gateway",
+        type=str,
+        default=DEFAULT_GATEWAY_URL,
+        help=f"LiteLLM gateway base URL (default: {DEFAULT_GATEWAY_URL})",
+    )
+    parser.add_argument(
+        "--api-key",
+        type=str,
+        default=DEFAULT_API_KEY,
+        help="LiteLLM gateway authorization Bearer token",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=DEFAULT_TIMEOUT_SECONDS,
+        help=f"HTTP request timeout in seconds (default: {DEFAULT_TIMEOUT_SECONDS}s)",
+    )
+    parser.add_argument(
+        "--prefix-file",
+        type=str,
+        default=None,
+        help="Custom static prefix text file to pin in KV cache",
+    )
+    parser.add_argument(
+        "--log-file",
+        type=str,
+        default=DEFAULT_LOG_PATH,
+        help=f"Path to append logs (default: {DEFAULT_LOG_PATH})",
+    )
+    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose debug logging")
+
+    args = parser.parse_args()
+
+    # Determine models
+    if args.model:
+        models = [m.strip() for m in args.model.split(",") if m.strip()]
+    else:
+        models = list(DEFAULT_MODELS)
+
+    logger = setup_logger(args.log_file, args.verbose)
+    prefix_content = load_static_prefix(args.prefix_file)
+    manager = PrewarmManager(
+        gateway_url=args.gateway,
+        api_key=args.api_key,
+        timeout=args.timeout,
+        prefix_content=prefix_content,
+        logger=logger,
+    )
+
+    logger.info(
+        f"Starting bd-prewarm-kv (target={args.target}, models={models}, prefix_len={len(prefix_content)} chars)"
+    )
+
+    if args.once or not args.daemon:
+        results = manager.run_cycle(models=models, target_mode=args.target)
+        passed = sum(1 for r in results if r.status == "PASS")
+        total = len(results)
+        logger.info(f"bd-prewarm-kv cycle completed: {passed}/{total} endpoints passed")
+        return 0 if passed == total else 1
+
+    # Daemon mode
+    running = True
+
+    def handle_signal(sig: int, frame: Any) -> None:
+        nonlocal running
+        logger.info(f"Caught signal {sig}, terminating prewarm daemon gracefully")
+        running = False
+
+    def handle_sighup(sig: int, frame: Any) -> None:
+        logger.info("Caught SIGHUP: reloading configuration and static prefix")
+        nonlocal prefix_content, manager
+        prefix_content = load_static_prefix(args.prefix_file)
+        manager.prefix_content = prefix_content
+
+    signal.signal(signal.SIGINT, handle_signal)
+    signal.signal(signal.SIGTERM, handle_signal)
+    if hasattr(signal, "SIGHUP"):
+        signal.signal(signal.SIGHUP, handle_sighup)
+
+    while running:
+        t_start = time.time()
+        try:
+            results = manager.run_cycle(models=models, target_mode=args.target)
+            passed = sum(1 for r in results if r.status == "PASS")
+            logger.info(f"Pre-warm heartbeat complete: {passed}/{len(results)} ok")
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"Unexpected error during pre-warm cycle: {e}")
+
+        # Sleep in short increments to allow graceful shutdown
+        elapsed = time.time() - t_start
+        sleep_remaining = max(1.0, args.interval - elapsed)
+        while running and sleep_remaining > 0:
+            sleep_step = min(2.0, sleep_remaining)
+            time.sleep(sleep_step)
+            sleep_remaining -= sleep_step
+
+    logger.info("bd-prewarm-kv daemon shutdown cleanly")
+    return 0 if passed == total else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,384 @@
+#!/usr/bin/env python3
+"""bd-compound-exec: Atomic Single-Turn Compound Pipeline Executor.
+
+Enforces fail-fast stage execution, exit code propagation, structured delimiter instrumentation,
+automatic pytest compression interception, and output token clamping.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+
+def estimate_tokens(text: str) -> int:
+    """Project-standard token heuristic matching chars / 3.6 and word/symbol count."""
+    if not text.strip():
+        return 0
+    char_estimate = int(len(text) / 3.6)
+    word_estimate = len(re.findall(r"\w+|[^\w\s]", text))
+    return max(char_estimate, word_estimate)
+
+
+def split_stages(cmd_str: str) -> list[str]:
+    """Splits a compound shell command string on '&&' at depth 0, ignoring quotes and parentheses."""
+    stages: list[str] = []
+    current: list[str] = []
+    in_single = False
+    in_double = False
+    escaped = False
+    paren_depth = 0
+    i = 0
+    n = len(cmd_str)
+
+    while i < n:
+        c = cmd_str[i]
+        if escaped:
+            current.append(c)
+            escaped = False
+            i += 1
+            continue
+        if c == "\\":
+            escaped = True
+            current.append(c)
+            i += 1
+            continue
+        if c == "'" and not in_double:
+            in_single = not in_single
+            current.append(c)
+            i += 1
+            continue
+        if c == '"' and not in_single:
+            in_double = not in_double
+            current.append(c)
+            i += 1
+            continue
+        if not in_single and not in_double:
+            if c == "(":
+                paren_depth += 1
+            elif c == ")":
+                paren_depth = max(0, paren_depth - 1)
+            elif paren_depth == 0 and c == "&" and i + 1 < n and cmd_str[i + 1] == "&":
+                stage = "".join(current).strip()
+                if stage:
+                    stages.append(stage)
+                current = []
+                i += 2
+                continue
+        current.append(c)
+        i += 1
+
+    rem = "".join(current).strip()
+    if rem:
+        stages.append(rem)
+    return stages
+
+
+def infer_stage_name(stage_cmd: str, index: int, total: int) -> str:
+    """Infers semantic stage name from command contents."""
+    lower = stage_cmd.lower().strip()
+    # Direct echo checks (for tests and benchmarks)
+    if "echo 'inspect'" in lower or 'echo "inspect"' in lower:
+        return "INSPECT"
+    if "echo 'diff'" in lower or 'echo "diff"' in lower:
+        return "DIFF"
+    if "echo 'patch'" in lower or 'echo "patch"' in lower:
+        return "PATCH"
+    if "echo 'test'" in lower or 'echo "test"' in lower:
+        return "TEST"
+
+    if any(k in lower for k in ["pytest", "py.test", "python3 -m unittest", "python -m unittest"]):
+        return "TEST"
+    if any(k in lower for k in ["bd-ast-diff", "ast-diff", "git diff", "diff -u"]):
+        return "DIFF"
+    if any(k in lower for k in ["ctx_slice", "ratf", "cat ", "view_file"]):
+        return "INSPECT"
+    if any(k in lower for k in ["patch -", "git apply", "sed -i"]):
+        return "PATCH"
+    if any(k in lower for k in ["ruff", "mypy", "flake8"]):
+        return "LINT"
+
+    return f"STAGE-{index + 1}"
+
+
+def intercept_pytest(stage_cmd: str) -> str:
+    """Wraps pytest command with bd-pytest-digest --pipe if not already present and not redirected."""
+    if "bd-pytest-digest" in stage_cmd:
+        return stage_cmd
+
+    # Check if stdout/stderr redirection (> or >>) is present
+    if re.search(r"(?:^|[\s\d&])>{1,2}", stage_cmd):
+        return stage_cmd
+
+    # Check if pytest is executed
+    pytest_pattern = r"(?:^|[\s;&|])(?:(?:\S+/)?pytest|python3?\s+-m\s+pytest)\b"
+    if re.search(pytest_pattern, stage_cmd):
+        digest_bin = shutil.which("bd-pytest-digest") or "/home/mboyle/bin/bd-pytest-digest"
+        return f"{stage_cmd} | {digest_bin} --pipe"
+    return stage_cmd
+
+
+def clamp_output(
+    raw_output: str, max_lines: int = 15, max_bytes: int = 800, returncode: int = 0
+) -> str:
+    """Decouples bulky output exceeding max_lines or max_bytes to CAS blob pointer envelope."""
+    out_bytes = raw_output.encode("utf-8")
+    lines = raw_output.splitlines()
+    if len(lines) <= max_lines and len(out_bytes) <= max_bytes:
+        return raw_output
+
+    blob_dir = Path("/var/tmp/bd-blobs")
+    blob_dir.mkdir(parents=True, exist_ok=True, mode=0o775)
+    sha256_hash = hashlib.sha256(out_bytes).hexdigest()
+    short_sha = sha256_hash[:8]
+    blob_file = blob_dir / f"{sha256_hash}.log"
+
+    if not blob_file.exists():
+        tmp_file = blob_dir / f".tmp.{os.getpid()}.{short_sha}.log"
+        try:
+            tmp_file.write_bytes(out_bytes)
+            try:
+                tmp_file.chmod(0o664)
+            except OSError:
+                pass
+            os.replace(tmp_file, blob_file)
+        except OSError:
+            if tmp_file.exists():
+                tmp_file.unlink(missing_ok=True)
+
+    size_kb = round(len(out_bytes) / 1024.0, 1)
+    head_lines = [l.strip() for l in lines[:3] if l.strip()]
+    tail_lines = [l.strip() for l in lines[-3:] if l.strip()]
+    head_snip = " | ".join(head_lines) if head_lines else (" | ".join(lines[:3]) if lines else "")
+    tail_snip = " | ".join(tail_lines) if tail_lines else (" | ".join(lines[-3:]) if lines else "")
+    head_snip = head_snip.replace("\n", " ").replace("\r", "")[:120]
+    tail_snip = tail_snip.replace("\n", " ").replace("\r", "")[:120]
+
+    return (
+        f"[BLOB-PTR: sha256:{short_sha} | {size_kb} KB | {len(lines)} lines | Exit {returncode}]\n"
+        f"HEAD: {head_snip}\n"
+        f"TAIL: {tail_snip}\n"
+        f"LOG: file://{blob_file.resolve()}"
+    )
+
+
+def run_auto_heal(cwd: str) -> None:
+    """Executes ruff check --fix on modified python files or cwd to auto-heal syntax/formatting."""
+    ruff_bin = shutil.which("ruff") or "/home/mboyle/.local/bin/ruff"
+    if not (os.path.exists(ruff_bin) or shutil.which("ruff")):
+        return
+    try:
+        git_proc = subprocess.run(
+            ["git", "-C", cwd, "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        target_files = []
+        if git_proc.returncode == 0:
+            for line in git_proc.stdout.splitlines():
+                path = line[3:].strip()
+                if path.endswith(".py") and os.path.exists(os.path.join(cwd, path)):
+                    target_files.append(path)
+        if target_files:
+            subprocess.run(
+                [ruff_bin, "check", "--fix", "--quiet"] + target_files,
+                cwd=cwd,
+                capture_output=True,
+                check=False,
+            )
+        else:
+            subprocess.run(
+                [ruff_bin, "check", "--fix", "--quiet", "."],
+                cwd=cwd,
+                capture_output=True,
+                check=False,
+            )
+    except (subprocess.SubprocessError, OSError):
+        pass
+
+
+def run_pipeline(stages: list[tuple[str, str]], cwd: str, auto_heal: bool = True) -> int:
+    """Executes stages sequentially with fail-fast pipefail semantics and structured instrumentation."""
+    current_cwd = os.path.abspath(cwd)
+    output_parts: list[str] = []
+    overall_start = time.time()
+    total_stages = len(stages)
+
+    for idx, (stage_name, raw_cmd) in enumerate(stages):
+        if auto_heal and stage_name == "TEST":
+            run_auto_heal(current_cwd)
+
+        instrumented_cmd = intercept_pytest(raw_cmd)
+        stage_start = time.time()
+
+        # Temporary file to persist directory changes across stages
+        with tempfile.NamedTemporaryFile(mode="w+", delete=False) as tmp_cwd:
+            cwd_file_path = tmp_cwd.name
+
+        try:
+            # Enforce set -eo pipefail in bash execution
+            shell_script = (
+                'set -eo pipefail; cd "$1" && eval "$2" && pwd > "$3"'
+            )
+            proc = subprocess.run(
+                ["bash", "-c", shell_script, "_", current_cwd, instrumented_cmd, cwd_file_path],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            duration = time.time() - stage_start
+            rc = proc.returncode
+
+            # Read potential updated cwd
+            if os.path.exists(cwd_file_path):
+                with open(cwd_file_path, "r", encoding="utf-8") as f:
+                    new_cwd = f.read().strip()
+                if new_cwd and os.path.isdir(new_cwd):
+                    current_cwd = new_cwd
+
+            stage_out = proc.stdout
+            stage_err = proc.stderr
+            combined_out = ""
+            if stage_out:
+                combined_out += stage_out
+            if stage_err:
+                if combined_out and not combined_out.endswith("\n"):
+                    combined_out += "\n"
+                combined_out += stage_err
+
+            status = "PASS" if rc == 0 else "FAIL"
+            header = f"[COMPOUND-STAGE: {stage_name}] {status} (rc={rc}, duration={duration:.2f}s)"
+            output_parts.append(header)
+            if combined_out.strip():
+                stage_decoupled = clamp_output(
+                    combined_out.rstrip(), max_lines=15, max_bytes=800, returncode=rc
+                )
+                output_parts.append(stage_decoupled)
+
+            if rc != 0:
+                total_duration = time.time() - overall_start
+                summary = (
+                    f"[COMPOUND-SUMMARY] STAGE {stage_name} FAILED (rc={rc}, total={total_duration:.2f}s)"
+                )
+                output_parts.append(summary)
+                final_text = clamp_output("\n".join(output_parts), returncode=rc)
+                print(final_text)
+                return rc
+
+            if auto_heal and stage_name == "PATCH":
+                run_auto_heal(current_cwd)
+        finally:
+            if os.path.exists(cwd_file_path):
+                try:
+                    os.remove(cwd_file_path)
+                except OSError:
+                    pass
+
+    total_duration = time.time() - overall_start
+    summary = f"[COMPOUND-SUMMARY] ALL {total_stages} STAGES PASSED (total={total_duration:.2f}s)"
+    output_parts.append(summary)
+
+    final_text = clamp_output("\n".join(output_parts), returncode=0)
+    print(final_text)
+    return 0
+
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="bd-compound-exec: Atomic Single-Turn Compound Pipeline Executor"
+    )
+    parser.add_argument(
+        "--cmd",
+        type=str,
+        default=None,
+        help="Compound pipeline command string (stages chained with &&)",
+    )
+    parser.add_argument(
+        "--inspect",
+        type=str,
+        default=None,
+        help="Inspection stage command (e.g. ctx_slice)",
+    )
+    parser.add_argument(
+        "--patch",
+        type=str,
+        default=None,
+        help="Patch stage command (e.g. patch -p1)",
+    )
+    parser.add_argument(
+        "--test",
+        type=str,
+        default=None,
+        help="Test stage command (e.g. pytest tests/)",
+    )
+    parser.add_argument(
+        "--diff",
+        type=str,
+        default=None,
+        help="Diff stage command (e.g. bd-ast-diff)",
+    )
+    parser.add_argument(
+        "--auto-heal",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Auto-heal syntax/formatting with ruff check --fix before test stage (default: True)",
+    )
+    parser.add_argument(
+        "--fix",
+        dest="auto_heal",
+        action="store_true",
+        help="Explicitly enable ruff --fix auto-healing",
+    )
+    parser.add_argument(
+        "--cwd",
+        type=str,
+        default=".",
+        help="Initial working directory",
+    )
+    parser.add_argument(
+        "pos_cmd",
+        nargs="?",
+        default=None,
+        help="Positional compound command string (fallback for --cmd)",
+    )
+
+    args = parser.parse_args()
+
+    stages: list[tuple[str, str]] = []
+
+    # Priority 1: Explicit named stages (--inspect, --patch, --test, --diff)
+    if any([args.inspect, args.patch, args.test, args.diff]):
+        if args.inspect:
+            stages.append(("INSPECT", args.inspect))
+        if args.patch:
+            stages.append(("PATCH", args.patch))
+        if args.test:
+            stages.append(("TEST", args.test))
+        if args.diff:
+            stages.append(("DIFF", args.diff))
+    else:
+        # Priority 2: --cmd or positional pipeline string
+        raw_pipeline = args.cmd or args.pos_cmd
+        if not raw_pipeline:
+            parser.error("No commands provided. Specify --cmd or named stages (--inspect, etc.)")
+
+        split_cmds = split_stages(raw_pipeline)
+        for i, scmd in enumerate(split_cmds):
+            sname = infer_stage_name(scmd, i, len(split_cmds))
+            stages.append((sname, scmd))
+
+    return run_pipeline(stages, args.cwd, auto_heal=args.auto_heal)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

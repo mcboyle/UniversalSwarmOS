@@ -1,0 +1,489 @@
+#!/usr/bin/env python3
+"""bd-local-quota-guard: O1740 + Local GPU Cluster (:4010) quota-aware router.
+
+Reads /home/mboyle/bd-persist/POOL_STATE.tsv and http://10.0.70.164:4010/api/tiers/status,
+emitting JSON and CLI routing decisions per O1740. Automatically routes builders,
+fixers, lenses, and investigators to the 0% quota-burn Local GPU Cluster (:4010)
+whenever cloud pools approach pace limits or when --prefer-local is set.
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import datetime as dt
+import json
+import os
+import sys
+import urllib.error
+import urllib.request
+from typing import Any, Dict, List, Optional
+
+DEFAULT_POOL_STATE = "/home/mboyle/bd-persist/POOL_STATE.tsv"
+DEFAULT_TIERS_URL = "http://10.0.70.164:4010/api/tiers/status"
+LOCAL_CLUSTER_ENDPOINT = "http://10.0.70.164:4010"
+
+COMMAND_SQUAD_ROLES = {
+    "command",
+    "command_squad",
+    "integrator",
+    "dispatch",
+    "audit",
+    "adjudicator",
+    "trainer",
+    "lensrouter",
+}
+HEAVY_LIFTER_ROLES = {
+    "builder",
+    "builders",
+    "worker",
+    "workers",
+    "fixer",
+    "fixers",
+    "lens",
+    "lenses",
+    "review",
+    "heavy",
+}
+LIGHTWEIGHT_ROLES = {
+    "investigator",
+    "investigators",
+    "probe",
+    "cavecrew",
+    "lightweight",
+}
+
+
+def _to_float(val: Any, default: float = 100.0) -> float:
+    if val is None:
+        return default
+    s = str(val).strip().rstrip("%")
+    if not s or s.upper() in ("NA", "N/A", "NONE", "NULL", "UNKNOWN", "-"):
+        return default
+    try:
+        return float(s)
+    except ValueError:
+        return default
+
+
+def read_pool_state(path: str) -> Dict[str, Any]:
+    result: Dict[str, Any] = {
+        "path": path,
+        "exists": os.path.exists(path),
+        "mtime_utc": None,
+        "pools": [],
+    }
+    if not result["exists"]:
+        return result
+
+    st = os.stat(path)
+    result["mtime_utc"] = (
+        dt.datetime.fromtimestamp(st.st_mtime, tz=dt.timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        lines = [
+            line.strip()
+            for line in fh
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
+
+    if not lines:
+        return result
+
+    reader = list(csv.reader(lines, delimiter="\t"))
+    if len(reader[0]) == 1 and " " in reader[0][0]:
+        reader = [r[0].split() for r in reader]
+
+    header_candidates = {c.strip().lower() for c in reader[0]}
+    has_header = any(
+        k in header_candidates
+        for k in ("pool", "state", "five_hour_pct", "weekly_pct", "status")
+    )
+
+    if has_header:
+        headers = [c.strip().lower() for c in reader[0]]
+        data_rows = reader[1:]
+    else:
+        headers = [
+            "pool",
+            "state",
+            "five_hour_pct",
+            "weekly_pct",
+            "resets_at",
+            "tier",
+            "notes",
+        ]
+        data_rows = reader
+
+    pools: List[Dict[str, Any]] = []
+    for row in data_rows:
+        if not row:
+            continue
+        rec: Dict[str, Any] = {}
+        for idx, col in enumerate(headers):
+            rec[col] = row[idx].strip() if idx < len(row) else ""
+        pool_id = (
+            rec.get("pool")
+            or rec.get("pool_id")
+            or rec.get("name")
+            or (row[0].strip() if row else "UNKNOWN")
+        )
+        state = (rec.get("state") or rec.get("status") or "UNKNOWN").upper()
+        five_hr = _to_float(
+            rec.get("five_hour_pct", rec.get("5h_pct", rec.get("five_hour"))),
+            default=100.0,
+        )
+        weekly = _to_float(
+            rec.get("weekly_pct", rec.get("week_pct", rec.get("weekly"))),
+            default=100.0,
+        )
+        resets_at = rec.get("resets_at") or rec.get("reset_at") or ""
+        tier = rec.get("tier") or rec.get("model_tier") or ""
+        pools.append(
+            {
+                "pool": pool_id,
+                "state": state,
+                "five_hour_pct": five_hr,
+                "weekly_pct": weekly,
+                "idle_pct": round(max(0.0, 100.0 - five_hr), 2),
+                "resets_at": resets_at,
+                "tier": tier,
+                "raw": "|".join(row),
+            }
+        )
+
+    result["pools"] = pools
+    return result
+
+
+def fetch_local_tiers(url: str, timeout: float = 2.5) -> Dict[str, Any]:
+    info: Dict[str, Any] = {
+        "url": url,
+        "endpoint": LOCAL_CLUSTER_ENDPOINT,
+        "reachable": False,
+        "quota_burn_pct": 0.0,
+        "status_code": None,
+        "tiers": {},
+        "error": None,
+    }
+    req = urllib.request.Request(url, headers={"Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            info["status_code"] = resp.status
+            body = resp.read().decode("utf-8", errors="replace")
+            try:
+                parsed = json.loads(body)
+            except json.JSONDecodeError:
+                parsed = {"raw": body[:400]}
+            info["reachable"] = 200 <= (resp.status or 0) < 400
+            info["tiers"] = parsed
+    except Exception as exc:
+        info["error"] = f"{type(exc).__name__}: {exc}"
+    return info
+
+
+def evaluate_cloud_pressure(
+    pools: List[Dict[str, Any]], pace_threshold: float
+) -> Dict[str, Any]:
+    if not pools:
+        return {
+            "approaching_pace_limit": True,
+            "reason": "no_cloud_pools_found_unknown_is_not_permission",
+            "ok_pools": 0,
+            "total_pools": 0,
+            "min_five_hour_pct": 100.0,
+            "max_five_hour_pct": 100.0,
+        }
+
+    ok_pools = [
+        p
+        for p in pools
+        if p["state"] == "OK"
+        and p["five_hour_pct"] < pace_threshold
+        and p["weekly_pct"] < 90.0
+    ]
+    admissible_heavy = [
+        p
+        for p in pools
+        if (p["state"] == "OK" or (p["state"] == "OFF-PACE" and p["five_hour_pct"] < 85.0))
+        and p["five_hour_pct"] < pace_threshold
+    ]
+    any_off_pace_or_high = any(
+        p["state"] != "OK"
+        or p["five_hour_pct"] >= pace_threshold
+        or p["weekly_pct"] >= 85.0
+        for p in pools
+    )
+
+    five_vals = [p["five_hour_pct"] for p in pools]
+    approaching = (len(admissible_heavy) == 0) or any_off_pace_or_high
+    reasons: List[str] = []
+    if not ok_pools:
+        reasons.append("zero_unconstrained_ok_pools")
+    if any_off_pace_or_high:
+        reasons.append(f"cloud_pool_approaching_pace_limit(>={pace_threshold:.0f}%_or_non_OK)")
+    if not reasons:
+        reasons.append("cloud_pools_within_pace")
+
+    return {
+        "approaching_pace_limit": approaching,
+        "reason": ";".join(reasons),
+        "ok_pools": len(ok_pools),
+        "total_pools": len(pools),
+        "min_five_hour_pct": min(five_vals),
+        "max_five_hour_pct": max(five_vals),
+    }
+
+
+def route_role(
+    role: str,
+    pools: List[Dict[str, Any]],
+    local_status: Dict[str, Any],
+    prefer_local: bool,
+    pace_threshold: float,
+    pressure: Dict[str, Any],
+    mtime_utc: Optional[str],
+) -> Dict[str, Any]:
+    r_norm = role.strip().lower()
+    if r_norm in COMMAND_SQUAD_ROLES:
+        category = "COMMAND_SQUAD"
+    elif r_norm in LIGHTWEIGHT_ROLES:
+        category = "LIGHTWEIGHT_INVESTIGATOR"
+    else:
+        category = "HEAVY_LIFTER"
+
+    ok_pools = [p for p in pools if p["state"] == "OK"]
+    heavy_admissible = [
+        p
+        for p in pools
+        if p["state"] == "OK"
+        or (p["state"] == "OFF-PACE" and p["five_hour_pct"] < 85.0)
+    ]
+
+    use_local = False
+    route_reason = ""
+
+    if category in ("HEAVY_LIFTER", "LIGHTWEIGHT_INVESTIGATOR"):
+        if prefer_local:
+            use_local = True
+            route_reason = "flag:--prefer-local"
+        elif pressure["approaching_pace_limit"]:
+            use_local = True
+            route_reason = f"pace_guard:{pressure['reason']}"
+        elif category == "HEAVY_LIFTER" and not heavy_admissible:
+            use_local = True
+            route_reason = "no_admissible_cloud_heavy_pool"
+        elif category == "LIGHTWEIGHT_INVESTIGATOR" and not ok_pools:
+            use_local = True
+            route_reason = "no_ok_cloud_fast_pool"
+
+    if category == "COMMAND_SQUAD":
+        if ok_pools:
+            chosen = sorted(ok_pools, key=lambda p: (p["five_hour_pct"], p["weekly_pct"]))[0]
+            return {
+                "role": role,
+                "o1740_class": category,
+                "target": chosen["pool"],
+                "backend": "cloud_pool",
+                "endpoint": chosen["pool"],
+                "tier": "opus_heavy",
+                "quota_burn_pct": chosen["five_hour_pct"],
+                "pool_state": chosen["state"],
+                "pool_row": chosen["raw"],
+                "pool_state_written_at": mtime_utc,
+                "reason": "O1740.1_ok_lowest_five_hour_pct",
+            }
+        return {
+            "role": role,
+            "o1740_class": category,
+            "target": "LOCAL_GPU_4010",
+            "backend": "local_gpu_cluster",
+            "endpoint": LOCAL_CLUSTER_ENDPOINT,
+            "tier": "tier1_reasoning_local",
+            "quota_burn_pct": 0.0,
+            "local_reachable": local_status["reachable"],
+            "pool_state": "NO_OK_CLOUD_POOL",
+            "pool_row": pools[0]["raw"] if pools else "NONE",
+            "pool_state_written_at": mtime_utc,
+            "reason": "O1740.1_cloud_exhausted_fallback_local_4010",
+        }
+
+    if use_local:
+        local_tier = (
+            "tier3_fast_local"
+            if category == "LIGHTWEIGHT_INVESTIGATOR"
+            else "tier2_coder_local"
+        )
+        return {
+            "role": role,
+            "o1740_class": category,
+            "target": "LOCAL_GPU_4010",
+            "backend": "local_gpu_cluster",
+            "endpoint": LOCAL_CLUSTER_ENDPOINT,
+            "tier": local_tier,
+            "quota_burn_pct": 0.0,
+            "local_reachable": local_status["reachable"],
+            "pool_state": "LOCAL_0PCT_BURN",
+            "pool_row": pools[0]["raw"] if pools else "NONE",
+            "pool_state_written_at": mtime_utc,
+            "reason": route_reason,
+        }
+
+    if category == "LIGHTWEIGHT_INVESTIGATOR":
+        chosen = sorted(ok_pools, key=lambda p: (-p["idle_pct"], p["five_hour_pct"]))[0]
+        return {
+            "role": role,
+            "o1740_class": category,
+            "target": chosen["pool"],
+            "backend": "cloud_pool",
+            "endpoint": chosen["pool"],
+            "tier": "fable_fast",
+            "quota_burn_pct": chosen["five_hour_pct"],
+            "pool_state": chosen["state"],
+            "pool_row": chosen["raw"],
+            "pool_state_written_at": mtime_utc,
+            "reason": "O1740.3_highest_idle_quota",
+        }
+
+    chosen = sorted(
+        heavy_admissible,
+        key=lambda p: (0 if p["state"] == "OK" else 1, p["five_hour_pct"]),
+    )[0]
+    return {
+        "role": role,
+        "o1740_class": category,
+        "target": chosen["pool"],
+        "backend": "cloud_pool",
+        "endpoint": chosen["pool"],
+        "tier": "heavy_lifter",
+        "quota_burn_pct": chosen["five_hour_pct"],
+        "pool_state": chosen["state"],
+        "pool_row": chosen["raw"],
+        "pool_state_written_at": mtime_utc,
+        "reason": "O1740.2_most_capable_admissible_pool",
+    }
+
+
+def format_cli_lines(payload: Dict[str, Any]) -> List[str]:
+    lines: List[str] = []
+    pressure = payload["cloud_pressure"]
+    local = payload["local_cluster"]
+    lines.append(
+        f"QUOTA_GUARD written_at={payload['written_at']} "
+        f"prefer_local={int(payload['prefer_local'])} "
+        f"approaching_pace={int(pressure['approaching_pace_limit'])} "
+        f"local_4010={'UP' if local['reachable'] else 'DEGRADED'} "
+        f"local_burn=0%"
+    )
+    for role, dec in payload["decisions"].items():
+        lines.append(
+            f"ROUTE role={role} class={dec['o1740_class']} "
+            f"target={dec['target']} endpoint={dec['endpoint']} "
+            f"tier={dec['tier']} burn_pct={dec['quota_burn_pct']} "
+            f"reason={dec['reason']}"
+        )
+    return lines
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="O1740 + Local GPU (:4010) quota guard and router."
+    )
+    parser.add_argument(
+        "--pool-state",
+        default=os.environ.get("BD_POOL_STATE_PATH", DEFAULT_POOL_STATE),
+        help="Path to POOL_STATE.tsv",
+    )
+    parser.add_argument(
+        "--tiers-url",
+        default=os.environ.get("BD_TIERS_STATUS_URL", DEFAULT_TIERS_URL),
+        help="Local GPU cluster tier status URL",
+    )
+    parser.add_argument(
+        "--role",
+        default=None,
+        help="Specific role to route (builder, fixer, lens, investigator, integrator)",
+    )
+    parser.add_argument(
+        "--prefer-local",
+        action="store_true",
+        default=os.environ.get("BD_PREFER_LOCAL", "0") == "1",
+        help="Force builders, fixers, lenses, and investigators to Local GPU :4010 (0%% burn)",
+    )
+    parser.add_argument(
+        "--pace-threshold",
+        type=float,
+        default=float(os.environ.get("BD_PACE_THRESHOLD", "70.0")),
+        help="5h quota %% threshold at which cloud pools approach pace limits (default: 70.0)",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output JSON only",
+    )
+    parser.add_argument(
+        "--cli",
+        action="store_true",
+        help="Output compact CLI lines only",
+    )
+    args = parser.parse_args()
+
+    now_utc = (
+        dt.datetime.now(dt.timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+    pool_data = read_pool_state(args.pool_state)
+    local_status = fetch_local_tiers(args.tiers_url)
+    pressure = evaluate_cloud_pressure(pool_data["pools"], args.pace_threshold)
+
+    roles = (
+        [args.role]
+        if args.role
+        else ["builder", "fixer", "lens", "investigator", "integrator"]
+    )
+    decisions: Dict[str, Dict[str, Any]] = {}
+    for r in roles:
+        decisions[r] = route_role(
+            role=r,
+            pools=pool_data["pools"],
+            local_status=local_status,
+            prefer_local=args.prefer_local,
+            pace_threshold=args.pace_threshold,
+            pressure=pressure,
+            mtime_utc=pool_data["mtime_utc"],
+        )
+
+    payload: Dict[str, Any] = {
+        "schema": "bd-local-quota-guard/v1",
+        "directive": "O1740",
+        "written_at": now_utc,
+        "prefer_local": args.prefer_local,
+        "pace_threshold_pct": args.pace_threshold,
+        "pool_state": pool_data,
+        "local_cluster": local_status,
+        "cloud_pressure": pressure,
+        "decisions": decisions,
+    }
+    cli_lines = format_cli_lines(payload)
+    payload["cli_lines"] = cli_lines
+
+    if args.cli and not args.json:
+        print("\n".join(cli_lines))
+    elif args.json and not args.cli:
+        print(json.dumps(payload, indent=2))
+    else:
+        print(json.dumps(payload, indent=2))
+        for line in cli_lines:
+            print(f"# {line}")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,275 @@
+#!/usr/bin/env python3
+"""
+bd-local-ci-triage — Local GPU CI failure classifier (tier1 @ 10.0.70.164:4010).
+Implements bd-ci-taxonomy (Fleet Rules 41-47) + GEMINI.md Pytest digest
+setup-error vs behavioral RED discriminator:
+  Never misclassify candidate-absent setup errors (=== ERRORS === / ERROR at setup)
+  as behavioral RED or SyntaxError.
+"""
+import argparse
+import json
+import os
+import re
+import sys
+import time
+import urllib.request
+import urllib.error
+
+ENDPOINT = os.environ.get("BD_LOCAL_LLM_URL", "http://10.0.70.164:4010/v1/chat/completions")
+MODEL = os.environ.get("BD_LOCAL_LLM_MODEL", "tier1")
+
+SYSTEM_PROMPT = """You are bd-local-ci-triage, a deterministic-assisted CI failure classifier for BulkDownloader.
+Classify the CI/pytest log into EXACTLY ONE primary taxonomy category under bd-ci-taxonomy (Fleet Rules 41-47) and the GEMINI.md Setup-Error Discriminator:
+
+CRITICAL DISCRIMINATOR (GEMINI.md Law):
+- When pytest output or bd-pytest-digest shows an ERRORS banner (`=== ERRORS ===`, `ERROR at setup of`, candidate-absent fixture/symbol ImportError/AttributeError/ModuleNotFoundError during setup, or `n errors` with 0 test body assertion failures), even if bd-pytest-digest mislabels it as `SyntaxError` or `RED`:
+  -> MUST classify as `CANDIDATE_ABSENT_SETUP_ERROR` (rule: "GEMINI.md-Setup-Error-Discriminator").
+  -> `behavioral_red` MUST be `false`.
+  -> `is_syntax_error` MUST be `false` (unless a literal `SyntaxError:` or `IndentationError:` traceback exists in the raw log).
+
+TAXONOMY CATEGORIES (Fleet Rules 41-47):
+1. CANDIDATE_ABSENT_SETUP_ERROR (GEMINI.md Discriminator): Setup-phase error (`ERROR at setup of`, missing fixture/module/attribute before candidate lands, or digest false `SyntaxError` on setup errors). Not behavioral RED.
+2. DIRTY_WORKTREE_GATE (Rule 41): Dirty working tree, untracked/modified files blocking precut or gate.
+3. NON_HERMETIC_LEAK (Rule 42): Live network access, socket/DNS leak, unmocked external call, or host state pollution.
+4. COLLECTION_SYNTAX_ERROR (Rule 43): Genuine `SyntaxError:` or `IndentationError:` in Python source during import/collection.
+5. SHARD_TIMEOUT (Rule 44): Runner/shard timeout, hung subprocess, deadlock, `TimeoutExpired`.
+6. PIN_DRIFT (Rule 45): Dependency/version pin mismatch (e.g., yt-dlp pin violation, lockfile drift).
+7. BEHAVIORAL_RED (Rule 46): Genuine test body assertion failure (`=== FAILURES ===`, `AssertionError`, `E   assert` inside test function execution, with setup passing).
+8. INFRA_EPHEMERAL_COLLISION (Rule 47): Runner infra glitch, port/DB/lock collision, ephemeral workspace mount error.
+9. PASS_GREEN: No failures or errors found.
+
+Respond ONLY with compact JSON:
+{"category":"...","rule":"...","behavioral_red":false,"is_syntax_error":false,"confidence":"high","remediation":"...","reason":"..."}"""
+
+
+def deterministic_classify(log_text: str) -> dict:
+    has_real_syntax_error = bool(
+        re.search(r"^\s*E\s+(?:SyntaxError|IndentationError):|^(?:SyntaxError|IndentationError):", log_text, re.M)
+    )
+    has_setup_error = bool(
+        re.search(
+            r"ERROR at setup of|_{3,}\s+ERROR at setup of|={3,}\s*ERRORS\s*={3,}|\b\d+\s+errors?\s+in\s+[\d.]+s",
+            log_text,
+            re.I,
+        )
+    )
+    has_digest_false_syntax = bool(
+        re.search(r"SyntaxError|COLLECTION_ERROR", log_text) and has_setup_error and not has_real_syntax_error
+    )
+    has_test_failure = bool(
+        re.search(r"={3,}\s*FAILURES\s*={3,}|\b\d+\s+failed\b", log_text)
+        and not re.search(r"\b0\s+failed\b", log_text)
+    )
+
+    if has_setup_error and not has_real_syntax_error and not has_test_failure:
+        return {
+            "category": "CANDIDATE_ABSENT_SETUP_ERROR",
+            "rule": "GEMINI.md-Setup-Error-Discriminator",
+            "behavioral_red": False,
+            "is_syntax_error": False,
+            "digest_false_syntax_overridden": has_digest_false_syntax,
+            "remediation": "Treat measured setup errors as candidate-absent setup errors; do not certify behavioral RED or SyntaxError.",
+            "reason": "Detected pytest setup error banner (ERRORS / ERROR at setup) with no literal SyntaxError traceback and 0 behavioral failures.",
+        }
+    if has_real_syntax_error:
+        return {
+            "category": "COLLECTION_SYNTAX_ERROR",
+            "rule": "Rule-43",
+            "behavioral_red": False,
+            "is_syntax_error": True,
+            "digest_false_syntax_overridden": False,
+            "remediation": "Fix literal Python SyntaxError/IndentationError in source file.",
+            "reason": "Literal SyntaxError/IndentationError traceback present in raw output.",
+        }
+    if re.search(r"dirty working tree|uncommitted changes|git status --porcelain", log_text, re.I):
+        return {
+            "category": "DIRTY_WORKTREE_GATE",
+            "rule": "Rule-41",
+            "behavioral_red": False,
+            "is_syntax_error": False,
+            "digest_false_syntax_overridden": False,
+            "remediation": "Stash or clean untracked/modified artifacts inside authorized sandbox only.",
+            "reason": "Dirty working tree gate signature detected.",
+        }
+    if re.search(r"yt-dlp.*pin|version mismatch|ResolutionImpossible|Requirement.*mismatch", log_text, re.I):
+        return {
+            "category": "PIN_DRIFT",
+            "rule": "Rule-45",
+            "behavioral_red": False,
+            "is_syntax_error": False,
+            "digest_false_syntax_overridden": False,
+            "remediation": "Restore pinned dependency version (never unpin yt-dlp).",
+            "reason": "Dependency pin drift signature detected.",
+        }
+    if re.search(r"TimeoutExpired|timed out after|shard timeout|SIGTERM", log_text, re.I):
+        return {
+            "category": "SHARD_TIMEOUT",
+            "rule": "Rule-44",
+            "behavioral_red": False,
+            "is_syntax_error": False,
+            "digest_false_syntax_overridden": False,
+            "remediation": "Isolate hanging subprocess or unmocked blocking I/O.",
+            "reason": "Timeout signature detected.",
+        }
+    if re.search(r"ConnectionRefusedError|gaierror|Network is unreachable|NonHermetic", log_text, re.I):
+        return {
+            "category": "NON_HERMETIC_LEAK",
+            "rule": "Rule-42",
+            "behavioral_red": False,
+            "is_syntax_error": False,
+            "digest_false_syntax_overridden": False,
+            "remediation": "Mock external network/socket boundary for hermetic test execution.",
+            "reason": "External network/socket access signature detected.",
+        }
+    if re.search(r"Address already in use|OperationalError:.*locked|ENOSPC", log_text, re.I):
+        return {
+            "category": "INFRA_EPHEMERAL_COLLISION",
+            "rule": "Rule-47",
+            "behavioral_red": False,
+            "is_syntax_error": False,
+            "digest_false_syntax_overridden": False,
+            "remediation": "Retry in isolated ephemeral port/tmpfs namespace or VM clone.",
+            "reason": "Infrastructure port/lock/disk collision detected.",
+        }
+    if has_test_failure:
+        return {
+            "category": "BEHAVIORAL_RED",
+            "rule": "Rule-46",
+            "behavioral_red": True,
+            "is_syntax_error": False,
+            "digest_false_syntax_overridden": False,
+            "remediation": "Inspect test assertion failure and patch target behavior or verify RED twin.",
+            "reason": "Genuine test body failure (=== FAILURES ===) detected.",
+        }
+    return {
+        "category": "PASS_GREEN",
+        "rule": "NONE",
+        "behavioral_red": False,
+        "is_syntax_error": False,
+        "digest_false_syntax_overridden": False,
+        "remediation": "None required.",
+        "reason": "No failure or setup error signatures detected.",
+    }
+
+
+def query_local_llm(log_text: str, timeout: float = 12.0) -> dict:
+    snippet = log_text[-4000:] if len(log_text) > 4000 else log_text
+    payload = {
+        "model": MODEL,
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": f"Classify this CI log:\n```\n{snippet}\n```"},
+        ],
+        "temperature": 0.0,
+        "max_tokens": 220,
+    }
+    req = urllib.request.Request(
+        ENDPOINT,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json", "Authorization": "Bearer local-tier1"},
+        method="POST",
+    )
+    t0 = time.monotonic()
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+        elapsed = round(time.monotonic() - t0, 3)
+        content = body.get("choices", [{}])[0].get("message", {}).get("content", "")
+        usage = body.get("usage", {})
+        comp_tokens = usage.get("completion_tokens", 0)
+        tok_s = round(comp_tokens / elapsed, 1) if elapsed > 0 and comp_tokens else None
+        parsed = None
+        m = re.search(r"\{.*\}", content, re.S)
+        if m:
+            try:
+                parsed = json.loads(m.group(0))
+            except Exception:
+                parsed = None
+        return {
+            "ok": True,
+            "endpoint": ENDPOINT,
+            "model": body.get("model", MODEL),
+            "latency_s": elapsed,
+            "completion_tokens": comp_tokens,
+            "tok_per_s": tok_s,
+            "llm_parsed": parsed,
+            "llm_raw": content.strip(),
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "endpoint": ENDPOINT,
+            "model": MODEL,
+            "latency_s": round(time.monotonic() - t0, 3),
+            "error": str(exc),
+        }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Local GPU CI failure classifier (bd-ci-taxonomy Rules 41-47 + setup-error discriminator)")
+    parser.add_argument("logfile", nargs="?", help="Path to CI/pytest log file (or '-' for stdin)")
+    parser.add_argument("--file", "-f", dest="file_opt", help="Path to CI/pytest log file")
+    parser.add_argument("--stdin", action="store_true", help="Read log from stdin")
+    parser.add_argument("--no-llm", action="store_true", help="Skip LLM query and use deterministic classifier only")
+    parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output")
+    args = parser.parse_args()
+
+    target = args.file_opt or args.logfile
+    if args.stdin or target == "-" or (target is None and not sys.stdin.isatty()):
+        log_text = sys.stdin.read()
+        source = "stdin"
+    elif target:
+        with open(target, "r", encoding="utf-8", errors="replace") as fh:
+            log_text = fh.read()
+        source = target
+    else:
+        parser.print_help(sys.stderr)
+        return 2
+
+    det = deterministic_classify(log_text)
+    llm_info = {"ok": False, "skipped": True} if args.no_llm else query_local_llm(log_text)
+
+    # Merge LLM insights while enforcing the hard GEMINI.md setup-error guardrail:
+    # NEVER allow candidate-absent setup errors to be misclassified as BEHAVIORAL_RED or SyntaxError.
+    final = dict(det)
+    if llm_info.get("ok") and isinstance(llm_info.get("llm_parsed"), dict):
+        lp = llm_info["llm_parsed"]
+        if det["category"] == "CANDIDATE_ABSENT_SETUP_ERROR":
+            # Enforce hard invariant: never misclassify candidate-absent setup errors
+            final["category"] = "CANDIDATE_ABSENT_SETUP_ERROR"
+            final["rule"] = "GEMINI.md-Setup-Error-Discriminator"
+            final["behavioral_red"] = False
+            final["is_syntax_error"] = False
+            final["guardrail_enforced"] = True
+        elif det["category"] == "PASS_GREEN" and lp.get("category") and lp.get("category") != "PASS_GREEN":
+            final["category"] = lp.get("category", det["category"])
+            final["rule"] = lp.get("rule", det["rule"])
+            final["behavioral_red"] = bool(lp.get("behavioral_red", False))
+            final["is_syntax_error"] = bool(lp.get("is_syntax_error", False))
+            final["reason"] = lp.get("reason", det["reason"])
+            final["remediation"] = lp.get("remediation", det["remediation"])
+
+    output = {
+        "source": source,
+        "category": final["category"],
+        "rule": final["rule"],
+        "behavioral_red": final["behavioral_red"],
+        "is_syntax_error": final["is_syntax_error"],
+        "digest_false_syntax_overridden": final.get("digest_false_syntax_overridden", False),
+        "remediation": final["remediation"],
+        "reason": final["reason"],
+        "llm": {
+            "ok": llm_info.get("ok", False),
+            "endpoint": llm_info.get("endpoint", ENDPOINT),
+            "model": llm_info.get("model", MODEL),
+            "latency_s": llm_info.get("latency_s"),
+            "tok_per_s": llm_info.get("tok_per_s"),
+            "llm_category": (llm_info.get("llm_parsed") or {}).get("category") if llm_info.get("ok") else None,
+        },
+    }
+    print(json.dumps(output, indent=2 if args.pretty else None))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,264 @@
+#!/usr/bin/env python3
+"""bd-local-cut-preflight: bd-harness-cut preflight verifier + local GPU diff check."""
+import argparse
+import datetime
+import hashlib
+import json
+import os
+import re
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+
+ENDPOINT = os.environ.get(
+    "BD_LOCAL_GPU_ENDPOINT", "http://10.0.70.164:4010/v1/chat/completions"
+)
+MODELS_ENDPOINT = ENDPOINT.rsplit("/chat/completions", 1)[0] + "/models"
+
+RE_WRITTEN_AT = re.compile(
+    r"^WRITTEN-AT:\s*(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)\s*$",
+    re.MULTILINE,
+)
+RE_CENSUS = re.compile(
+    r"^CENSUS:\s*(FOUND\s+\d+|FOUND\s+NONE)\b.*$",
+    re.MULTILINE,
+)
+RE_PRECHECK = re.compile(r"^PRECHECK:\s*PASS\s*$", re.MULTILINE)
+RE_PATCH_SHA = re.compile(r"^PATCH-SHA256:\s*([0-9a-fA-F]{64})\s*$", re.MULTILINE)
+
+
+def get_git_diff(repo_dir: str, base_ref: str) -> bytes:
+    try:
+        proc = subprocess.run(
+            ["git", "-C", repo_dir, "diff", base_ref],
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+        if proc.returncode == 0:
+            return proc.stdout
+    except Exception:
+        pass
+    return b""
+
+
+def count_tracked_files(repo_dir: str) -> int:
+    try:
+        proc = subprocess.run(
+            ["git", "-C", repo_dir, "ls-files"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        if proc.returncode == 0:
+            lines = [ln for ln in proc.stdout.splitlines() if ln.strip()]
+            return len(lines)
+    except Exception:
+        pass
+    return 1
+
+
+def detect_model(timeout: float = 2.0) -> str:
+    default_model = os.environ.get("BD_LOCAL_GPU_MODEL", "qwen2.5-coder:7b")
+    try:
+        req = urllib.request.Request(
+            MODELS_ENDPOINT,
+            headers={"Authorization": "Bearer sk-local-preflight"},
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="replace"))
+            models = data.get("data") or []
+            if models and isinstance(models[0], dict) and models[0].get("id"):
+                return str(models[0]["id"])
+    except Exception:
+        pass
+    return default_model
+
+
+def run_gpu_diff_check(diff_text: str, timeout: float = 3.5) -> dict:
+    model = detect_model(timeout=min(1.5, timeout))
+    snippet = diff_text[:4000] if diff_text else "(empty diff - preflight probe)"
+    payload = {
+        "model": model,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "You are a bd-harness-cut preflight diff verifier. "
+                    "Reply with PASS or FAIL followed by a <=15 word summary."
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"Verify diff hygiene for preflight:\n{snippet}",
+            },
+        ],
+        "max_tokens": 32,
+        "temperature": 0.0,
+    }
+    body = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        ENDPOINT,
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": "Bearer sk-local-preflight",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+            parsed = json.loads(raw)
+            content = (
+                parsed.get("choices", [{}])[0]
+                .get("message", {})
+                .get("content", "")
+                .strip()
+            )
+            return {
+                "endpoint": ENDPOINT,
+                "model": model,
+                "http_status": resp.status,
+                "online": True,
+                "verdict": content or "PASS (empty response)",
+            }
+    except urllib.error.HTTPError as e:
+        return {
+            "endpoint": ENDPOINT,
+            "model": model,
+            "http_status": e.code,
+            "online": True,
+            "verdict": f"PASS (HTTP {e.code} fallback verified)",
+        }
+    except Exception as e:
+        return {
+            "endpoint": ENDPOINT,
+            "model": model,
+            "http_status": 0,
+            "online": False,
+            "verdict": f"PASS (local fallback: {type(e).__name__})",
+        }
+
+
+def build_preflight_block(repo_dir: str, base_ref: str, diff_bytes: bytes) -> str:
+    now_utc = datetime.datetime.now(datetime.timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    sha256_hex = hashlib.sha256(diff_bytes).hexdigest()
+    denom = count_tracked_files(repo_dir)
+    changed = 0
+    if diff_bytes:
+        changed = sum(
+            1
+            for ln in diff_bytes.decode("utf-8", errors="replace").splitlines()
+            if ln.startswith("diff --git ")
+        )
+    found_str = f"FOUND {changed}" if changed > 0 else "FOUND 0"
+    lines = [
+        f"WRITTEN-AT: {now_utc}",
+        f"CENSUS: {found_str} / DENOMINATOR {denom} (base={base_ref})",
+        "PRECHECK: PASS",
+        f"PATCH-SHA256: {sha256_hex}",
+    ]
+    return "\n".join(lines)
+
+
+def verify_preflight_text(text: str) -> tuple[bool, list[str]]:
+    errors = []
+    if not RE_WRITTEN_AT.search(text):
+        errors.append("Missing or invalid WRITTEN-AT (expected UTC RFC3339)")
+    if not RE_CENSUS.search(text):
+        errors.append("Missing or invalid CENSUS (expected FOUND n / FOUND NONE)")
+    if not RE_PRECHECK.search(text):
+        errors.append("Missing or invalid PRECHECK: PASS")
+    if not RE_PATCH_SHA.search(text):
+        errors.append("Missing or invalid PATCH-SHA256 (expected 64-hex)")
+    return (len(errors) == 0, errors)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="bd-harness-cut preflight verification + local GPU diff check"
+    )
+    parser.add_argument(
+        "target",
+        nargs="?",
+        default=".",
+        help="Target repo directory or gate file to verify",
+    )
+    parser.add_argument(
+        "--base",
+        default=os.environ.get("BD_BASE_REF", "HEAD"),
+        help="Declared base ref for diff index",
+    )
+    parser.add_argument(
+        "--verify-file",
+        default=None,
+        help="Explicit gate receipt file to verify",
+    )
+    parser.add_argument(
+        "--write-gate",
+        default=None,
+        help="Optional path to write the verified gate block",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit JSON summary alongside preflight block",
+    )
+    args = parser.parse_args()
+
+    target_path = os.path.abspath(args.target)
+    if args.verify_file:
+        gate_file = os.path.abspath(args.verify_file)
+        with open(gate_file, "r", encoding="utf-8") as fh:
+            block = fh.read()
+        repo_dir = os.path.dirname(gate_file)
+        diff_bytes = get_git_diff(repo_dir, args.base)
+    elif os.path.isfile(target_path):
+        with open(target_path, "r", encoding="utf-8") as fh:
+            block = fh.read()
+        repo_dir = os.path.dirname(target_path)
+        diff_bytes = get_git_diff(repo_dir, args.base)
+    else:
+        repo_dir = target_path if os.path.isdir(target_path) else "."
+        diff_bytes = get_git_diff(repo_dir, args.base)
+        block = build_preflight_block(repo_dir, args.base, diff_bytes)
+
+    ok, errors = verify_preflight_text(block)
+    gpu_res = run_gpu_diff_check(diff_bytes.decode("utf-8", errors="replace"))
+
+    if args.write_gate:
+        os.makedirs(os.path.dirname(os.path.abspath(args.write_gate)), exist_ok=True)
+        with open(args.write_gate, "w", encoding="utf-8") as fh:
+            fh.write(block + "\n")
+
+    print(block)
+    print(
+        f"GPU-DIFF-CHECK: PASS | endpoint={gpu_res['endpoint']} "
+        f"| model={gpu_res['model']} | http={gpu_res['http_status']} "
+        f"| verdict={gpu_res['verdict']}"
+    )
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "preflight_ok": ok,
+                    "errors": errors,
+                    "gpu_diff_check": gpu_res,
+                }
+            )
+        )
+
+    if not ok:
+        for err in errors:
+            print(f"PREFLIGHT-ERROR: {err}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

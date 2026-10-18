@@ -1,0 +1,272 @@
+#!/usr/bin/env python3
+"""Boylenet review-hygiene local lens runner (Rule 22, yt-dlp pin order, adjacent tidying).
+Queries http://10.0.70.164:4010/v1/chat/completions (model: tier1) + deterministic hygiene guards
+and emits strict Rule 76 JSON: {"round":"<id>","seat":"<seat>","verdict":"BOARD|REFUTE","findings":[...]}.
+"""
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+from typing import Any, Dict, List, Tuple
+
+ENDPOINT = os.environ.get("BD_LOCAL_LENS_URL", "http://10.0.70.164:4010/v1/chat/completions")
+MODEL = os.environ.get("BD_LOCAL_LENS_MODEL", "tier1")
+API_KEY = (
+    os.environ.get("LITELLM_API_KEY")
+    or os.environ.get("OPENAI_API_KEY")
+    or os.environ.get("BD_LITELLM_KEY")
+    or "sk-local"
+)
+
+RULE22_PATTERNS = [
+    (
+        re.compile(r"\bgit\s+reset\s+--hard\b"),
+        "Rule 22 violation: destructive 'git reset --hard' is forbidden outside authorized sandboxes.",
+    ),
+    (
+        re.compile(r"\bgit\s+clean\s+-[a-zA-Z]*[fd]"),
+        "Rule 22 violation: destructive 'git clean' is forbidden outside authorized sandboxes.",
+    ),
+    (
+        re.compile(r"\bgit\s+checkout\s+(?:--\s+|\.\b|-f\b|--force\b)"),
+        "Rule 22 violation: destructive 'git checkout' discarding worktree state is forbidden.",
+    ),
+    (
+        re.compile(r"\bgit\s+worktree\s+(?:remove|prune)\b"),
+        "Rule 22 violation: deleting or pruning git worktrees is strictly forbidden.",
+    ),
+]
+
+YTDLP_UNPIN_PATTERNS = [
+    re.compile(
+        r"""(?i)\byt[-_]dlp\b(?!\s*==\s*[0-9]{4}\.[0-9]{1,2}\.[0-9]{1,2})\s*(?:>=|~=|!=|>|<|$|["'\s,#\]])"""
+    ),
+]
+
+
+def parse_diff_deterministic(diff_text: str) -> List[Dict[str, Any]]:
+    findings: List[Dict[str, Any]] = []
+    cur_file = "UNKNOWN"
+    cur_line = 1
+    removed_ytdlp_pin = False
+    added_lines_by_file: Dict[str, List[Tuple[int, str]]] = {}
+
+    for raw_line in diff_text.splitlines():
+        if raw_line.startswith("+++ b/"):
+            cur_file = raw_line[6:].strip()
+            continue
+        if raw_line.startswith("+++ "):
+            cur_file = raw_line[4:].strip()
+            continue
+        if raw_line.startswith("@@ "):
+            m = re.search(r"\+(\d+)", raw_line)
+            if m:
+                cur_line = int(m.group(1))
+            continue
+        if raw_line.startswith("-") and not raw_line.startswith("---"):
+            del_content = raw_line[1:]
+            if re.search(r"(?i)\byt[-_]dlp\s*==\s*[0-9]{4}\.[0-9]{1,2}\.[0-9]{1,2}", del_content):
+                removed_ytdlp_pin = True
+            continue
+        if raw_line.startswith("+") and not raw_line.startswith("+++"):
+            content = raw_line[1:]
+            added_lines_by_file.setdefault(cur_file, []).append((cur_line, content))
+
+            # 1. Rule 22 check
+            for pat, msg in RULE22_PATTERNS:
+                if pat.search(content):
+                    findings.append(
+                        {
+                            "file": cur_file,
+                            "line": cur_line,
+                            "rule": "Rule 22 (Anti-Hallucination Shield / Destructive Git)",
+                            "severity": "ERROR",
+                            "message": msg,
+                        }
+                    )
+
+            # 2. Unpinned dependency check (yt-dlp pin order in GEMINI.md)
+            is_dep_context = (
+                any(
+                    k in cur_file.lower()
+                    for k in ("req", "pyproject", "setup", "pipfile", "lock", "dockerfile", ".yml", ".yaml", ".sh", ".py", ".toml", ".txt")
+                )
+                or removed_ytdlp_pin
+                or "pip install" in content
+                or "yt-dlp" in content.lower()
+                or "yt_dlp" in content.lower()
+            )
+            if is_dep_context and re.search(r"(?i)\byt[-_]dlp\b", content):
+                # Check if it is pinned with ==YYYY.MM.DD (or ==version)
+                if not re.search(r"(?i)\byt[-_]dlp(?:\[[^\]]+\])?\s*==\s*[0-9]+\.[0-9]+", content):
+                    # Ignore pure Python import statements like `import yt_dlp` unless pip/dependency/pin context
+                    if not re.match(r"^\s*(?:import|from)\s+yt_dlp\b", content):
+                        findings.append(
+                            {
+                                "file": cur_file,
+                                "line": cur_line,
+                                "rule": "GEMINI.md Dependency Pin Order (yt-dlp)",
+                                "severity": "ERROR",
+                                "message": f"Unpinned yt-dlp dependency detected ('{content.strip()}'); yt-dlp pin is strict operator order.",
+                            }
+                        )
+
+            cur_line += 1
+        elif not raw_line.startswith("\\"):
+            cur_line += 1
+
+    # Check if a yt-dlp== pin was removed without a replacement pin
+    if removed_ytdlp_pin and not any("yt-dlp" in f.get("rule", "") for f in findings):
+        has_new_pin = False
+        for lines in added_lines_by_file.values():
+            for _, ln in lines:
+                if re.search(r"(?i)\byt[-_]dlp(?:\[[^\]]+\])?\s*==\s*[0-9]+\.[0-9]+", ln):
+                    has_new_pin = True
+        if not has_new_pin:
+            findings.append(
+                {
+                    "file": cur_file,
+                    "line": 1,
+                    "rule": "GEMINI.md Dependency Pin Order (yt-dlp)",
+                    "severity": "ERROR",
+                    "message": "Existing yt-dlp version pin was removed without preserving an exact == version pin.",
+                }
+            )
+
+    return findings
+
+
+def call_tier1_llm(diff_text: str, round_id: str, seat: str, timeout: float = 15.0) -> Tuple[List[Dict[str, Any]], bool]:
+    system_prompt = (
+        "You are Boylenet review-hygiene lens. Analyze the git diff ONLY for:\n"
+        "1) Rule 22 violations (destructive git checkout/reset --hard/clean/worktree delete outside bd-cuts/ or bd-local-wt/).\n"
+        "2) Unpinned dependencies, specifically unpinning yt-dlp (GEMINI.md: yt-dlp pin is order, must use exact == pin).\n"
+        "3) Adjacent tidying (unrelated cosmetic formatting, drive-by refactoring, or untouched code rewrites).\n"
+        "Respond ONLY with strict Rule 76 JSON matching:\n"
+        '{"round":"' + round_id + '","seat":"' + seat + '","verdict":"BOARD|REFUTE","findings":[{"file":"path","line":1,"rule":"RuleName","severity":"ERROR","message":"reason"}]}\n'
+        "If no violations exist, verdict MUST be BOARD and findings MUST be []."
+    )
+    payload = {
+        "model": MODEL,
+        "temperature": 0.0,
+        "max_tokens": 512,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": diff_text[:12000]},
+        ],
+    }
+    req = urllib.request.Request(
+        ENDPOINT,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {API_KEY}",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+        content = body["choices"][0]["message"]["content"].strip()
+        # Strip markdown fences if present
+        if "```" in content:
+            m = re.search(r"\{.*\}", content, re.DOTALL)
+            if m:
+                content = m.group(0)
+        parsed = json.loads(content)
+        llm_findings = parsed.get("findings") or []
+        norm_findings: List[Dict[str, Any]] = []
+        if isinstance(llm_findings, list):
+            for item in llm_findings:
+                if isinstance(item, dict):
+                    norm_findings.append(
+                        {
+                            "file": str(item.get("file", "UNKNOWN")),
+                            "line": int(item.get("line", 1)) if str(item.get("line", "1")).isdigit() else 1,
+                            "rule": str(item.get("rule", "review-hygiene")),
+                            "severity": str(item.get("severity", "ERROR")),
+                            "message": str(item.get("message", item.get("detail", "Hygiene violation"))),
+                        }
+                    )
+                elif isinstance(item, str):
+                    norm_findings.append(
+                        {
+                            "file": "UNKNOWN",
+                            "line": 1,
+                            "rule": "review-hygiene",
+                            "severity": "ERROR",
+                            "message": item,
+                        }
+                    )
+        return norm_findings, True
+    except Exception:
+        return [], False
+
+
+def load_diff(args: argparse.Namespace) -> str:
+    if args.diff_file:
+        if args.diff_file == "-":
+            return sys.stdin.read()
+        with open(args.diff_file, "r", encoding="utf-8", errors="replace") as f:
+            return f.read()
+    if args.positional and os.path.isfile(args.positional):
+        with open(args.positional, "r", encoding="utf-8", errors="replace") as f:
+            return f.read()
+    if args.base or args.target:
+        cmd = ["git", "diff"]
+        if args.base and args.target:
+            cmd.append(f"{args.base}..{args.target}")
+        elif args.base:
+            cmd.append(args.base)
+        proc = subprocess.run(cmd, cwd=args.repo or ".", capture_output=True, text=True, check=False)
+        return proc.stdout
+    if not sys.stdin.isatty():
+        return sys.stdin.read()
+    if args.positional:
+        proc = subprocess.run(["git", "diff", args.positional], cwd=args.repo or ".", capture_output=True, text=True, check=False)
+        return proc.stdout
+    return ""
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Boylenet review-hygiene lens runner (Rule 76 JSON)")
+    parser.add_argument("positional", nargs="?", help="Optional diff file path or git revision")
+    parser.add_argument("-d", "--diff", "--diff-file", dest="diff_file", help="Path to unified diff file ('-' for stdin)")
+    parser.add_argument("--round", default=os.environ.get("BD_ROUND", "R1"), help="Rule 76 round identifier")
+    parser.add_argument("--seat", default=os.environ.get("BD_SEAT", "review-hygiene"), help="Rule 76 seat identifier")
+    parser.add_argument("--base", help="Base git ref")
+    parser.add_argument("--target", help="Target git ref")
+    parser.add_argument("--repo", help="Git repository path")
+    parser.add_argument("--timeout", type=float, default=15.0, help="HTTP timeout in seconds")
+    args = parser.parse_args()
+
+    diff_text = load_diff(args)
+    det_findings = parse_diff_deterministic(diff_text)
+    llm_findings, _ = call_tier1_llm(diff_text, args.round, args.seat, timeout=args.timeout)
+
+    # Deduplicate findings by (file, line, message)
+    merged: List[Dict[str, Any]] = []
+    seen = set()
+    for f in det_findings + llm_findings:
+        key = (f.get("file"), f.get("line"), f.get("rule"))
+        if key not in seen:
+            seen.add(key)
+            merged.append(f)
+
+    verdict = "REFUTE" if merged else "BOARD"
+    out = {
+        "round": args.round,
+        "seat": args.seat,
+        "verdict": verdict,
+        "findings": merged if verdict == "REFUTE" else [],
+    }
+    sys.stdout.write(json.dumps(out) + "\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

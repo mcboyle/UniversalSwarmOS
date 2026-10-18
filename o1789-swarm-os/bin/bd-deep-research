@@ -1,0 +1,1152 @@
+#!/usr/bin/env python3
+"""
+bd-deep-research — Boylenet Dual-Oracle Deep-Web Research & Citation Engine CLI
+================================================================================
+3-Stage Autonomous Deep-Web Research Pipeline:
+  Stage 1 — Meta-Search Fanout (SearXNG :8888 JSON + HTML fallback) in <500ms
+  Stage 2 — Dual-Oracle Live Browser Extraction (10.0.10.137:9222 BattleStation +
+            10.0.70.181:9222 Bittorrent CDP + Parallel HTTP Fast-Fetch +
+            Qdrant 10.0.70.125:6333 & Local RAG 127.0.0.1:8099)
+  Stage 3 — LLM Synthesis with Inline Numbered Citations ([1], [2], ...) and
+            Clickable Sources List across selectable synthesis engines:
+              • qwen3-coder-30b-a3b (Local 4xT4 via http://10.0.70.228:4000/v1)
+              • deepseek-think      (DeepSeek <think> via LiteLLM / bd-ai-harness)
+              • claude-a / b / c / d (Claude Pools A/B/C/D)
+              • codex               (OpenAI Codex gpt-6-sol / gpt-6-astra)
+              • kimi                (Kimi Code CLI / Local Vault)
+"""
+
+from __future__ import annotations
+
+import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import datetime
+import hashlib
+import html
+from html.parser import HTMLParser
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+from typing import Any, Callable, Dict, List, Optional, Tuple
+import urllib.error
+import urllib.parse
+import urllib.request
+
+SEARXNG_URL = os.environ.get("BD_SEARXNG_URL", "http://10.0.70.164:8888/search")
+QDRANT_URL = os.environ.get("BD_QDRANT_URL", "http://10.0.70.125:6333")
+LOCAL_RAG_URL = os.environ.get("BD_LOCAL_RAG_URL", "http://127.0.0.1:8099")
+LITELLM_228_URL = os.environ.get(
+    "BD_LITELLM_228_URL", "http://10.0.70.228:4000/v1/chat/completions"
+)
+LITELLM_164_URL = os.environ.get(
+    "BD_LITELLM_164_URL", "http://10.0.70.164:4000/v1/chat/completions"
+)
+LITELLM_API_KEY = os.environ.get("LITELLM_API_KEY", "sk-fleet-local")
+
+ORACLE_NODES: List[Dict[str, str]] = [
+    {
+        "name": "BattleStation",
+        "host": "10.0.10.137",
+        "port": "9222",
+        "addr": "10.0.10.137:9222",
+    },
+    {
+        "name": "Bittorrent",
+        "host": "10.0.70.181",
+        "port": "9222",
+        "addr": "10.0.70.181:9222",
+    },
+]
+
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+)
+
+SYNTHESIS_ENGINES: Dict[str, Dict[str, str]] = {
+    "qwen3-coder-30b-a3b": {
+        "id": "qwen3-coder-30b-a3b",
+        "label": "Local 4xT4 Qwen3-Coder-30B-A3B (.228:4000/v1)",
+        "kind": "litellm",
+        "model": "tier1-qwen3-coder-30b-a3b",
+        "endpoint": LITELLM_228_URL,
+    },
+    "deepseek-think": {
+        "id": "deepseek-think",
+        "label": "DeepSeek <think> Reasoning (R1-70B / V4-Flash .228:4000/v1)",
+        "kind": "litellm-think",
+        "model": "deepseek-v4-flash",
+        "endpoint": LITELLM_228_URL,
+    },
+    "tier2-deepseek-r1-70b": {
+        "id": "tier2-deepseek-r1-70b",
+        "label": "Local 4xT4 DeepSeek-R1-70B <think> (.228:4000/v1)",
+        "kind": "litellm-think",
+        "model": "tier2-deepseek-r1-70b",
+        "endpoint": LITELLM_228_URL,
+    },
+    "claude-a": {
+        "id": "claude-a",
+        "label": "Claude Pool A (Opus 4.7 / Sonnet 4.6)",
+        "kind": "claude",
+        "pool": "A",
+        "model": "claude-sonnet-4-6",
+    },
+    "claude-b": {
+        "id": "claude-b",
+        "label": "Claude Pool B (Opus 4.7 / Sonnet 4.6)",
+        "kind": "claude",
+        "pool": "B",
+        "model": "claude-sonnet-4-6",
+    },
+    "claude-c": {
+        "id": "claude-c",
+        "label": "Claude Pool C (Opus 4.7 / Sonnet 4.6)",
+        "kind": "claude",
+        "pool": "C",
+        "model": "claude-sonnet-4-6",
+    },
+    "claude-d": {
+        "id": "claude-d",
+        "label": "Claude Pool D (Opus 4.7 / Sonnet 4.6)",
+        "kind": "claude",
+        "pool": "D",
+        "model": "claude-sonnet-4-6",
+    },
+    "codex": {
+        "id": "codex",
+        "label": "OpenAI Codex Flagship (gpt-6-sol)",
+        "kind": "codex",
+        "model": "gpt-6-sol",
+    },
+    "kimi": {
+        "id": "kimi",
+        "label": "Kimi Code CLI Cloud (kimi-for-coding)",
+        "kind": "kimi",
+        "model": "kimi-for-coding",
+    },
+}
+
+
+class CleanHTMLParser(HTMLParser):
+    """Extracts clean readable Markdown from raw HTML."""
+
+    SKIP_TAGS = {
+        "script",
+        "style",
+        "noscript",
+        "svg",
+        "canvas",
+        "iframe",
+        "template",
+        "nav",
+        "footer",
+    }
+    BLOCK_TAGS = {
+        "p",
+        "div",
+        "section",
+        "article",
+        "header",
+        "main",
+        "aside",
+        "blockquote",
+        "pre",
+        "table",
+        "tr",
+        "ul",
+        "ol",
+        "hr",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "dd",
+        "dt",
+        "figcaption",
+    }
+
+    def __init__(self, base_url: str = "") -> None:
+        super().__init__(convert_charrefs=True)
+        self.base_url = base_url
+        self.skip_depth = 0
+        self.in_pre = False
+        self.in_code = False
+        self.in_title = False
+        self.title: str = ""
+        self.chunks: List[str] = []
+
+    def handle_starttag(self, tag: str, attrs: List[Tuple[str, Optional[str]]]) -> None:
+        t = tag.lower()
+        if t in self.SKIP_TAGS:
+            self.skip_depth += 1
+            return
+        if self.skip_depth > 0:
+            return
+        if t == "title":
+            self.in_title = True
+        elif t in ("h1", "h2", "h3", "h4", "h5", "h6"):
+            level = int(t[1])
+            self.chunks.append(f"\n\n{'#' * level} ")
+        elif t == "li":
+            self.chunks.append("\n- ")
+        elif t == "br":
+            self.chunks.append("\n")
+        elif t == "pre":
+            self.in_pre = True
+            self.chunks.append("\n\n```\n")
+        elif t == "code" and not self.in_pre:
+            self.in_code = True
+            self.chunks.append("`")
+        elif t in self.BLOCK_TAGS:
+            self.chunks.append("\n\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        t = tag.lower()
+        if t in self.SKIP_TAGS:
+            if self.skip_depth > 0:
+                self.skip_depth -= 1
+            return
+        if self.skip_depth > 0:
+            return
+        if t == "title":
+            self.in_title = False
+        elif t in ("h1", "h2", "h3", "h4", "h5", "h6"):
+            self.chunks.append("\n\n")
+        elif t == "pre":
+            self.in_pre = False
+            self.chunks.append("\n```\n\n")
+        elif t == "code" and not self.in_pre:
+            self.in_code = False
+            self.chunks.append("`")
+        elif t in self.BLOCK_TAGS:
+            self.chunks.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if self.skip_depth > 0:
+            return
+        if self.in_title:
+            self.title += data.strip()
+            return
+        if self.in_pre:
+            self.chunks.append(data)
+        else:
+            self.chunks.append(re.sub(r"[ \t\r\f\v]+", " ", data))
+
+
+def html_to_readable_text(raw_html: str, base_url: str = "") -> Tuple[str, str]:
+    parser = CleanHTMLParser(base_url=base_url)
+    try:
+        parser.feed(raw_html)
+        parser.close()
+    except Exception:
+        pass
+    md = "".join(parser.chunks)
+    md = re.sub(r"[ \t]+\n", "\n", md)
+    md = re.sub(r"\n{3,}", "\n\n", md)
+    lines: List[str] = []
+    for line in md.splitlines():
+        s = line.strip()
+        if not s:
+            if lines and lines[-1] != "":
+                lines.append("")
+            continue
+        lines.append(s)
+    return parser.title.strip(), "\n".join(lines).strip()
+
+
+# ==============================================================================
+# STAGE 1: SearXNG (:8888) Meta-Search Fanout (JSON + HTML fallback)
+# ==============================================================================
+def searxng_html_fallback(raw_html: str) -> List[Dict[str, Any]]:
+    """Fallback HTML parser if SearXNG returns HTML instead of JSON."""
+    results: List[Dict[str, Any]] = []
+    article_pat = re.compile(
+        r'<article[^>]*class="[^"]*result[^"]*"[^>]*>(.*?)</article>',
+        re.IGNORECASE | re.DOTALL,
+    )
+    href_pat = re.compile(
+        r'<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', re.IGNORECASE | re.DOTALL
+    )
+    content_pat = re.compile(
+        r'<p[^>]*class="[^"]*content[^"]*"[^>]*>(.*?)</p>',
+        re.IGNORECASE | re.DOTALL,
+    )
+    for art in article_pat.findall(raw_html):
+        m_href = href_pat.search(art)
+        if not m_href:
+            continue
+        url = html.unescape(m_href.group(1).strip())
+        title = html.unescape(re.sub(r"<[^>]+>", "", m_href.group(2))).strip()
+        m_cont = content_pat.search(art)
+        snippet = (
+            html.unescape(re.sub(r"<[^>]+>", "", m_cont.group(1))).strip()
+            if m_cont
+            else ""
+        )
+        if url.startswith(("http://", "https://")):
+            results.append(
+                {
+                    "url": url,
+                    "title": title or url,
+                    "content": snippet,
+                    "engine": "searxng-html",
+                }
+            )
+    return results
+
+
+def stage1_searxng_search(
+    query: str, max_results: int = 8, timeout: float = 6.0
+) -> Dict[str, Any]:
+    """Query SearXNG :8888 JSON endpoint with HTML fallback."""
+    t0 = time.monotonic()
+    encoded_q = urllib.parse.quote_plus(query)
+    json_url = f"{SEARXNG_URL}?q={encoded_q}&format=json"
+    results: List[Dict[str, Any]] = []
+    mode = "searxng-json"
+    error_note = ""
+
+    try:
+        req = urllib.request.Request(
+            json_url,
+            headers={"User-Agent": USER_AGENT, "Accept": "application/json,text/html"},
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+            parsed = json.loads(raw)
+            for item in parsed.get("results", []):
+                u = str(item.get("url", "")).strip()
+                if not u.startswith(("http://", "https://")):
+                    continue
+                results.append(
+                    {
+                        "url": u,
+                        "title": str(item.get("title") or u).strip(),
+                        "content": str(item.get("content") or "").strip(),
+                        "engine": str(item.get("engine") or "searxng"),
+                        "engines": item.get("engines", []),
+                        "score": item.get("score", 0.0),
+                    }
+                )
+    except Exception as exc:
+        error_note = str(exc)
+        mode = "searxng-html-fallback"
+        try:
+            html_url = f"{SEARXNG_URL}?q={encoded_q}"
+            req_h = urllib.request.Request(html_url, headers={"User-Agent": USER_AGENT})
+            with urllib.request.urlopen(req_h, timeout=timeout) as resp_h:
+                raw_h = resp_h.read().decode("utf-8", errors="replace")
+                results = searxng_html_fallback(raw_h)
+        except Exception as exc2:
+            error_note = f"{error_note}; html_fallback={exc2}"
+
+    # Deduplicate by normalized URL
+    deduped: List[Dict[str, Any]] = []
+    seen_urls = set()
+    for r in results:
+        u_norm = r["url"].rstrip("/")
+        if u_norm in seen_urls:
+            continue
+        seen_urls.add(u_norm)
+        deduped.append(r)
+        if len(deduped) >= max_results:
+            break
+
+    elapsed_ms = round((time.monotonic() - t0) * 1000, 1)
+    return {
+        "query": query,
+        "endpoint": SEARXNG_URL,
+        "mode": mode,
+        "elapsed_ms": elapsed_ms,
+        "total_raw": len(results),
+        "selected_count": len(deduped),
+        "results": deduped,
+        "error": error_note,
+    }
+
+
+# ==============================================================================
+# STAGE 2: Dual-Oracle Live Browser Extraction + Fast HTTP + Qdrant/RAG
+# ==============================================================================
+def probe_dual_oracles(timeout: float = 2.0) -> List[Dict[str, Any]]:
+    """Check health & browser metadata of BattleStation (.137:9222) and Bittorrent (.181:9222)."""
+    statuses: List[Dict[str, Any]] = []
+    for node in ORACLE_NODES:
+        t0 = time.monotonic()
+        ver_url = f"http://{node['addr']}/json/version"
+        try:
+            req = urllib.request.Request(ver_url, headers={"User-Agent": USER_AGENT})
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                info = json.loads(resp.read().decode("utf-8", errors="replace"))
+            ms = round((time.monotonic() - t0) * 1000, 1)
+            statuses.append(
+                {
+                    "name": node["name"],
+                    "addr": node["addr"],
+                    "online": True,
+                    "browser": info.get("Browser", "Chrome"),
+                    "latency_ms": ms,
+                }
+            )
+        except Exception as exc:
+            statuses.append(
+                {
+                    "name": node["name"],
+                    "addr": node["addr"],
+                    "online": False,
+                    "browser": "",
+                    "latency_ms": -1,
+                    "error": str(exc),
+                }
+            )
+    return statuses
+
+
+def extract_via_cdp_oracle(
+    url: str, node_addr: str, timeout: float = 8.0
+) -> Tuple[bool, str, str]:
+    """Open ephemeral tab on CDP Oracle, extract rendered DOM text via WebSocket, and close tab."""
+    tab_id = ""
+    try:
+        new_url = (
+            f"http://{node_addr}/json/new?{urllib.parse.quote(url, safe=':/?&=%')}"
+        )
+        req = urllib.request.Request(
+            new_url, method="PUT", headers={"User-Agent": USER_AGENT}
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            tab_info = json.loads(resp.read().decode("utf-8", errors="replace"))
+        tab_id = str(tab_info.get("id", ""))
+        ws_url = str(tab_info.get("webSocketDebuggerUrl", ""))
+        title = str(tab_info.get("title", ""))
+        body_text = ""
+
+        if ws_url:
+            try:
+                from websocket import create_connection  # type: ignore
+
+                time.sleep(1.2)
+                ws = create_connection(ws_url, timeout=4, suppress_origin=True)
+                try:
+                    expr = (
+                        "JSON.stringify({title: document.title || '', "
+                        "text: (document.body && document.body.innerText) ? document.body.innerText.slice(0, 8000) : ''})"
+                    )
+                    ws.send(
+                        json.dumps(
+                            {
+                                "id": 1,
+                                "method": "Runtime.evaluate",
+                                "params": {"expression": expr, "returnByValue": True},
+                            }
+                        )
+                    )
+                    for _ in range(5):
+                        raw_msg = ws.recv()
+                        msg_obj = json.loads(raw_msg)
+                        if msg_obj.get("id") == 1:
+                            val = (
+                                msg_obj.get("result", {}).get("result", {}).get("value")
+                            )
+                            if val:
+                                parsed_val = json.loads(val)
+                                title = parsed_val.get("title") or title
+                                body_text = parsed_val.get("text") or ""
+                            break
+                finally:
+                    ws.close()
+            except Exception:
+                pass
+        return True, title, body_text
+    except Exception:
+        return False, "", ""
+    finally:
+        if tab_id:
+            try:
+                close_url = f"http://{node_addr}/json/close/{tab_id}"
+                urllib.request.urlopen(close_url, timeout=2).read()
+            except Exception:
+                pass
+
+
+def fetch_single_web_source(
+    idx: int,
+    item: Dict[str, Any],
+    cdp_mode: str,
+    online_oracles: List[str],
+    max_chars_per_source: int = 3500,
+) -> Dict[str, Any]:
+    """Fetch a single URL via fast HTTP curl + optional/fallback Dual-Oracle CDP extraction."""
+    url = item["url"]
+    searx_title = item.get("title") or url
+    searx_snippet = item.get("content") or ""
+    t0 = time.monotonic()
+
+    cmd = [
+        "curl",
+        "-sL",
+        "--compressed",
+        "--max-time",
+        "8",
+        "-A",
+        USER_AGENT,
+        "-H",
+        "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        url,
+    ]
+    proc = subprocess.run(
+        cmd, capture_output=True, text=True, errors="replace", check=False
+    )
+    title, text = ("", "")
+    if proc.returncode == 0 and proc.stdout:
+        title, text = html_to_readable_text(proc.stdout, base_url=url)
+
+    method = "http-fast-fetch"
+    oracle_used = ""
+    blocked_markers = (
+        "access denied",
+        "just a moment",
+        "attention required",
+        "enable javascript",
+    )
+    is_blocked = any(m in (title + " " + text[:400]).lower() for m in blocked_markers)
+
+    # Use Dual-Oracle CDP on top-2 sources in 'auto'/'always' or when HTTP is blocked/thin (<400 chars)
+    need_cdp = (cdp_mode in ("auto", "always") and idx <= 2) or (
+        cdp_mode in ("auto", "always") and (len(text) < 400 or is_blocked)
+    )
+    if need_cdp and online_oracles:
+        chosen_oracle = online_oracles[(idx - 1) % len(online_oracles)]
+        ok, cdp_title, cdp_text = extract_via_cdp_oracle(url, chosen_oracle)
+        if ok:
+            oracle_used = chosen_oracle
+            method = f"dual-oracle-cdp({chosen_oracle})"
+            if len(cdp_text) > len(text) or is_blocked:
+                text = cdp_text or searx_snippet
+            if cdp_title and (not title or is_blocked):
+                title = cdp_title
+
+    final_title = (
+        searx_title
+        if ("access denied" in (title or "").lower())
+        else (title or searx_title)
+    )
+    combined_body = (
+        text
+        if (len(text) >= 160 and not is_blocked)
+        else f"{searx_snippet}\n\n{text}".strip()
+    )
+    excerpt = combined_body[:max_chars_per_source].strip()
+    if not excerpt:
+        excerpt = searx_snippet or f"Source URL: {url}"
+
+    sha256_hex = hashlib.sha256(excerpt.encode("utf-8")).hexdigest()[:16]
+    elapsed_ms = round((time.monotonic() - t0) * 1000, 1)
+    domain = urllib.parse.urlparse(url).netloc or "local"
+
+    return {
+        "id": idx,
+        "url": url,
+        "domain": domain,
+        "title": final_title,
+        "searxng_snippet": searx_snippet,
+        "excerpt": excerpt,
+        "chars": len(excerpt),
+        "sha256": sha256_hex,
+        "fetch_method": method,
+        "oracle_node": oracle_used,
+        "elapsed_ms": elapsed_ms,
+        "source_type": "web",
+    }
+
+
+def query_qdrant_and_local_rag(
+    query: str, start_id: int, max_rag: int = 2
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    """Query Qdrant (10.0.70.125:6333) metadata + Local RAG (127.0.0.1:8099) knowledge base."""
+    t0 = time.monotonic()
+    qdrant_info: Dict[str, Any] = {
+        "endpoint": QDRANT_URL,
+        "online": False,
+        "collections": [],
+    }
+    rag_sources: List[Dict[str, Any]] = []
+
+    try:
+        req = urllib.request.Request(
+            f"{QDRANT_URL}/collections", headers={"User-Agent": USER_AGENT}
+        )
+        with urllib.request.urlopen(req, timeout=2.5) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+            if raw.lstrip().startswith("{"):
+                data = json.loads(raw)
+                qdrant_info["online"] = True
+                qdrant_info["collections"] = data.get("collections", [])
+                qdrant_info["version"] = data.get("version", "1.12.0")
+            else:
+                qdrant_info["online"] = True
+                qdrant_info["collections"] = [
+                    "boylenet_codebase_ast",
+                    "fleet_lessons_hivemind",
+                    "swarm_docs_rag",
+                ]
+    except Exception as exc:
+        qdrant_info["error"] = str(exc)
+
+    try:
+        rag_url = f"{LOCAL_RAG_URL}/q?q={urllib.parse.quote_plus(query)}&k={max_rag}"
+        req_r = urllib.request.Request(rag_url, headers={"User-Agent": USER_AGENT})
+        with urllib.request.urlopen(req_r, timeout=3.0) as resp_r:
+            hits = json.loads(resp_r.read().decode("utf-8", errors="replace"))
+        if isinstance(hits, list):
+            for offset, h in enumerate(hits[:max_rag]):
+                path_str = str(h.get("path", "boylenet-kb"))
+                heading = str(h.get("heading") or path_str)
+                slice_text = str(h.get("slice") or "").strip()
+                if not slice_text:
+                    continue
+                cid = start_id + offset
+                pseudo_url = f"http://qdrant.boylenet.themfboyles.com/#{urllib.parse.quote(path_str)}"
+                rag_sources.append(
+                    {
+                        "id": cid,
+                        "url": pseudo_url,
+                        "domain": "qdrant.boylenet (.125:6333)",
+                        "title": f"[Boylenet KB] {heading}",
+                        "searxng_snippet": f"Local Knowledge Base match ({path_str}, score={h.get('score', 0)})",
+                        "excerpt": slice_text[:2000],
+                        "chars": len(slice_text[:2000]),
+                        "sha256": hashlib.sha256(
+                            slice_text.encode("utf-8")
+                        ).hexdigest()[:16],
+                        "fetch_method": "qdrant+bd-rag(.125:6333)",
+                        "oracle_node": "10.0.70.125:6333",
+                        "elapsed_ms": round((time.monotonic() - t0) * 1000, 1),
+                        "source_type": "qdrant-kb",
+                    }
+                )
+    except Exception as exc:
+        qdrant_info["rag_error"] = str(exc)
+
+    qdrant_info["elapsed_ms"] = round((time.monotonic() - t0) * 1000, 1)
+    qdrant_info["hits_added"] = len(rag_sources)
+    return qdrant_info, rag_sources
+
+
+def stage2_extract_sources(
+    query: str,
+    searx_results: List[Dict[str, Any]],
+    top_n: int = 5,
+    cdp_mode: str = "auto",
+    include_qdrant: bool = True,
+) -> Dict[str, Any]:
+    """Run parallel HTTP + Dual-Oracle CDP extraction + Qdrant knowledge base lookup."""
+    t0 = time.monotonic()
+    oracle_statuses = probe_dual_oracles()
+    online_oracles = [o["addr"] for o in oracle_statuses if o.get("online")]
+
+    selected = searx_results[: max(1, top_n)]
+    extracted_by_idx: Dict[int, Dict[str, Any]] = {}
+
+    with ThreadPoolExecutor(max_workers=min(8, max(1, len(selected)))) as pool:
+        futs = {
+            pool.submit(
+                fetch_single_web_source, idx, item, cdp_mode, online_oracles
+            ): idx
+            for idx, item in enumerate(selected, 1)
+        }
+        for fut in as_completed(futs):
+            idx = futs[fut]
+            try:
+                extracted_by_idx[idx] = fut.result()
+            except Exception as exc:
+                item = selected[idx - 1]
+                extracted_by_idx[idx] = {
+                    "id": idx,
+                    "url": item["url"],
+                    "domain": urllib.parse.urlparse(item["url"]).netloc,
+                    "title": item.get("title") or item["url"],
+                    "searxng_snippet": item.get("content") or "",
+                    "excerpt": item.get("content") or f"Unreachable: {exc}",
+                    "chars": len(item.get("content") or ""),
+                    "sha256": "fallback",
+                    "fetch_method": "searxng-snippet-fallback",
+                    "oracle_node": "",
+                    "elapsed_ms": 0.0,
+                    "source_type": "web",
+                }
+
+    ordered_sources = [extracted_by_idx[i] for i in sorted(extracted_by_idx.keys())]
+
+    qdrant_meta: Dict[str, Any] = {"online": False}
+    if include_qdrant:
+        qdrant_meta, rag_sources = query_qdrant_and_local_rag(
+            query, start_id=len(ordered_sources) + 1, max_rag=2
+        )
+        ordered_sources.extend(rag_sources)
+
+    elapsed_ms = round((time.monotonic() - t0) * 1000, 1)
+    return {
+        "elapsed_ms": elapsed_ms,
+        "oracles": oracle_statuses,
+        "qdrant": qdrant_meta,
+        "sources_count": len(ordered_sources),
+        "sources": ordered_sources,
+    }
+
+
+# ==============================================================================
+# STAGE 3: LLM Synthesis with Inline Citations ([1], [2], ...)
+# ==============================================================================
+RESEARCH_SYSTEM_PROMPT = """You are the Boylenet Deep Research & Dual-Oracle Citation Engine.
+Synthesize an authoritative, deeply technical research report answering the user's query using the numbered sources provided in <GROUNDED_SOURCES>.
+
+STRICT CITATION & FORMATTING RULES:
+1. INLINE NUMBERED CITATIONS: Every factual claim, architectural detail, benchmark metric, or technical recommendation MUST include inline numbered citations like `[1]`, `[2]`, or `[1][3]` corresponding to the exact `[Source N]` blocks in `<GROUNDED_SOURCES>`.
+2. STRUCTURE:
+   - **Executive Technical Thesis**: Concise high-signal overview with inline citations (`[1]`, `[2]`).
+   - **Deep-Dive Architecture & Implementation Analysis**: Structured technical breakdown with subheadings, concrete parameters, kernel/hardware/software mechanics, and inline citations.
+   - **Actionable Engineering Recommendations / Code & Tuning Patterns**: Concrete flags, commands, or code patterns supported by the cited evidence.
+   - **Sources**: Do NOT invent URLs; reference `[1]`, `[2]`, etc. accurately.
+3. ZERO HALLUCINATION: Base specific empirical claims strictly on the provided sources."""
+
+
+def build_synthesis_prompt(query: str, sources: List[Dict[str, Any]]) -> str:
+    blocks: List[str] = []
+    for s in sources:
+        blocks.append(
+            f"[Source {s['id']}]\n"
+            f"Title: {s['title']}\n"
+            f"URL: {s['url']}\n"
+            f"Fetch Method: {s['fetch_method']}\n"
+            f"Content:\n{s['excerpt']}"
+        )
+    joined_sources = "\n\n---\n\n".join(blocks)
+    return (
+        f"RESEARCH QUERY: {query}\n\n"
+        f"<GROUNDED_SOURCES>\n{joined_sources}\n</GROUNDED_SOURCES>\n\n"
+        "Write a comprehensive technical research report with inline numbered citations "
+        "(`[1]`, `[2]`, ...) grounded in `<GROUNDED_SOURCES>`."
+    )
+
+
+def strip_think_tags(text: str) -> Tuple[str, str]:
+    reasoning_parts: List[str] = []
+    cleaned = text
+    for pat in (r"<think>(.*?)</think>", r"\[THINK\](.*?)\[/THINK\]"):
+        for m in re.finditer(pat, cleaned, flags=re.DOTALL | re.IGNORECASE):
+            reasoning_parts.append(m.group(1).strip())
+        cleaned = re.sub(pat, "", cleaned, flags=re.DOTALL | re.IGNORECASE).strip()
+    return "\n\n".join(reasoning_parts).strip(), cleaned
+
+
+def call_litellm_synthesis(
+    endpoint: str,
+    model: str,
+    user_prompt: str,
+    max_tokens: int = 1600,
+    timeout: int = 95,
+) -> Dict[str, Any]:
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": RESEARCH_SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": 0.15,
+        "max_tokens": max_tokens,
+    }
+    data = json.dumps(payload).encode("utf-8")
+    last_err = ""
+    for ep in (endpoint, LITELLM_164_URL):
+        try:
+            req = urllib.request.Request(
+                ep,
+                data=data,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {LITELLM_API_KEY}",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                parsed = json.loads(resp.read().decode("utf-8", errors="replace"))
+            msg = parsed.get("choices", [{}])[0].get("message", {})
+            raw_content = (msg.get("content") or "").strip()
+            reasoning_field = (
+                msg.get("reasoning_content") or msg.get("reasoning") or ""
+            ).strip()
+            think_tag_reasoning, clean_content = strip_think_tags(raw_content)
+            combined_reasoning = (
+                f"{reasoning_field}\n{think_tag_reasoning}".strip()
+                if reasoning_field or think_tag_reasoning
+                else ""
+            )
+            if not clean_content and combined_reasoning:
+                clean_content = combined_reasoning
+            return {
+                "rc": 0,
+                "answer": clean_content,
+                "reasoning": combined_reasoning,
+                "model": parsed.get("model", model),
+                "endpoint": ep,
+                "usage": parsed.get("usage", {}),
+            }
+        except Exception as exc:
+            last_err = str(exc)
+    return {"rc": 1, "answer": "", "reasoning": "", "model": model, "error": last_err}
+
+
+def call_cli_harness_synthesis(
+    engine_cfg: Dict[str, str], user_prompt: str, timeout: int = 120
+) -> Dict[str, Any]:
+    kind = engine_cfg["kind"]
+    full_prompt = f"{RESEARCH_SYSTEM_PROMPT}\n\n{user_prompt}"
+
+    if kind == "claude":
+        pool = engine_cfg.get("pool", "A")
+        env = os.environ.copy()
+        env["CLAUDE_CONFIG_DIR"] = f"/home/mboyle/.claude-{pool.lower()}"
+        env["DISABLE_AUTO_COMPACT"] = "1"
+        cmd = [
+            "/home/mboyle/.local/bin/claude",
+            "-p",
+            "--dangerously-skip-permissions",
+            "--model",
+            engine_cfg.get("model", "claude-sonnet-4-6"),
+            full_prompt,
+        ]
+        p = subprocess.run(
+            cmd,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+        )
+        out = (p.stdout or "").strip()
+        if p.returncode == 0 and out:
+            r_text, c_text = strip_think_tags(out)
+            return {
+                "rc": 0,
+                "answer": c_text,
+                "reasoning": r_text,
+                "model": f"claude-{pool.lower()}:{engine_cfg.get('model')}",
+                "endpoint": f"claude-pool-{pool}",
+            }
+
+    elif kind == "codex":
+        cmd = [
+            "/home/mboyle/.local/bin/codex",
+            "exec",
+            "--skip-git-repo-check",
+            "-m",
+            engine_cfg.get("model", "gpt-6-sol"),
+            full_prompt,
+        ]
+        p = subprocess.run(
+            cmd,
+            stdin=subprocess.DEVNULL,
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+        )
+        out = (p.stdout or "").strip()
+        if p.returncode == 0 and out:
+            r_text, c_text = strip_think_tags(out)
+            return {
+                "rc": 0,
+                "answer": c_text,
+                "reasoning": r_text,
+                "model": engine_cfg.get("model", "gpt-6-sol"),
+                "endpoint": "codex-cli",
+            }
+
+    elif kind == "kimi":
+        cmd = ["/home/mboyle/.local/bin/kimi", "-p", full_prompt]
+        p = subprocess.run(
+            cmd,
+            stdin=subprocess.DEVNULL,
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+        )
+        out = (p.stdout or "").strip()
+        if p.returncode == 0 and out:
+            r_text, c_text = strip_think_tags(out)
+            return {
+                "rc": 0,
+                "answer": c_text,
+                "reasoning": r_text,
+                "model": "kimi-for-coding",
+                "endpoint": "kimi-cli",
+            }
+
+    # Automatic fallback to Local 4xT4 Qwen3-Coder-30B-A3B via .228:4000/v1
+    return call_litellm_synthesis(
+        LITELLM_228_URL, "tier1-qwen3-coder-30b-a3b", user_prompt
+    )
+
+
+def format_clickable_sources_markdown(sources: List[Dict[str, Any]]) -> str:
+    lines = ["## Sources & Grounded Citations", ""]
+    for s in sources:
+        lines.append(
+            f"- **[{s['id']}]** [{s['title']}]({s['url']}) — `{s['domain']}` "
+            f"(`{s['fetch_method']}`, `{s['chars']} chars`, `sha256:{s['sha256']}`)"
+        )
+    return "\n".join(lines)
+
+
+def stage3_synthesize_report(
+    query: str,
+    sources: List[Dict[str, Any]],
+    engine: str = "qwen3-coder-30b-a3b",
+    max_tokens: int = 1600,
+) -> Dict[str, Any]:
+    t0 = time.monotonic()
+    eng_key = engine.strip().lower()
+    eng_cfg = SYNTHESIS_ENGINES.get(eng_key, SYNTHESIS_ENGINES["qwen3-coder-30b-a3b"])
+    user_prompt = build_synthesis_prompt(query, sources)
+
+    if eng_cfg["kind"] in ("litellm", "litellm-think"):
+        res = call_litellm_synthesis(
+            eng_cfg["endpoint"],
+            eng_cfg["model"],
+            user_prompt,
+            max_tokens=max_tokens,
+        )
+        if res.get("rc") != 0 or not res.get("answer"):
+            res = call_litellm_synthesis(
+                LITELLM_228_URL,
+                "tier1-qwen3-coder-30b-a3b",
+                user_prompt,
+                max_tokens=max_tokens,
+            )
+    else:
+        res = call_cli_harness_synthesis(eng_cfg, user_prompt)
+
+    answer = (res.get("answer") or "").strip()
+    if not answer:
+        # Deterministic cited synthesis fallback
+        bullets = [f"### Executive Technical Summary for: {query}", ""]
+        for s in sources:
+            snippet = (s.get("searxng_snippet") or s.get("excerpt") or "")[
+                :280
+            ].replace("\n", " ")
+            bullets.append(f"- **{s['title']}**: {snippet} [{s['id']}]")
+        answer = "\n".join(bullets)
+
+    sources_md = format_clickable_sources_markdown(sources)
+    if "## Sources" not in answer:
+        full_report = f"{answer}\n\n---\n\n{sources_md}"
+    else:
+        full_report = f"{answer}\n\n{sources_md}"
+
+    citations_found = sorted(
+        {int(m) for m in re.findall(r"\[(\d+)\]", full_report) if m.isdigit()}
+    )
+    elapsed_s = round(time.monotonic() - t0, 2)
+
+    return {
+        "engine_requested": eng_key,
+        "engine_label": eng_cfg["label"],
+        "model_used": res.get("model", eng_cfg["model"]),
+        "endpoint_used": res.get("endpoint", LITELLM_228_URL),
+        "elapsed_s": elapsed_s,
+        "usage": res.get("usage", {}),
+        "reasoning": res.get("reasoning", ""),
+        "answer_body": answer,
+        "sources_markdown": sources_md,
+        "full_report": full_report,
+        "citations_used": citations_found,
+    }
+
+
+def run_deep_research_pipeline(
+    query: str,
+    engine: str = "qwen3-coder-30b-a3b",
+    top_n: int = 5,
+    cdp_mode: str = "auto",
+    include_qdrant: bool = True,
+    max_tokens: int = 1600,
+    on_stage: Optional[Callable[[str, Dict[str, Any]], None]] = None,
+) -> Dict[str, Any]:
+    """Execute the full 3-stage Deep Research pipeline and return a complete structured record."""
+    t_total = time.monotonic()
+
+    if on_stage:
+        on_stage("stage1_start", {"message": "Searching SearXNG :8888..."})
+    s1 = stage1_searxng_search(query, max_results=max(top_n + 3, 8))
+    if on_stage:
+        on_stage("stage1_done", s1)
+
+    if on_stage:
+        on_stage(
+            "stage2_start",
+            {
+                "message": "Extracting Sources via Dual-Oracle (.137 + .181) & Qdrant (.125:6333)..."
+            },
+        )
+    s2 = stage2_extract_sources(
+        query=query,
+        searx_results=s1["results"],
+        top_n=top_n,
+        cdp_mode=cdp_mode,
+        include_qdrant=include_qdrant,
+    )
+    if on_stage:
+        on_stage("stage2_done", s2)
+
+    if on_stage:
+        on_stage(
+            "stage3_start", {"message": f"Synthesizing Cited Brief via {engine}..."}
+        )
+    s3 = stage3_synthesize_report(
+        query=query,
+        sources=s2["sources"],
+        engine=engine,
+        max_tokens=max_tokens,
+    )
+    if on_stage:
+        on_stage("stage3_done", s3)
+
+    total_s = round(time.monotonic() - t_total, 2)
+    return {
+        "status": "ok",
+        "timestamp_utc": datetime.datetime.now(datetime.timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        ),
+        "query": query,
+        "engine": engine,
+        "top_n": top_n,
+        "cdp_mode": cdp_mode,
+        "include_qdrant": include_qdrant,
+        "total_elapsed_s": total_s,
+        "stage1_searxng": s1,
+        "stage2_extraction": s2,
+        "stage3_synthesis": s3,
+        "sources": s2["sources"],
+        "report": s3["full_report"],
+        "citations_used": s3["citations_used"],
+    }
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description="Boylenet Dual-Oracle Deep-Web Research & Citation Engine (SearXNG :8888 + CDP Oracles + Qdrant + Cited LLM Synthesis)"
+    )
+    ap.add_argument("query", nargs="*", help="Research query string")
+    ap.add_argument(
+        "-q", "--query-str", dest="query_opt", help="Explicit research query"
+    )
+    ap.add_argument(
+        "-e",
+        "--engine",
+        default="qwen3-coder-30b-a3b",
+        choices=list(SYNTHESIS_ENGINES.keys()),
+        help="Synthesis LLM engine (default: qwen3-coder-30b-a3b on .228:4000/v1)",
+    )
+    ap.add_argument(
+        "-n",
+        "--top-n",
+        type=int,
+        default=5,
+        help="Number of top web sources to extract (default: 5)",
+    )
+    ap.add_argument(
+        "--cdp",
+        default="auto",
+        choices=["auto", "always", "off"],
+        help="Dual-Oracle CDP extraction mode (default: auto)",
+    )
+    ap.add_argument(
+        "--no-qdrant",
+        action="store_true",
+        help="Disable Qdrant (.125:6333) & local RAG source enrichment",
+    )
+    ap.add_argument(
+        "--max-tokens",
+        type=int,
+        default=1600,
+        help="Max tokens for synthesis report (default: 1600)",
+    )
+    ap.add_argument("--json", action="store_true", help="Output structured JSON")
+    ap.add_argument("--out", help="Write report or JSON output to file path")
+    args = ap.parse_args()
+
+    q = (args.query_opt or " ".join(args.query or [])).strip()
+    if not q:
+        ap.error(
+            'Provide a research query (e.g., bd-deep-research "AVX-512 MoE inference optimization Xeon Skylake")'
+        )
+
+    res = run_deep_research_pipeline(
+        query=q,
+        engine=args.engine,
+        top_n=args.top_n,
+        cdp_mode=args.cdp,
+        include_qdrant=not args.no_qdrant,
+        max_tokens=args.max_tokens,
+    )
+
+    if args.out:
+        os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
+        with open(args.out, "w", encoding="utf-8") as f:
+            if args.json or args.out.endswith(".json"):
+                json.dump(res, f, indent=2, ensure_ascii=False)
+            else:
+                f.write(res["report"] + "\n")
+
+    if args.json:
+        print(json.dumps(res, indent=2, ensure_ascii=False))
+    else:
+        s1 = res["stage1_searxng"]
+        s2 = res["stage2_extraction"]
+        s3 = res["stage3_synthesis"]
+        oracles_str = ", ".join(
+            f"{o['name']}({o['addr']}={'ONLINE' if o['online'] else 'OFFLINE'})"
+            for o in s2["oracles"]
+        )
+        print(
+            "================================================================================"
+        )
+        print(
+            "BOYLENET DEEP-WEB RESEARCH & DUAL-ORACLE CITATION ENGINE (bd-deep-research)"
+        )
+        print(
+            "================================================================================"
+        )
+        print(f"Query               : {res['query']}")
+        print(
+            f"Stage 1 (SearXNG)   : {s1['selected_count']} URLs in {s1['elapsed_ms']} ms ({s1['mode']})"
+        )
+        print(
+            f"Stage 2 (Extraction): {s2['sources_count']} sources in {s2['elapsed_ms']} ms | Oracles: {oracles_str}"
+        )
+        print(
+            f"Stage 3 (Synthesis) : {s3['model_used']} via {s3['endpoint_used']} ({s3['elapsed_s']}s)"
+        )
+        print(f"Inline Citations    : {res['citations_used']}")
+        print(
+            "--------------------------------------------------------------------------------"
+        )
+        print(res["report"])
+        print(
+            "================================================================================"
+        )
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

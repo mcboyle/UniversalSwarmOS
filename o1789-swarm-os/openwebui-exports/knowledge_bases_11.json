@@ -1,0 +1,460 @@
+{
+  "items": [
+    {
+      "id": "bd-kb-86-models",
+      "user_id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "🧠 [BD KB #03] 86-Model Vault Catalog, SWE-bench / LiveCodeBench & Dual-Speed Airgap",
+      "description": "Complete 86-model catalog across Vault A (.72), Vault B (.83), GPU Inference (.125), BattleStation (.137), and $1,000 Cloud Burst with dual-speed WAN airgap.",
+      "meta": {
+        "source": "bd-kb",
+        "file_ids": [
+          "bdkb-file-03-86-model-vault-benchmarks-and-airgap"
+        ],
+        "qdrant_collection": "bd_master_kb",
+        "embedding_dim": 1024
+      },
+      "access_grants": [
+        {
+          "id": "fcf5ae51-91fc-46d9-a9a1-80b9af65a6ae",
+          "resource_type": "knowledge",
+          "resource_id": "bd-kb-86-models",
+          "principal_type": "user",
+          "principal_id": "*",
+          "permission": "read",
+          "created_at": 1792355469
+        }
+      ],
+      "created_at": 1792355469,
+      "updated_at": 1792355469,
+      "user": {
+        "id": "a12463df-370f-4948-b488-9437da254b15",
+        "name": "User",
+        "role": "admin",
+        "email": "admin@localhost"
+      },
+      "file_count": 1,
+      "write_access": true
+    },
+    {
+      "id": "bd-kb-bulkdownloader",
+      "user_id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "📦 [BD KB #01] BulkDownloader Architecture, Contracts, Cut Workflow & Ramdisk Pytest",
+      "description": "BulkDownloader repository layout, yt-dlp pin invariant, Rule 22 sandbox paths, Cut Workflow, and /dev/shm ramdisk pytest execution.",
+      "meta": {
+        "source": "bd-kb",
+        "file_ids": [
+          "bdkb-file-01-bulkdownloader-architecture-and-contracts"
+        ],
+        "qdrant_collection": "bd_master_kb",
+        "embedding_dim": 1024
+      },
+      "access_grants": [
+        {
+          "id": "de4d7e08-c971-4204-a785-dae8e9e434e2",
+          "resource_type": "knowledge",
+          "resource_id": "bd-kb-bulkdownloader",
+          "principal_type": "user",
+          "principal_id": "*",
+          "permission": "read",
+          "created_at": 1792355469
+        }
+      ],
+      "created_at": 1792355469,
+      "updated_at": 1792355469,
+      "user": {
+        "id": "a12463df-370f-4948-b488-9437da254b15",
+        "name": "User",
+        "role": "admin",
+        "email": "admin@localhost"
+      },
+      "file_count": 1,
+      "write_access": true
+    },
+    {
+      "id": "bd-kb-ci-and-uis",
+      "user_id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "🛠️ [BD KB #05] CI Taxonomy, Great Train Recovery, 14 MCP Servers & 50 OpenWebUI Toolkits",
+      "description": "BulkDownloader CI failure taxonomy (C1-C6), Great Train Recovery playbooks, 14 MCP servers, 128 skills, and 50 OpenWebUI toolkits.",
+      "meta": {
+        "source": "bd-kb",
+        "file_ids": [
+          "bdkb-file-05-ci-taxonomy-recovery-and-mcp-tools"
+        ],
+        "qdrant_collection": "bd_master_kb",
+        "embedding_dim": 1024
+      },
+      "access_grants": [
+        {
+          "id": "0933a05c-6860-4fe1-b89f-2e82ae008e2d",
+          "resource_type": "knowledge",
+          "resource_id": "bd-kb-ci-and-uis",
+          "principal_type": "user",
+          "principal_id": "*",
+          "permission": "read",
+          "created_at": 1792355469
+        }
+      ],
+      "created_at": 1792355469,
+      "updated_at": 1792355469,
+      "user": {
+        "id": "a12463df-370f-4948-b488-9437da254b15",
+        "name": "User",
+        "role": "admin",
+        "email": "admin@localhost"
+      },
+      "file_count": 1,
+      "write_access": true
+    },
+    {
+      "id": "bd-kb-cluster-infra",
+      "user_id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "🖧 [BD KB #02] Boylenet 27-Node Cluster, 12U Rack, VMware ESXi/vSAN & 25GbE Fabric",
+      "description": "Full 27-node Boylenet hardware/IP/role table, 12U 36-inch rack physical layout, VMware ESXi 8.0 / vSAN 18TB NVMe, and UniFi 25GbE SFP28 fabric.",
+      "meta": {
+        "source": "bd-kb",
+        "file_ids": [
+          "bdkb-file-02-boylenet-27node-cluster-12u-rack-vsan-25gbe"
+        ],
+        "qdrant_collection": "bd_master_kb",
+        "embedding_dim": 1024
+      },
+      "access_grants": [
+        {
+          "id": "f49dedb9-fcd6-4112-8cac-2f4937450694",
+          "resource_type": "knowledge",
+          "resource_id": "bd-kb-cluster-infra",
+          "principal_type": "user",
+          "principal_id": "*",
+          "permission": "read",
+          "created_at": 1792355469
+        }
+      ],
+      "created_at": 1792355469,
+      "updated_at": 1792355469,
+      "user": {
+        "id": "a12463df-370f-4948-b488-9437da254b15",
+        "name": "User",
+        "role": "admin",
+        "email": "admin@localhost"
+      },
+      "file_count": 1,
+      "write_access": true
+    },
+    {
+      "id": "bd-kb-fleet-law",
+      "user_id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "⚖️ [BD KB #04] Fleet Law (Rules 1-86), O1740 Dynamic Routing & HUB-GATE",
+      "description": "Authoritative Fleet Law Rules 1-86, Protocols A-F, O1740 Dynamic Capability Routing (POOL_STATE.tsv), HUB-GATE, and Rule 22 Anti-Hallucination Shield.",
+      "meta": {
+        "source": "bd-kb",
+        "file_ids": [
+          "bdkb-file-04-fleet-law-rules-1-86-and-o1740-routing"
+        ],
+        "qdrant_collection": "bd_master_kb",
+        "embedding_dim": 1024
+      },
+      "access_grants": [
+        {
+          "id": "30cde4e2-e691-445e-9fdb-de457f5add85",
+          "resource_type": "knowledge",
+          "resource_id": "bd-kb-fleet-law",
+          "principal_type": "user",
+          "principal_id": "*",
+          "permission": "read",
+          "created_at": 1792355469
+        }
+      ],
+      "created_at": 1792355469,
+      "updated_at": 1792355469,
+      "user": {
+        "id": "a12463df-370f-4948-b488-9437da254b15",
+        "name": "User",
+        "role": "admin",
+        "email": "admin@localhost"
+      },
+      "file_count": 1,
+      "write_access": true
+    },
+    {
+      "id": "bd-kb-master",
+      "user_id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "📚 [BD KB #00] Master Encyclopedia (BulkDownloader + 27-Node Boylenet + 86 Models + Rules 1-86)",
+      "description": "Single-pane-of-glass Master Encyclopedia covering BulkDownloader, 27-node Boylenet cluster, 86-model vault, Fleet Rules 1-86, O1740 routing, and 50 toolkits.",
+      "meta": {
+        "source": "bd-kb",
+        "file_ids": [
+          "bdkb-file-00-bd-kb-master-encyclopedia",
+          "bdkb-file-01-bulkdownloader-architecture-and-contracts",
+          "bdkb-file-02-boylenet-27node-cluster-12u-rack-vsan-25gbe",
+          "bdkb-file-03-86-model-vault-benchmarks-and-airgap",
+          "bdkb-file-04-fleet-law-rules-1-86-and-o1740-routing",
+          "bdkb-file-05-ci-taxonomy-recovery-and-mcp-tools"
+        ],
+        "qdrant_collection": "bd_master_kb",
+        "embedding_dim": 1024
+      },
+      "access_grants": [
+        {
+          "id": "ad827364-22d7-443c-9f58-e10d57913303",
+          "resource_type": "knowledge",
+          "resource_id": "bd-kb-master",
+          "principal_type": "user",
+          "principal_id": "*",
+          "permission": "read",
+          "created_at": 1792355469
+        }
+      ],
+      "created_at": 1792355469,
+      "updated_at": 1792355469,
+      "user": {
+        "id": "a12463df-370f-4948-b488-9437da254b15",
+        "name": "User",
+        "role": "admin",
+        "email": "admin@localhost"
+      },
+      "file_count": 6,
+      "write_access": true
+    },
+    {
+      "id": "99b38368-b411-419e-b661-4afcbbee2f15",
+      "user_id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "🎓 Boylenet Fleet Lessons & Best Practices (701 vectors)",
+      "description": "1024-d Qdrant vector index of curated fleet lessons, CI failure taxonomy fixes, and cluster invariants.",
+      "meta": {
+        "source": "external",
+        "read_only": true,
+        "external": {
+          "connection_id": "qdrant-fleet-lessons-hivemind",
+          "source": {
+            "type": "collection",
+            "name": "fleet_lessons_hivemind",
+            "config": {
+              "content_field": "payload.summary",
+              "metadata_field": "payload",
+              "document_id_field": "id"
+            }
+          },
+          "provider": "qdrant",
+          "auth_mode": "service_account",
+          "capabilities": {
+            "retrieve": true
+          }
+        }
+      },
+      "access_grants": [
+        {
+          "id": "a65f25d9-9815-4cbc-aead-2ffc0f36b7ce",
+          "resource_type": "knowledge",
+          "resource_id": "99b38368-b411-419e-b661-4afcbbee2f15",
+          "principal_type": "user",
+          "principal_id": "*",
+          "permission": "read",
+          "created_at": 1792354698
+        }
+      ],
+      "created_at": 1792354698,
+      "updated_at": 1792354698,
+      "user": {
+        "id": "a12463df-370f-4948-b488-9437da254b15",
+        "name": "User",
+        "role": "admin",
+        "email": "admin@localhost"
+      },
+      "file_count": 0,
+      "write_access": true
+    },
+    {
+      "id": "b0f1e4b0-4332-4463-a60e-5d8d24c00f47",
+      "user_id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "🧠 Boylenet HiveMind Episodic Memory (701 vectors)",
+      "description": "1024-d Qdrant vector index of agent trajectories, debugging breakthroughs, and verified infra receipts.",
+      "meta": {
+        "source": "external",
+        "read_only": true,
+        "external": {
+          "connection_id": "qdrant-boylenet-episodic-memory",
+          "source": {
+            "type": "collection",
+            "name": "boylenet_episodic_memory",
+            "config": {
+              "content_field": "payload.summary",
+              "metadata_field": "payload",
+              "document_id_field": "id"
+            }
+          },
+          "provider": "qdrant",
+          "auth_mode": "service_account",
+          "capabilities": {
+            "retrieve": true
+          }
+        }
+      },
+      "access_grants": [
+        {
+          "id": "6dcec8b1-b0a7-4cc8-92cb-0f0943296dce",
+          "resource_type": "knowledge",
+          "resource_id": "b0f1e4b0-4332-4463-a60e-5d8d24c00f47",
+          "principal_type": "user",
+          "principal_id": "*",
+          "permission": "read",
+          "created_at": 1792354698
+        }
+      ],
+      "created_at": 1792354698,
+      "updated_at": 1792354698,
+      "user": {
+        "id": "a12463df-370f-4948-b488-9437da254b15",
+        "name": "User",
+        "role": "admin",
+        "email": "admin@localhost"
+      },
+      "file_count": 0,
+      "write_access": true
+    },
+    {
+      "id": "48494f05-cbbe-4941-9a23-56ff1aff27ce",
+      "user_id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "📚 Boylenet Fleet Rules & Harness RAG (2,670 vectors)",
+      "description": "Primary 1024-d Qdrant vector index of FLEET_RULE.md, harness scripts, role prompts, and O1789 receipts.",
+      "meta": {
+        "source": "external",
+        "read_only": true,
+        "external": {
+          "connection_id": "qdrant-boylenet-fleet-rag",
+          "source": {
+            "type": "collection",
+            "name": "boylenet_fleet_rag",
+            "config": {
+              "content_field": "payload.snippet",
+              "metadata_field": "payload",
+              "document_id_field": "id"
+            }
+          },
+          "provider": "qdrant",
+          "auth_mode": "service_account",
+          "capabilities": {
+            "retrieve": true
+          }
+        }
+      },
+      "access_grants": [
+        {
+          "id": "a56568bb-c5fc-4557-8de6-96904c5b05d5",
+          "resource_type": "knowledge",
+          "resource_id": "48494f05-cbbe-4941-9a23-56ff1aff27ce",
+          "principal_type": "user",
+          "principal_id": "*",
+          "permission": "read",
+          "created_at": 1792354697
+        }
+      ],
+      "created_at": 1792354697,
+      "updated_at": 1792354697,
+      "user": {
+        "id": "a12463df-370f-4948-b488-9437da254b15",
+        "name": "User",
+        "role": "admin",
+        "email": "admin@localhost"
+      },
+      "file_count": 0,
+      "write_access": true
+    },
+    {
+      "id": "7ca0a89b-45d7-4049-baa9-ecb25348ad2c",
+      "user_id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "📘 Boylenet Swarm Architecture & Runbooks RAG (1,388 vectors)",
+      "description": "1024-d Qdrant vector index of Boylenet 27-node architecture docs, skills, and operational runbooks.",
+      "meta": {
+        "source": "external",
+        "read_only": true,
+        "external": {
+          "connection_id": "qdrant-swarm-docs-rag",
+          "source": {
+            "type": "collection",
+            "name": "swarm_docs_rag",
+            "config": {
+              "content_field": "payload.snippet",
+              "metadata_field": "payload",
+              "document_id_field": "id"
+            }
+          },
+          "provider": "qdrant",
+          "auth_mode": "service_account",
+          "capabilities": {
+            "retrieve": true
+          }
+        }
+      },
+      "access_grants": [
+        {
+          "id": "2bb2249a-0d19-4cc7-bf61-351632d72e9d",
+          "resource_type": "knowledge",
+          "resource_id": "7ca0a89b-45d7-4049-baa9-ecb25348ad2c",
+          "principal_type": "user",
+          "principal_id": "*",
+          "permission": "read",
+          "created_at": 1792354697
+        }
+      ],
+      "created_at": 1792354697,
+      "updated_at": 1792354697,
+      "user": {
+        "id": "a12463df-370f-4948-b488-9437da254b15",
+        "name": "User",
+        "role": "admin",
+        "email": "admin@localhost"
+      },
+      "file_count": 0,
+      "write_access": true
+    },
+    {
+      "id": "c7249eea-c537-4c23-b9bc-8d725f299382",
+      "user_id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "🧬 BulkDownloader & Harness AST Symbols RAG (1,282 vectors)",
+      "description": "1024-d Qdrant vector index of AST-sliced functions, classes, and modules across BulkDownloader and bd-persist.",
+      "meta": {
+        "source": "external",
+        "read_only": true,
+        "external": {
+          "connection_id": "qdrant-boylenet-codebase-ast",
+          "source": {
+            "type": "collection",
+            "name": "boylenet_codebase_ast",
+            "config": {
+              "content_field": "payload.snippet",
+              "metadata_field": "payload",
+              "document_id_field": "id"
+            }
+          },
+          "provider": "qdrant",
+          "auth_mode": "service_account",
+          "capabilities": {
+            "retrieve": true
+          }
+        }
+      },
+      "access_grants": [
+        {
+          "id": "e30f752b-9d6c-46e7-ab20-08a13b1ba5fb",
+          "resource_type": "knowledge",
+          "resource_id": "c7249eea-c537-4c23-b9bc-8d725f299382",
+          "principal_type": "user",
+          "principal_id": "*",
+          "permission": "read",
+          "created_at": 1792354697
+        }
+      ],
+      "created_at": 1792354697,
+      "updated_at": 1792354697,
+      "user": {
+        "id": "a12463df-370f-4948-b488-9437da254b15",
+        "name": "User",
+        "role": "admin",
+        "email": "admin@localhost"
+      },
+      "file_count": 0,
+      "write_access": true
+    }
+  ],
+  "total": 11
+}

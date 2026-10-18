@@ -1,0 +1,175 @@
+#!/usr/bin/env python3
+"""Live dashboard for active aria2c downloads and 5.0 TB vault capacity across 10.0.70.72 and 10.0.70.83."""
+
+import concurrent.futures
+import json
+import subprocess
+import sys
+from datetime import datetime, timezone
+
+NODES = ["10.0.70.72", "10.0.70.83"]
+
+REMOTE_PROBE = r"""python3 -c '
+import glob, json, os, subprocess
+
+out = {"hostname": "", "vaults": [], "aria2_procs": [], "aria2_ctrl": [], "files": []}
+out["hostname"] = subprocess.check_output(["hostname"], text=True).strip()
+
+df_raw = subprocess.check_output(["df", "-B1", "-P"], text=True).splitlines()[1:]
+candidates = []
+for line in df_raw:
+    parts = line.split()
+    if len(parts) < 6:
+        continue
+    dev, total, used, avail, pct, mnt = parts[0], int(parts[1]), int(parts[2]), int(parts[3]), parts[4], parts[5]
+    if dev.startswith(("tmpfs", "devtmpfs", "overlay", "shm", "efivarfs")):
+        continue
+    candidates.append({"dev": dev, "total": total, "used": used, "avail": avail, "pct": pct, "mnt": mnt})
+
+candidates.sort(key=lambda x: x["total"], reverse=True)
+vaults = [c for c in candidates if c["total"] >= 1000 * (1024**3)] or candidates[:1]
+out["vaults"] = vaults
+
+ps_raw = subprocess.run(["ps", "-eo", "pid,etimes,pcpu,pmem,args"], capture_output=True, text=True).stdout.splitlines()[1:]
+for line in ps_raw:
+    if "aria2c" in line and "python3 -c" not in line:
+        out["aria2_procs"].append(line.strip())
+
+search_roots = {"/opt/models"}
+for p in ["/opt/models"]:
+    if os.path.isdir(p):
+        search_roots.add(p)
+
+seen_ctrl = set()
+seen_files = set()
+for root in sorted(search_roots):
+    try:
+        find_cmd = ["find", root, "-maxdepth", "4", "(", "-name", "*.aria2", "-o", "-name", "*.gguf", "-o", "-name", "*.safetensors", "-o", "-name", "*.bin", "-o", "-name", "*.tar*", "-o", "-name", "*.iso", "-o", "-size", "+100M", ")", "-not", "-path", "*/.*"]
+        res = subprocess.run(find_cmd, capture_output=True, text=True, timeout=8)
+        for fpath in res.stdout.splitlines():
+            fpath = fpath.strip()
+            if not fpath or not os.path.exists(fpath):
+                continue
+            try:
+                st = os.stat(fpath)
+            except OSError:
+                continue
+            if fpath.endswith(".aria2"):
+                if fpath not in seen_ctrl:
+                    seen_ctrl.add(fpath)
+                    target = fpath[:-6]
+                    tsize = os.path.getsize(target) if os.path.exists(target) else 0
+                    out["aria2_ctrl"].append({"ctrl": fpath, "ctrl_bytes": st.st_size, "target": target, "target_bytes": tsize})
+            else:
+                if fpath not in seen_files:
+                    seen_files.add(fpath)
+                    out["files"].append({"path": fpath, "bytes": st.st_size, "mtime": st.st_mtime})
+    except Exception:
+        pass
+
+out["files"].sort(key=lambda x: x["bytes"], reverse=True)
+out["files"] = out["files"][:25]
+print(json.dumps(out))
+'"""
+
+
+def query_node(ip: str) -> dict:
+    cmd = [
+        "ssh",
+        "-o", "BatchMode=yes",
+        "-o", "ConnectTimeout=5",
+        "-o", "StrictHostKeyChecking=accept-new",
+        ip,
+        REMOTE_PROBE,
+    ]
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=15, check=True)
+        data = json.loads(res.stdout.strip().splitlines()[-1])
+        data["ip"] = ip
+        data["ok"] = True
+        return data
+    except Exception as exc:
+        return {"ip": ip, "ok": False, "error": str(exc)}
+
+
+def fmt_gib(num_bytes: int) -> str:
+    return f"{num_bytes / (1024 ** 3):.2f} GiB"
+
+
+def fmt_tib(num_bytes: int) -> str:
+    return f"{num_bytes / (1024 ** 4):.3f} TiB"
+
+
+def main() -> int:
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    print("=" * 88)
+    print(f" BD LOCAL DOWNLOAD MONITOR | 5.0 TB VAULTS (10.0.70.72 & 10.0.70.83) | {now}")
+    print("=" * 88)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(NODES)) as ex:
+        results = list(ex.map(query_node, NODES))
+
+    total_free_bytes = 0
+    total_cap_bytes = 0
+    total_procs = 0
+    total_ctrl = 0
+
+    for r in results:
+        ip = r["ip"]
+        if not r.get("ok"):
+            print(f"\n[NODE {ip}] ERROR: {r.get('error')}")
+            continue
+
+        host = r.get("hostname", "unknown")
+        print(f"\n[NODE {ip} ({host})]")
+        print("-" * 88)
+
+        print("  Disk Free Space (TiB) / Vault Capacity:")
+        for v in r.get("vaults", []):
+            total_free_bytes += v["avail"]
+            total_cap_bytes += v["total"]
+            print(
+                f"    Mount: {v['mnt']:<18} Dev: {v['dev']:<22} "
+                f"Free: {fmt_tib(v['avail'])} / Total: {fmt_tib(v['total'])} "
+                f"(Used: {fmt_tib(v['used'])}, {v['pct']})"
+            )
+
+        procs = r.get("aria2_procs", [])
+        total_procs += len(procs)
+        print(f"  Active aria2c Processes ({len(procs)}):")
+        if procs:
+            for p in procs:
+                print(f"    {p}")
+        else:
+            print("    (none active)")
+
+        ctrls = r.get("aria2_ctrl", [])
+        total_ctrl += len(ctrls)
+        print(f"  Active .aria2 Control Files ({len(ctrls)}):")
+        if ctrls:
+            for c in ctrls:
+                print(
+                    f"    {c['ctrl']} -> target: {c['target']} ({fmt_gib(c['target_bytes'])})"
+                )
+        else:
+            print("    (none present)")
+
+        files = r.get("files", [])
+        print(f"  Current Vault / Payload File Sizes (GiB) [top {len(files)}]:")
+        if files:
+            for f in files[:10]:
+                print(f"    {fmt_gib(f['bytes']):>12}  {f['path']}")
+        else:
+            print("    (no payload files >=100M found)")
+
+    print("\n" + "=" * 88)
+    print(
+        f" SUMMARY | Combined Free: {fmt_tib(total_free_bytes)} / {fmt_tib(total_cap_bytes)} "
+        f"| Active aria2c: {total_procs} | .aria2 Controls: {total_ctrl}"
+    )
+    print("=" * 88)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

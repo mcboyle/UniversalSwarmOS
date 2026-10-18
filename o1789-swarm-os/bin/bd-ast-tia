@@ -1,0 +1,265 @@
+#!/usr/bin/env python3
+"""
+bd-ast-tia: Semantic Test Impact Analysis for BulkDownloader and Agent Fleets.
+Analyzes git diffs, extracts modified AST symbols, and maps them to the
+highest-relevance pytest targets. Cuts inner-loop feedback from minutes to seconds.
+"""
+
+import sys
+import os
+import ast
+import subprocess
+import argparse
+import json
+import re
+from typing import List, Dict, Set
+
+def get_repo_root(start_dir: str = ".") -> str:
+    try:
+        out = subprocess.check_output(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=start_dir,
+            stderr=subprocess.DEVNULL,
+            text=True
+        ).strip()
+        return out
+    except Exception:
+        return os.path.abspath(start_dir)
+
+def get_modified_py_files(repo_root: str, base_ref: str = None) -> List[str]:
+    """Get modified python files via git status/diff."""
+    cmd = ["git", "diff", "--name-only", "--diff-filter=d"]
+    if base_ref:
+        cmd.append(base_ref)
+    else:
+        # Check staged and unstaged
+        cmd.append("HEAD")
+        
+    try:
+        out = subprocess.check_output(cmd, cwd=repo_root, stderr=subprocess.DEVNULL, text=True)
+        files = [f.strip() for f in out.splitlines() if f.strip().endswith(".py")]
+        if not files:
+            # Try untracked/unstaged against working tree
+            out_status = subprocess.check_output(
+                ["git", "status", "--porcelain"], cwd=repo_root, stderr=subprocess.DEVNULL, text=True
+            )
+            for line in out_status.splitlines():
+                if line.endswith(".py"):
+                    parts = line.strip().split()
+                    if len(parts) >= 2:
+                        files.append(parts[-1])
+        return list(dict.fromkeys(files))
+    except Exception:
+        return []
+
+def extract_ast_symbols(file_path: str) -> Set[str]:
+    """Extract class, function, and method names from a Python source file."""
+    if not os.path.isfile(file_path):
+        return set()
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            tree = ast.parse(f.read(), filename=file_path)
+    except Exception:
+        return set()
+
+    symbols = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if not node.name.startswith("__"):
+                symbols.add(node.name)
+        elif isinstance(node, ast.ClassDef):
+            symbols.add(node.name)
+    return symbols
+
+def get_changed_symbols(repo_root: str, rel_path: str, base_ref: str = None) -> Set[str]:
+    """Compare current AST symbols with base AST symbols or git diff hunks."""
+    full_path = os.path.join(repo_root, rel_path)
+    current_symbols = extract_ast_symbols(full_path)
+    if not current_symbols:
+        return set()
+
+    # Get git diff hunk lines to find symbols in changed regions
+    ref_arg = base_ref if base_ref else "HEAD"
+    try:
+        diff_out = subprocess.check_output(
+            ["git", "diff", ref_arg, "--", rel_path],
+            cwd=repo_root,
+            stderr=subprocess.DEVNULL,
+            text=True
+        )
+    except Exception:
+        diff_out = ""
+
+    if not diff_out:
+        # If no diff vs HEAD, return all symbols as candidate
+        return current_symbols
+
+    # Filter symbols present in the diff additions
+    changed = set()
+    for sym in current_symbols:
+        # Check if symbol appears in added/modified diff lines
+        pattern = rf"^\+.*\b{re.escape(sym)}\b"
+        if re.search(pattern, diff_out, re.MULTILINE):
+            changed.add(sym)
+
+    return changed if changed else current_symbols
+
+def module_name_from_path(rel_path: str) -> str:
+    """e.g. backend/api/auth.py -> backend.api.auth or auth"""
+    base = os.path.splitext(rel_path)[0]
+    return base.replace("/", ".").replace("\\", ".")
+
+def score_test_files(repo_root: str, modified_files: List[str], base_ref: str = None) -> List[Dict]:
+    """Score all test files based on AST symbol references and imports."""
+    tests_dir = os.path.join(repo_root, "tests")
+    if not os.path.isdir(tests_dir):
+        return []
+
+    test_scores: Dict[str, Dict] = {}
+
+    for mod_file in modified_files:
+        if mod_file.startswith("tests/"):
+            # The test file itself was modified!
+            test_scores[mod_file] = {
+                "file": mod_file,
+                "score": 100,
+                "matched_symbols": ["(self-modified)"],
+                "specific_tests": []
+            }
+            continue
+
+        symbols = get_changed_symbols(repo_root, mod_file, base_ref)
+        base_name = os.path.basename(mod_file).replace(".py", "")
+        mod_dotted = module_name_from_path(mod_file)
+
+        # Quick candidate search using ripgrep or python fallback
+        rg_cmd = ["rg", "-l", "--glob", "test_*.py", rf"\b({base_name})\b", "tests"]
+        try:
+            matched_test_paths = subprocess.check_output(
+                rg_cmd, cwd=repo_root, stderr=subprocess.DEVNULL, text=True
+            ).splitlines()
+        except Exception:
+            matched_test_paths = []
+
+        # If base name matches direct test file (e.g. test_<basename>.py)
+        canonical_test = f"tests/test_{base_name}.py"
+        if os.path.isfile(os.path.join(repo_root, canonical_test)):
+            matched_test_paths.append(canonical_test)
+
+        matched_test_paths = list(set(matched_test_paths))
+
+        for t_rel in matched_test_paths:
+            t_full = os.path.join(repo_root, t_rel)
+            if not os.path.isfile(t_full):
+                continue
+
+            try:
+                with open(t_full, "r", encoding="utf-8", errors="ignore") as f:
+                    content = f.read()
+            except Exception:
+                continue
+
+            score = 10
+            matched_syms = []
+            specific_tests = []
+
+            if f"test_{base_name}.py" in t_rel:
+                score += 25
+
+            if mod_dotted in content or f"import {base_name}" in content:
+                score += 15
+
+            # Search for specific symbols
+            for sym in symbols:
+                if re.search(rf"\b{re.escape(sym)}\b", content):
+                    score += 20
+                    matched_syms.append(sym)
+
+            # Extract test function names that mention any symbol
+            try:
+                tree = ast.parse(content, filename=t_full)
+                for node in ast.walk(tree):
+                    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        if node.name.startswith("test_"):
+                            func_code = ast.unparse(node) if hasattr(ast, "unparse") else ""
+                            for sym in matched_syms:
+                                if sym in func_code or sym.lower() in node.name.lower():
+                                    specific_tests.append(node.name)
+                                    break
+            except Exception:
+                pass
+
+            if t_rel not in test_scores or test_scores[t_rel]["score"] < score:
+                test_scores[t_rel] = {
+                    "file": t_rel,
+                    "score": score,
+                    "matched_symbols": matched_syms,
+                    "specific_tests": list(dict.fromkeys(specific_tests))
+                }
+
+    ranked = sorted(test_scores.values(), key=lambda x: x["score"], reverse=True)
+    return ranked
+
+def main():
+    parser = argparse.ArgumentParser(description="Semantic Test Impact Analysis for LLM Coding Agents")
+    parser.add_argument("--diff", metavar="BASE", nargs="?", const="HEAD", help="Inspect git diff against BASE (default: HEAD)")
+    parser.add_argument("--file", help="Explicit python file to analyze")
+    parser.add_argument("--repo", default=".", help="Repository root path")
+    parser.add_argument("--limit", type=int, default=5, help="Max test files to return")
+    parser.add_argument("--json", action="store_true", help="Output JSON results")
+    parser.add_argument("--pytest-args", action="store_true", help="Print only pytest command line arguments")
+    args = parser.parse_args()
+
+    repo_root = get_repo_root(args.repo)
+    if args.file:
+        modified_files = [args.file]
+    else:
+        modified_files = get_modified_py_files(repo_root, args.diff)
+
+    if not modified_files:
+        if args.json:
+            print(json.dumps({"status": "NO_CHANGES", "tests": []}))
+        else:
+            print("# No modified Python files found.")
+        sys.exit(0)
+
+    ranked = score_test_files(repo_root, modified_files, args.diff)[:args.limit]
+
+    if args.json:
+        print(json.dumps({"modified_files": modified_files, "impacted_tests": ranked}, indent=2))
+        sys.exit(0)
+
+    if not ranked:
+        print("# No directly impacted tests identified. Run standard module tests.")
+        sys.exit(0)
+
+    if args.pytest_args:
+        # Emit space-separated test paths and -k filters
+        targets = []
+        for item in ranked:
+            t_file = item["file"]
+            specs = item["specific_tests"]
+            if specs and len(specs) <= 3:
+                k_filter = " or ".join(specs)
+                targets.append(f"{t_file} -k '{k_filter}'")
+            else:
+                targets.append(t_file)
+        print(" ".join(targets))
+        sys.exit(0)
+
+    # Human/Agent readable summary
+    print("=== Semantic Test Impact Analysis (TIA) ===")
+    print(f"Modified files: {', '.join(modified_files)}")
+    print("Top Impacted Test Targets:")
+    for i, item in enumerate(ranked, 1):
+        sym_str = ", ".join(item['matched_symbols']) if item['matched_symbols'] else "module dependency"
+        print(f" {i}. {item['file']} (Score: {item['score']})")
+        print(f"    Symbols: {sym_str}")
+        if item["specific_tests"]:
+            print(f"    Focus tests: {', '.join(item['specific_tests'][:3])}")
+    print("\nRecommended Fast Execution:")
+    test_files = " ".join(item["file"] for item in ranked[:3])
+    print(f"pytest -q {test_files}")
+
+if __name__ == "__main__":
+    main()

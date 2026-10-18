@@ -1,0 +1,11 @@
+[Unit]
+Description=Boylenet Cross-Harness Episodic Memory Consolidator (Dreamer Swarm #11)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=mboyle
+Environment="PATH=/home/mboyle/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/home/mboyle/bin/bd-memory-dreamer --consolidate
+StandardOutput=journal
+StandardError=journal

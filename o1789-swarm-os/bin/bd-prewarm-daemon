@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# bd-prewarm-daemon: Background continuous satellite KV cache pre-warming daemon
+set -euo pipefail
+
+PIDFILE="/var/tmp/bd-prewarm-daemon.pid"
+LOGFILE="/home/mboyle/bd-persist/logs/prewarm.log"
+
+case "${1:-start}" in
+  start)
+    if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+      echo "bd-prewarm-daemon already running with PID $(cat "$PIDFILE")"
+      exit 0
+    fi
+    echo "Starting bd-prewarm-daemon (interval: 240s, target: all, log: $LOGFILE)..."
+    setsid python3 /home/mboyle/bin/bd-prewarm-kv.py --daemon --interval 240 --target all --log-file "$LOGFILE" </dev/null >/dev/null 2>&1 &
+    PID=$!
+    disown "$PID" 2>/dev/null || true
+    echo "$PID" > "$PIDFILE"
+    sleep 1
+    if kill -0 "$PID" 2>/dev/null; then
+      echo "bd-prewarm-daemon started with PID $PID"
+    else
+      echo "Failed to start bd-prewarm-daemon; check $LOGFILE"
+      rm -f "$PIDFILE"
+      exit 1
+    fi
+    ;;
+  stop)
+    if [ -f "$PIDFILE" ]; then
+      PID=$(cat "$PIDFILE")
+      if kill -0 "$PID" 2>/dev/null; then
+        echo "Stopping bd-prewarm-daemon (PID $PID)..."
+        kill "$PID" 2>/dev/null || true
+      fi
+      rm -f "$PIDFILE"
+      echo "bd-prewarm-daemon stopped"
+    else
+      echo "bd-prewarm-daemon is not running"
+    fi
+    ;;
+  status)
+    if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+      echo "bd-prewarm-daemon is RUNNING (PID $(cat "$PIDFILE"))"
+    else
+      echo "bd-prewarm-daemon is STOPPED"
+    fi
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|status}"
+    exit 1
+    ;;
+esac

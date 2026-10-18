@@ -1,0 +1,19 @@
+[Unit]
+Description=Boylenet Natural-Language Ops Shell & Verified Playbook Runner (:4089)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mboyle
+WorkingDirectory=/home/mboyle
+Environment="HOME=/home/mboyle"
+Environment="BD_OPS_PORT=4089"
+Environment="BD_LITELLM_URL=http://10.0.70.164:4000"
+Environment="BD_LITELLM_KEY=sk-fleet-local"
+ExecStart=/usr/bin/python3 /home/mboyle/bin/bd-ops-web.py --serve --port 4089
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

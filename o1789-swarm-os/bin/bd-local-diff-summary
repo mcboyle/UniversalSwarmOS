@@ -1,0 +1,335 @@
+#!/usr/bin/env python3
+"""
+bd-local-diff-summary — Local GPU AST Delta & Rule 75 Differential PM Order Generator.
+Backed by http://10.0.70.164:4010/v1/chat/completions (model: tier1, 77.6 tok/s).
+Emits Rule 75 Differential PM Orders:
+  ORDER: <id> | REF: <base> | TARGET: <sha> | ACTION: <task>
+"""
+from __future__ import annotations
+
+import argparse
+import ast
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+from typing import Any, Dict, List, Tuple
+
+DEFAULT_ENDPOINT = os.environ.get(
+    "BD_LOCAL_LLM_URL", "http://10.0.70.164:4010/v1/chat/completions"
+)
+DEFAULT_MODEL = os.environ.get("BD_LOCAL_LLM_MODEL", "tier1")
+DEFAULT_API_KEY = os.environ.get("BD_LOCAL_LLM_KEY", "sk-local-fleet")
+
+
+def _run_git(repo: str, args: List[str]) -> Tuple[int, str]:
+    cmd = ["git", "-C", repo] + args
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    return proc.returncode, proc.stdout.strip()
+
+
+def _resolve_repo(repo_arg: str | None) -> str:
+    candidates = [
+        repo_arg,
+        os.getcwd(),
+        "/home/mboyle/BulkDownloader",
+    ]
+    for cand in candidates:
+        if not cand:
+            continue
+        rc, out = _run_git(cand, ["rev-parse", "--show-toplevel"])
+        if rc == 0 and out:
+            return out
+    return repo_arg or os.getcwd()
+
+
+def _extract_ast_symbols(source: str) -> Dict[str, str]:
+    """Return mapping of symbol_name -> body_dump for top-level and class methods."""
+    symbols: Dict[str, str] = {}
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return symbols
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            symbols[f"fn:{node.name}"] = ast.dump(node, include_attributes=False)
+        elif isinstance(node, ast.ClassDef):
+            symbols[f"class:{node.name}"] = ast.dump(node, include_attributes=False)
+            for sub in node.body:
+                if isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    symbols[f"method:{node.name}.{sub.name}"] = ast.dump(
+                        sub, include_attributes=False
+                    )
+    return symbols
+
+
+def compute_ast_delta(repo: str, base_ref: str, target_ref: str) -> Dict[str, Any]:
+    rc_b, base_sha = _run_git(repo, ["rev-parse", "--short=12", base_ref])
+    if rc_b != 0 or not base_sha:
+        base_sha = base_ref
+    rc_t, target_sha = _run_git(repo, ["rev-parse", "--short=12", target_ref])
+    if rc_t != 0 or not target_sha:
+        target_sha = target_ref
+
+    rc, name_status = _run_git(
+        repo, ["diff", "--name-status", f"{base_ref}..{target_ref}"]
+    )
+    if rc != 0 or not name_status:
+        rc, name_status = _run_git(repo, ["diff", "--name-status", base_ref])
+
+    files_changed: List[str] = []
+    ast_changes: List[str] = []
+
+    for line in name_status.splitlines():
+        parts = line.split("\t")
+        if len(parts) < 2:
+            continue
+        status = parts[0].strip()
+        path = parts[-1].strip()
+        files_changed.append(f"{status}:{path}")
+
+        if path.endswith(".py"):
+            _, old_src = _run_git(repo, ["show", f"{base_ref}:{path}"])
+            _, new_src = _run_git(repo, ["show", f"{target_ref}:{path}"])
+            old_syms = _extract_ast_symbols(old_src) if old_src else {}
+            new_syms = _extract_ast_symbols(new_src) if new_src else {}
+
+            added = sorted(set(new_syms.keys()) - set(old_syms.keys()))
+            removed = sorted(set(old_syms.keys()) - set(new_syms.keys()))
+            modified = sorted(
+                k
+                for k in (set(new_syms.keys()) & set(old_syms.keys()))
+                if new_syms[k] != old_syms[k]
+            )
+            mod_name = Path(path).name
+            if added:
+                ast_changes.append(f"{mod_name}+[{','.join(added[:4])}]")
+            if modified:
+                ast_changes.append(f"{mod_name}~[{','.join(modified[:4])}]")
+            if removed:
+                ast_changes.append(f"{mod_name}-[{','.join(removed[:4])}]")
+
+    _, stat_out = _run_git(
+        repo, ["diff", "--shortstat", f"{base_ref}..{target_ref}"]
+    )
+    _, commit_subj = _run_git(repo, ["log", "-1", "--format=%s", target_ref])
+
+    return {
+        "repo": repo,
+        "base_ref": base_ref,
+        "base_sha": base_sha,
+        "target_ref": target_ref,
+        "target_sha": target_sha,
+        "files_changed": files_changed,
+        "ast_changes": ast_changes,
+        "shortstat": stat_out,
+        "commit_subject": commit_subj,
+    }
+
+
+def _sanitize_single_line(text: str, max_chars: int = 120) -> str:
+    cleaned = re.sub(r"\s+", " ", text.replace("|", "/").replace("\n", " ")).strip()
+    cleaned = re.sub(r"^(ACTION:|TASK:|ORDER:.*ACTION:)\s*", "", cleaned, flags=re.I)
+    cleaned = cleaned.strip("\"'` ")
+    if len(cleaned) > max_chars:
+        cleaned = cleaned[: max_chars - 3].rstrip() + "..."
+    return cleaned
+
+
+def query_local_gpu_action(
+    delta: Dict[str, Any],
+    endpoint: str,
+    model: str,
+    timeout: float = 4.5,
+) -> Tuple[str, Dict[str, Any]]:
+    ast_str = "; ".join(delta["ast_changes"][:8]) or "non-AST file delta"
+    files_str = ", ".join(delta["files_changed"][:8]) or "working-tree"
+    subj = delta.get("commit_subject") or "apply differential update"
+
+    prompt = (
+        f"Summarize this git + AST delta into a concise imperative task action "
+        f"(<= 12 words, single line, no pipes '|', no quotes).\n"
+        f"Base: {delta['base_sha']} -> Target: {delta['target_sha']}\n"
+        f"Commit: {subj}\n"
+        f"Files: {files_str}\n"
+        f"AST Delta: {ast_str}\n"
+        f"Action:"
+    )
+
+    payload = {
+        "model": model,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "You are a Fleet Rule 75 Differential PM Order synthesizer. "
+                    "Output ONLY a single concise imperative action phrase (<= 12 words). "
+                    "No markdown, no explanations, no pipes."
+                ),
+            },
+            {"role": "user", "content": prompt},
+        ],
+        "max_tokens": 40,
+        "temperature": 0.0,
+    }
+
+    t0 = time.monotonic()
+    req = urllib.request.Request(
+        endpoint,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {DEFAULT_API_KEY}",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = json.loads(resp.read().decode("utf-8", errors="replace"))
+        elapsed_ms = round((time.monotonic() - t0) * 1000.0, 1)
+        content = (
+            body.get("choices", [{}])[0]
+            .get("message", {})
+            .get("content", "")
+            .strip()
+        )
+        usage = body.get("usage", {})
+        action = _sanitize_single_line(content)
+        if action:
+            return action, {
+                "backend": "local-gpu-tier1",
+                "endpoint": endpoint,
+                "model": body.get("model", model),
+                "latency_ms": elapsed_ms,
+                "usage": usage,
+            }
+    except Exception as exc:
+        elapsed_ms = round((time.monotonic() - t0) * 1000.0, 1)
+        fallback_Meta = {
+            "backend": "deterministic-ast-fallback",
+            "endpoint": endpoint,
+            "model": model,
+            "latency_ms": elapsed_ms,
+            "error": str(exc),
+        }
+    else:
+        fallback_Meta = {
+            "backend": "deterministic-ast-fallback",
+            "endpoint": endpoint,
+            "model": model,
+            "latency_ms": elapsed_ms,
+        }
+
+    if delta["ast_changes"]:
+        fallback_action = _sanitize_single_line(
+            f"Verify AST delta ({', '.join(delta['ast_changes'][:3])}) on {subj}"
+        )
+    else:
+        fallback_action = _sanitize_single_line(
+            f"Verify diff ({files_str}) for {subj}"
+        )
+    return fallback_action, fallback_Meta
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Local GPU AST Delta & Rule 75 Differential PM Order Generator"
+    )
+    parser.add_argument("refs", nargs="*", help="Optional [base] [target] git refs")
+    parser.add_argument("--repo", "-C", default=None, help="Git repository path")
+    parser.add_argument("--base", default=None, help="Base git ref (default: HEAD~1)")
+    parser.add_argument("--target", default=None, help="Target git ref (default: HEAD)")
+    parser.add_argument(
+        "--order-id",
+        "--id",
+        dest="order_id",
+        default=os.environ.get("BD_ORDER_ID", "O1789"),
+        help="Order ID for Rule 75 output",
+    )
+    parser.add_argument(
+        "--action",
+        "--task",
+        dest="action_override",
+        default=None,
+        help="Optional explicit ACTION override (still computes AST delta)",
+    )
+    parser.add_argument(
+        "--endpoint",
+        default=DEFAULT_ENDPOINT,
+        help=f"Local LLM completions URL (default: {DEFAULT_ENDPOINT})",
+    )
+    parser.add_argument(
+        "--model",
+        default=DEFAULT_MODEL,
+        help=f"Model tier name (default: {DEFAULT_MODEL})",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=4.5,
+        help="HTTP timeout in seconds (default: 4.5)",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit structured JSON with order, ast_delta, and telemetry",
+    )
+    parser.add_argument(
+        "--order-only",
+        action="store_true",
+        help="Emit strictly the single-line Rule 75 ORDER line",
+    )
+    args = parser.parse_args()
+
+    base_ref = args.base or (args.refs[0] if len(args.refs) >= 1 else "HEAD~1")
+    target_ref = args.target or (args.refs[1] if len(args.refs) >= 2 else "HEAD")
+
+    repo = _resolve_repo(args.repo)
+    delta = compute_ast_delta(repo, base_ref, target_ref)
+
+    llm_action, meta = query_local_gpu_action(
+        delta, endpoint=args.endpoint, model=args.model, timeout=args.timeout
+    )
+    final_action = (
+        _sanitize_single_line(args.action_override)
+        if args.action_override
+        else llm_action
+    )
+
+    order_line = (
+        f"ORDER: {args.order_id} | REF: {delta['base_sha']} | "
+        f"TARGET: {delta['target_sha']} | ACTION: {final_action}"
+    )
+
+    if args.json:
+        out = {
+            "order": order_line,
+            "order_id": args.order_id,
+            "ref": delta["base_sha"],
+            "target": delta["target_sha"],
+            "action": final_action,
+            "ast_delta": delta["ast_changes"],
+            "files_changed": delta["files_changed"],
+            "shortstat": delta["shortstat"],
+            "telemetry": meta,
+        }
+        print(json.dumps(out, sort_keys=True))
+        return 0
+
+    print(order_line)
+    if not args.order_only:
+        ast_summary = ", ".join(delta["ast_changes"][:6]) or "none"
+        print(
+            f"AST_DELTA: {ast_summary} | FILES: {len(delta['files_changed'])} | "
+            f"BACKEND: {meta.get('backend')} ({meta.get('model')}, {meta.get('latency_ms')}ms)"
+        )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

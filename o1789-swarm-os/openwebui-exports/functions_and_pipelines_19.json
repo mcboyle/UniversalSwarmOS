@@ -1,0 +1,349 @@
+{
+  "exported_at": "2026-10-18T20:51:08Z",
+  "native_functions_count": 12,
+  "pipelines_count": 8,
+  "native_functions": [
+    {
+      "version_id": "bd39489c-8a68-4b3d-9be0-8d458131f31d",
+      "id": "fleet_swarm_cockpit_action",
+      "user_id": "a12463df-370f-4948-b488-9437da254b15",
+      "type": "action",
+      "name": "⚡ Fleet Swarm Cockpit Action (/ask-pm, /verify-smt, /run-rtv)",
+      "meta": {
+        "description": "Trigger fleet swarms (/ask-pm, /verify-smt, /run-rtv) and macro shortcuts.",
+        "manifest": {
+          "title": "Fleet Swarm Cockpit Action",
+          "author": "boylenet",
+          "version": "2.0.0",
+          "description": "Stanford Job Enrichment action triggering fleet swarms (/ask-pm, /verify-smt, /run-rtv) and macros."
+        },
+        "toggle": false
+      },
+      "is_active": true,
+      "is_global": true,
+      "updated_at": 1792356272,
+      "created_at": 1792155884
+    },
+    {
+      "version_id": "7e916117-4788-4fdd-88aa-146b1ee7c7a1",
+      "id": "boylenet_local_vs_cloud_badge_filter",
+      "user_id": "a12463df-370f-4948-b488-9437da254b15",
+      "type": "filter",
+      "name": "🟢/☁️ Boylenet Local vs Cloud & Airgap Telemetry Badge Filter",
+      "meta": {
+        "description": "Automatically tags model responses with Local On-Prem T4 vs Cloud API provenance.",
+        "manifest": {
+          "title": "Boylenet Local vs Cloud & Airgap Telemetry Badge Filter",
+          "author": "boylenet",
+          "version": "2.0.0",
+          "description": "Automatically tags model responses with Local On-Prem T4 vs Cloud API provenance."
+        },
+        "toggle": false
+      },
+      "is_active": true,
+      "is_global": true,
+      "updated_at": 1792356272,
+      "created_at": 1792354690
+    },
+    {
+      "version_id": "4ea44fd8-8c69-4467-9a20-7ec23e21f0d4",
+      "id": "boylenet_cot_thinking_formatter_filter",
+      "user_id": "a12463df-370f-4948-b488-9437da254b15",
+      "type": "filter",
+      "name": "🧠 Boylenet Chain-of-Thought & Reasoning Formatter Filter",
+      "meta": {
+        "description": "Normalizes <think>...</think> blocks for DeepSeek-R1, QwQ, and Claude/GPT reasoning traces.",
+        "manifest": {
+          "title": "Boylenet Chain-of-Thought & Reasoning Formatter Filter",
+          "author": "boylenet",
+          "version": "2.0.0",
+          "description": "Normalizes <think>...</think> blocks for DeepSeek-R1, QwQ, and reasoning models."
+        },
+        "toggle": false
+      },
+      "is_active": true,
+      "is_global": true,
+      "updated_at": 1792356272,
+      "created_at": 1792354690
+    },
+    {
+      "version_id": "27179e4e-0ca5-40c9-b587-898fff4364d5",
+      "id": "boylenet_auto_rag_memory_filter",
+      "user_id": "a12463df-370f-4948-b488-9437da254b15",
+      "type": "filter",
+      "name": "📚 Boylenet On-Demand Qdrant HiveMind Memory Injector Filter",
+      "meta": {
+        "description": "Enriches prompts containing [[rag]] with top Qdrant boylenet_fleet_rag & episodic memory hits.",
+        "manifest": {
+          "title": "Boylenet On-Demand Qdrant HiveMind Memory Injector Filter",
+          "author": "boylenet",
+          "version": "2.0.0",
+          "description": "Enriches prompts containing [[rag]] with top Qdrant boylenet_fleet_rag & episodic memory hits."
+        },
+        "toggle": false
+      },
+      "is_active": true,
+      "is_global": true,
+      "updated_at": 1792356272,
+      "created_at": 1792354691
+    },
+    {
+      "version_id": "531c5cfb-8151-420d-9544-801e2d8d5586",
+      "id": "action_run_ramdisk_pytest",
+      "user_id": "a12463df-370f-4948-b488-9437da254b15",
+      "type": "action",
+      "name": "🚀 1-Click: Run Ramdisk Pytest Digest (/dev/shm)",
+      "meta": {
+        "description": "1-Click message button to run bd-pytest-digest in /dev/shm ramdisk.",
+        "manifest": {
+          "title": "1-Click Run Ramdisk Pytest Digest",
+          "author": "boylenet",
+          "version": "2.0.0",
+          "description": "Run bd-pytest-digest in /dev/shm ramdisk via :4079 gateway."
+        },
+        "toggle": false
+      },
+      "is_active": true,
+      "is_global": true,
+      "updated_at": 1792356272,
+      "created_at": 1792354691
+    },
+    {
+      "version_id": "ba57e8f2-e450-42e8-bd52-1d6f58b6883f",
+      "id": "action_verify_browser_oracle",
+      "user_id": "a12463df-370f-4948-b488-9437da254b15",
+      "type": "action",
+      "name": "🖥️ 1-Click: Verify via Dual Chrome CDP Browser Oracle (.137/.181)",
+      "meta": {
+        "description": "1-Click message button to inspect live Chrome CDP Browser Oracles on .137 and .181.",
+        "manifest": {
+          "title": "1-Click Verify via Dual Chrome CDP Browser Oracle",
+          "author": "boylenet",
+          "version": "2.0.0",
+          "description": "Inspect live Chrome CDP Browser Oracles (.137 BattleStation & .181 Bittorrent)."
+        },
+        "toggle": false
+      },
+      "is_active": true,
+      "is_global": true,
+      "updated_at": 1792356272,
+      "created_at": 1792354691
+    },
+    {
+      "version_id": "1d61a44e-a4ee-4867-a204-19fbdf8c3ccd",
+      "id": "action_save_to_hivemind_qdrant",
+      "user_id": "a12463df-370f-4948-b488-9437da254b15",
+      "type": "action",
+      "name": "📚 1-Click: Query & Verify Qdrant HiveMind Episodic Memory",
+      "meta": {
+        "description": "1-Click button to cross-check message against Qdrant boylenet_episodic_memory (.125:6333).",
+        "manifest": {
+          "title": "1-Click Query & Verify Qdrant HiveMind Episodic Memory",
+          "author": "boylenet",
+          "version": "2.0.0",
+          "description": "Cross-check message against Qdrant boylenet_episodic_memory on 10.0.70.125:6333."
+        },
+        "toggle": false
+      },
+      "is_active": true,
+      "is_global": true,
+      "updated_at": 1792356272,
+      "created_at": 1792354691
+    },
+    {
+      "version_id": "b9e3c296-fcbc-42ee-bd5b-0f4c12637f39",
+      "id": "action_toggle_wan_airgap",
+      "user_id": "a12463df-370f-4948-b488-9437da254b15",
+      "type": "action",
+      "name": "🛡️ 1-Click: Verify Boylenet WAN Airgap & GPU Orchestrator",
+      "meta": {
+        "description": "1-Click button to check bd-airgap status, POOL_STATE.tsv, and 4-GPU Orchestrator (:4010).",
+        "manifest": {
+          "title": "1-Click Verify Boylenet WAN Airgap & GPU Orchestrator",
+          "author": "boylenet",
+          "version": "2.0.0",
+          "description": "Verify bd-airgap status, POOL_STATE.tsv, and 4-GPU Orchestrator (:4010)."
+        },
+        "toggle": false
+      },
+      "is_active": true,
+      "is_global": true,
+      "updated_at": 1792356272,
+      "created_at": 1792354691
+    },
+    {
+      "version_id": "cb90be2e-442a-4896-989f-0aec9e7cdab1",
+      "id": "action_render_diagram_or_chart",
+      "user_id": "a12463df-370f-4948-b488-9437da254b15",
+      "type": "action",
+      "name": "📐 1-Click: Render Boylenet Architecture SVG Diagram",
+      "meta": {
+        "description": "1-Click button to render a crisp SVG architecture diagram for the current thread.",
+        "manifest": {
+          "title": "1-Click Render Boylenet Architecture SVG Diagram",
+          "author": "boylenet",
+          "version": "2.0.0",
+          "description": "Render a crisp SVG architecture diagram via :4079 gateway."
+        },
+        "toggle": false
+      },
+      "is_active": true,
+      "is_global": true,
+      "updated_at": 1792356272,
+      "created_at": 1792354691
+    },
+    {
+      "version_id": "f114ae7a-a288-4367-85bb-a63d8d152993",
+      "id": "pipe_boylenet_deep_research",
+      "user_id": "a12463df-370f-4948-b488-9437da254b15",
+      "type": "pipe",
+      "name": "🔬 Boylenet Autonomous Deep Research Pipe (SearXNG + ArXiv + Qdrant)",
+      "meta": {
+        "description": "Autonomous multi-source research pipe combining SearXNG (:8888), ArXiv papers, and Qdrant 1024-d RAG.",
+        "manifest": {
+          "title": "Boylenet Autonomous Deep Research Pipe (SearXNG + ArXiv + Qdrant)",
+          "author": "boylenet",
+          "version": "2.0.0",
+          "description": "Combines SearXNG web search, ArXiv papers, and Qdrant RAG with local T4 synthesis."
+        },
+        "toggle": false
+      },
+      "is_active": true,
+      "is_global": true,
+      "updated_at": 1792356272,
+      "created_at": 1792354691
+    },
+    {
+      "version_id": "87b9dd7c-6b86-4fa2-88f2-0f7681faa1ab",
+      "id": "pipe_boylenet_4model_council",
+      "user_id": "a12463df-370f-4948-b488-9437da254b15",
+      "type": "pipe",
+      "name": "🏛️ Boylenet Multi-Model Consensus Council Pipe (T4 + MoE Ensemble)",
+      "meta": {
+        "description": "Queries multiple local GPU models (hermes-ultracode + deepseek-coder-moe) in parallel and synthesizes consensus.",
+        "manifest": {
+          "title": "Boylenet Multi-Model Consensus Council Pipe",
+          "author": "boylenet",
+          "version": "2.0.0",
+          "description": "Queries multiple GPU models and synthesizes a board consensus verdict."
+        },
+        "toggle": false
+      },
+      "is_active": true,
+      "is_global": true,
+      "updated_at": 1792356272,
+      "created_at": 1792354691
+    },
+    {
+      "version_id": "e3694b13-0b71-4141-8dba-072668668b6f",
+      "id": "pipe_boylenet_smart_router",
+      "user_id": "a12463df-370f-4948-b488-9437da254b15",
+      "type": "pipe",
+      "name": "🧭 Boylenet O1740 Smart Intent Auto-Router Pipe (Code/Math/Vision/OffSec)",
+      "meta": {
+        "description": "Automatically classifies prompt intent and routes to the #1 benchmarked local GPU model.",
+        "manifest": {
+          "title": "Boylenet O1740 Smart Intent Auto-Router Pipe",
+          "author": "boylenet",
+          "version": "2.0.0",
+          "description": "Routes coding, math/reasoning, security, or general prompts to the optimal local GPU model."
+        },
+        "toggle": false
+      },
+      "is_active": true,
+      "is_global": true,
+      "updated_at": 1792356272,
+      "created_at": 1792354691
+    }
+  ],
+  "pipelines": [
+    {
+      "id": "bd_kb_auto_grounding_pipeline",
+      "name": "📚 [PIPELINE • FILTER] BD KB Auto-Grounding & Citation Injector",
+      "type": "filter",
+      "priority": 10,
+      "pipelines": [
+        "*"
+      ],
+      "valves": true,
+      "description": "Automatically retrieves authoritative chunks from BD KB (BulkDownloader, 27-Node Cluster, 86 Models, Fleet Law) when prompts reference Boylenet/BD topics."
+    },
+    {
+      "id": "bd_smart_o1740_intent_router_pipeline",
+      "name": "🧭 [PIPELINE • ROUTER] O1740 Smart Intent & Best-Benchmark Auto-Router",
+      "type": "pipe",
+      "priority": 20,
+      "pipelines": [
+        "*"
+      ],
+      "valves": true,
+      "description": "Dynamically classifies prompt intent (coding, security, vision, reasoning, fast chat) and routes to the #1 benchmarked local model (Qwen3-Coder-30B-A3B 77.6 tok/s, CyberStrike-35B 66.5 tok/s, Qwythos-9B 1005.9 tok/s)."
+    },
+    {
+      "id": "bd_deep_research_multi_engine_pipeline",
+      "name": "🔬 [PIPELINE • RESEARCH] Autonomous Deep Research (SearXNG + ArXiv + BD KB + Qdrant)",
+      "type": "pipe",
+      "priority": 30,
+      "pipelines": [
+        "*"
+      ],
+      "valves": true,
+      "description": "Executes parallel multi-engine deep research across BD KB, Qdrant (.125:6333), SearXNG (:8888), ArXiv, and Wikipedia, then synthesizes a comprehensive cited report."
+    },
+    {
+      "id": "bd_4model_consensus_council_pipeline",
+      "name": "⚔️ [PIPELINE • COUNCIL] 4-Model Parallel Consensus Council & Judge",
+      "type": "pipe",
+      "priority": 40,
+      "pipelines": [
+        "*"
+      ],
+      "valves": true,
+      "description": "Convenes Boylenet's flagship local specialists (Qwen3-Coder-30B-A3B, CyberStrike-35B, Qwen3.6-35B-Claude-Opus, Qwythos-9B) + BD KB evidence to produce a multi-perspective consensus ruling."
+    },
+    {
+      "id": "bd_airgap_and_rule22_shield_pipeline",
+      "name": "🛡️ [PIPELINE • SHIELD] WAN Airgap & Rule 22 Safety Shield Filter",
+      "type": "filter",
+      "priority": 5,
+      "pipelines": [
+        "*"
+      ],
+      "valves": true,
+      "description": "Enforces Rule 22 worktree protection and verifies bd-airgap status on inlet/outlet."
+    },
+    {
+      "id": "bd_code_quality_ruff_mypy_pytest_pipeline",
+      "name": "✅ [PIPELINE • QA] Automated Ruff, Mypy & .82 Ramdisk Pytest Verification Filter",
+      "type": "filter",
+      "priority": 50,
+      "pipelines": [
+        "*"
+      ],
+      "valves": true,
+      "description": "Validates Python code snippets in model responses using Ruff and AST syntax verification."
+    },
+    {
+      "id": "bd_multimodal_flux_vision_voice_pipeline",
+      "name": "🎨 [PIPELINE • STUDIO] Multimodal Flux Image Gen, Vision OCR & Neural TTS Pipeline",
+      "type": "pipe",
+      "priority": 60,
+      "pipelines": [
+        "*"
+      ],
+      "valves": true,
+      "description": "Unified multimodal studio pipeline: generates 1024x1024 / 1920x1080 PNG artwork and architecture HUDs, synthesizes neural WAV speech audio, and performs vision OCR."
+    },
+    {
+      "id": "bd_token_telemetry_langfuse_pipeline",
+      "name": "📊 [PIPELINE • TELEMETRY] Live Token Speed (tok/s), Local/Cloud Badge & Episodic Memory Filter",
+      "type": "filter",
+      "priority": 90,
+      "pipelines": [
+        "*"
+      ],
+      "valves": true,
+      "description": "Records token telemetry and optionally appends [LOCAL]/[CLOUD] provenance badges."
+    }
+  ]
+}

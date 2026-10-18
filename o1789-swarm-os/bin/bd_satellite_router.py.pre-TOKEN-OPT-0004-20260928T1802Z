@@ -1,0 +1,826 @@
+#!/usr/bin/env python3
+"""bd_satellite_router.py -- Speculative Satellite AI Router & Resilient Failover Engine.
+
+UniversalSwarmOS Token Efficiency Architecture (Requirement R3):
+Routes AST diffing, regex extraction, and linting queries to local satellite neural nodes
+(LiteLLM proxy on 127.0.0.1:4000 or direct Ollama on 10.0.70.228:11434) at $0 cloud token cost.
+
+Enforces a strict 3.0-second socket timeout. On timeout (>=3.0s), network partition,
+or HTTP failure, seamlessly and instantaneously falls back to local Python stdlib engines
+(ast.parse, re, compile) with < 5ms execution overhead.
+
+All failovers and high-latency anomalies (>=3.0s) are appended to:
+    /home/mboyle/bd-persist/accounting/alerts.log
+in the canonical schema:
+    "{ISO8601_TIMESTAMP} SATELLITE_FAILOVER | {endpoint} | {reason} | Latency: {latency:.3f}s"
+"""
+
+from __future__ import annotations
+
+import argparse
+import ast
+import json
+import os
+import re
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from collections.abc import Sequence
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Self
+
+# Canonical Endpoints & Configuration
+DEFAULT_LITELLM_ENDPOINT = os.environ.get(
+    "BD_LITELLM_ENDPOINT", "http://127.0.0.1:4000/v1/chat/completions"
+)
+DEFAULT_OLLAMA_ENDPOINT = os.environ.get(
+    "BD_OLLAMA_ENDPOINT", "http://10.0.70.228:11434/api/chat"
+)
+DEFAULT_PRIMARY_ENDPOINT = os.environ.get(
+    "BD_SATELLITE_ENDPOINT", DEFAULT_LITELLM_ENDPOINT
+)
+DEFAULT_MODEL = os.environ.get("BD_SATELLITE_MODEL", "qwen2.5-coder-7b")
+DEFAULT_API_KEY = os.environ.get(
+    "BD_LITELLM_KEY", os.environ.get("LITELLM_MASTER_KEY", "sk-fleet-local")
+)
+DEFAULT_TIMEOUT = 3.0
+DEFAULT_TIMEOUT_SECONDS = 3.0
+
+ALERTS_LOG_PATH = Path(
+    os.environ.get("BD_ALERTS_LOG", "/home/mboyle/bd-persist/accounting/alerts.log")
+)
+
+
+def log_alert(
+    endpoint: str,
+    reason: str,
+    latency: float,
+    log_path: Path | str | None = None,
+) -> None:
+    """Append a structured failover or latency alert to the accounting log."""
+    target_path = Path(log_path) if log_path else ALERTS_LOG_PATH
+    try:
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        now_iso = datetime.now(timezone.utc).isoformat()
+        clean_endpoint = endpoint.strip() or "unknown-endpoint"
+        clean_reason = reason.strip().replace("\n", " ") or "Unknown error"
+        line = (
+            f"{now_iso} SATELLITE_FAILOVER | {clean_endpoint} | {clean_reason} | "
+            f"Latency: {latency:.3f}s\n"
+        )
+        with open(target_path, "a", encoding="utf-8") as f:
+            f.write(line)
+            f.flush()
+    except (OSError, UnicodeError) as err:
+        sys.stderr.write(
+            f"Warning: Failed to append alert to {target_path}: {err}\n"
+        )
+
+
+def run_local_ast(code: str, diff_against: str | None = None) -> dict[str, Any]:
+    """Perform genuine local Python AST parsing and analysis via Python stdlib ast."""
+    try:
+        tree = ast.parse(code)
+    except SyntaxError as e:
+        err_msg = f"SyntaxError: {e.msg} at line {e.lineno}, col {e.offset}"
+        return {
+            "status": "SyntaxError",
+            "valid": False,
+            "error": err_msg,
+            "lineno": e.lineno,
+            "offset": e.offset,
+            "output": err_msg,
+        }
+
+    functions: list[str] = []
+    classes: list[str] = []
+    imports: list[str] = []
+    nodes_count = 0
+
+    for node in ast.walk(tree):
+        nodes_count += 1
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            functions.append(node.name)
+        elif isinstance(node, ast.ClassDef):
+            classes.append(node.name)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                imports.append(alias.name)
+        elif isinstance(node, ast.ImportFrom):
+            mod = node.module or ""
+            for alias in node.names:
+                imports.append(f"{mod}.{alias.name}")
+
+    summary_lines = [
+        "AST Analysis (Local stdlib ast.parse):",
+        "  Module: valid",
+        f"  Total Nodes: {nodes_count}",
+        f"  FunctionDef: {len(functions)} ({', '.join(functions) if functions else 'none'})",
+        f"  ClassDef: {len(classes)} ({', '.join(classes) if classes else 'none'})",
+        f"  Imports: {len(imports)} ({', '.join(imports) if imports else 'none'})",
+    ]
+
+    diff_summary: list[str] = []
+    if diff_against is not None:
+        try:
+            other_tree = ast.parse(diff_against)
+            other_funcs = {
+                n.name
+                for n in ast.walk(other_tree)
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+            }
+            curr_funcs = set(functions)
+            added = curr_funcs - other_funcs
+            removed = other_funcs - curr_funcs
+            common = curr_funcs & other_funcs
+
+            diff_summary.append("AST Diff Summary:")
+            for f in sorted(added):
+                diff_summary.append(f"  <ADD, FuncDef#{f}, local>")
+            for f in sorted(removed):
+                diff_summary.append(f"  <DELETE, FuncDef#{f}, local>")
+            for f in sorted(common):
+                diff_summary.append(f"  <SAME, FuncDef#{f}, local>")
+        except SyntaxError as e:
+            diff_summary.append(f"AST Diff SyntaxError in comparator: {e}")
+
+    full_output = "\n".join(
+        summary_lines + ([""] + diff_summary if diff_summary else [])
+    )
+    return {
+        "status": "OK",
+        "valid": True,
+        "nodes_count": nodes_count,
+        "functions": functions,
+        "classes": classes,
+        "imports": imports,
+        "ast_dump": ast.dump(tree),
+        "output": full_output,
+    }
+
+
+def run_local_regex(pattern: str, text: str) -> dict[str, Any]:
+    """Perform genuine local regex extraction via Python stdlib re."""
+    try:
+        compiled = re.compile(pattern)
+    except re.error as e:
+        err_msg = f"Regex Compilation Error: {e}"
+        return {
+            "status": "RegexError",
+            "valid": False,
+            "error": err_msg,
+            "output": err_msg,
+        }
+
+    matches = list(compiled.finditer(text))
+    if not matches:
+        return {
+            "status": "OK",
+            "valid": True,
+            "match_count": 0,
+            "matches": [],
+            "output": "[]",
+        }
+
+    match_records: list[dict[str, Any]] = []
+    formatted_lines = [f"Regex Matches ({len(matches)}):"]
+
+    for i, m in enumerate(matches, 1):
+        rec = {
+            "index": i,
+            "span": m.span(),
+            "match": m.group(0),
+            "groups": m.groups(),
+            "groupdict": m.groupdict(),
+        }
+        match_records.append(rec)
+        groups_str = f", groups={m.groups()}" if m.groups() else ""
+        formatted_lines.append(
+            f"  Match {i}: span={m.span()}, match={m.group(0)!r}{groups_str}"
+        )
+
+    full_output = "\n".join(formatted_lines)
+    return {
+        "status": "OK",
+        "valid": True,
+        "match_count": len(matches),
+        "matches": match_records,
+        "output": full_output,
+    }
+
+
+def run_local_lint(code: str) -> dict[str, Any]:
+    """Perform genuine local Python lint checks via compile() and ast stdlib."""
+    issues: list[dict[str, Any]] = []
+
+    # 1. Compile verification for syntax/indentation errors
+    try:
+        compile(code, "<string>", "exec")
+    except SyntaxError as e:
+        issues.append(
+            {
+                "type": "SyntaxError",
+                "lineno": e.lineno or 1,
+                "offset": e.offset or 1,
+                "message": str(e.msg),
+            }
+        )
+        output = f"SyntaxError on line {e.lineno}: {e.msg}"
+        return {
+            "status": "LintError",
+            "valid": False,
+            "issues": issues,
+            "output": output,
+        }
+
+    # 2. Structural AST lint inspections
+    try:
+        tree = ast.parse(code)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ExceptHandler) and node.type is None:
+                issues.append(
+                    {
+                        "type": "BareExcept",
+                        "lineno": getattr(node, "lineno", 1),
+                        "message": "Do not use bare 'except:' clause (PEP 8)",
+                    }
+                )
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for default in node.args.defaults + node.args.kw_defaults:
+                    if isinstance(default, (ast.List, ast.Dict, ast.Set)):
+                        issues.append(
+                            {
+                                "type": "MutableDefault",
+                                "lineno": getattr(default, "lineno", node.lineno),
+                                "message": f"Mutable default argument in function {node.name}",
+                            }
+                        )
+    except (TypeError, ValueError, AttributeError) as e:
+        issues.append({"type": "InspectionError", "lineno": 1, "message": str(e)})
+
+    if issues:
+        out_lines = [f"Found {len(issues)} lint issue(s):"]
+        for iss in issues:
+            out_lines.append(
+                f"  Line {iss.get('lineno')}: [{iss.get('type')}] {iss.get('message')}"
+            )
+        output = "\n".join(out_lines)
+    else:
+        output = "Lint PASS: No syntax or structural lint violations found."
+
+    return {
+        "status": "OK" if not issues else "LintWarning",
+        "valid": not bool(issues),
+        "issues": issues,
+        "output": output,
+    }
+
+
+def _execute_local_fallback(
+    task_type: str,
+    prompt: str = "",
+    code: str | None = None,
+    pattern: str | None = None,
+    text: str | None = None,
+    diff_against: str | None = None,
+) -> dict[str, Any]:
+    """Route task directly to the appropriate local Python stdlib fallback."""
+    norm = task_type.lower().strip()
+    target_code = code if code is not None else prompt
+
+    if norm in ("ast", "ast-parse", "ast-diff", "ast_diff"):
+        return run_local_ast(target_code, diff_against=diff_against)
+    elif norm in ("regex", "re", "match"):
+        pat = pattern or ""
+        txt = text or ""
+        if not pat and target_code:
+            if "\n" in target_code:
+                lines = target_code.split("\n", 1)
+                pat = lines[0].replace("pattern:", "").strip()
+                txt = lines[1].replace("text:", "").strip()
+            else:
+                pat = target_code
+        return run_local_regex(pat, txt)
+    elif norm in ("lint", "linting", "check"):
+        return run_local_lint(target_code)
+    else:
+        try:
+            ast.parse(target_code)
+            return run_local_ast(target_code)
+        except (SyntaxError, ValueError):
+            return {
+                "status": "OK",
+                "valid": True,
+                "output": f"Local Fallback Processed: {target_code.strip()}",
+            }
+
+
+class SatelliteResult(str):
+    """Result string wrapper providing metadata, dictionary access, and attribute access."""
+
+    content: str
+    success: bool
+    fallback_used: bool
+    source: str
+    latency: float
+    endpoint: str
+    error: str | None
+    task_type: str
+    metadata: dict[str, Any]
+
+    def __new__(cls, content: str, **metadata: Any) -> Self:
+        obj = super().__new__(cls, content)
+        obj.content = content
+        obj.success = bool(metadata.get("success", True))
+        obj.fallback_used = bool(metadata.get("fallback_used", False))
+        obj.source = str(
+            metadata.get("source", "fallback" if obj.fallback_used else "satellite")
+        )
+        obj.latency = float(metadata.get("latency", 0.0))
+        obj.endpoint = str(metadata.get("endpoint", ""))
+        obj.error = metadata.get("error")
+        obj.task_type = str(metadata.get("task_type", "general"))
+        obj.metadata = metadata
+        for k, v in metadata.items():
+            setattr(obj, k, v)
+        return obj
+
+    def __getitem__(self, key: Any) -> Any:
+        if isinstance(key, str):
+            if key in self.metadata:
+                return self.metadata[key]
+            if key in ("content", "result", "text", "output"):
+                return str(self)
+            if hasattr(self, key):
+                return getattr(self, key)
+        return super().__getitem__(key)
+
+    def get(self, key: str, default: Any = None) -> Any:
+        if key in self.metadata:
+            return self.metadata[key]
+        if key in ("content", "result", "text", "output"):
+            return str(self)
+        if hasattr(self, key):
+            return getattr(self, key)
+        return default
+
+    def to_dict(self) -> dict[str, Any]:
+        d = dict(self.metadata)
+        d["content"] = str(self)
+        d["success"] = self.success
+        d["fallback_used"] = self.fallback_used
+        d["source"] = self.source
+        d["latency"] = self.latency
+        d["endpoint"] = self.endpoint
+        d["error"] = self.error
+        d["task_type"] = self.task_type
+        return d
+
+    def to_json(self, indent: int | None = None) -> str:
+        return json.dumps(self.to_dict(), indent=indent, default=str)
+
+
+def call_satellite_endpoint(
+    endpoint: str,
+    model: str,
+    prompt: str,
+    task_type: str,
+    timeout: float,
+    api_key: str,
+    max_tokens: int = 128,
+) -> str:
+    """Dispatch HTTP request to LiteLLM or Ollama with strict socket timeout."""
+    is_ollama = ":11434" in endpoint or "/api/" in endpoint
+
+    if is_ollama:
+        url = endpoint
+        if not url.endswith(("/api/chat", "/api/generate")):
+            url = url.rstrip("/") + "/api/chat"
+        ollama_model = model
+        if ":" not in ollama_model:
+            for suffix in ("-7b-16k", "-7b", "-14b", "-8b", "-32b", "-70b"):
+                if ollama_model.endswith(suffix):
+                    ollama_model = ollama_model[: -len(suffix)] + suffix.replace("-", ":", 1)
+                    break
+        payload = {
+            "model": ollama_model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": f"You are a concise code intelligence worker for task '{task_type}'. Answer directly without filler.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            "stream": False,
+            "options": {"temperature": 0.0, "num_predict": max_tokens},
+        }
+        headers = {"Content-Type": "application/json"}
+    else:
+        # LiteLLM / OpenAI chat completions
+        url = endpoint
+        if not url.endswith("/v1/chat/completions") and ":4000" in url:
+            url = url.rstrip("/") + "/v1/chat/completions"
+        payload = {
+            "model": model.replace(":", "-"),
+            "messages": [
+                {
+                    "role": "system",
+                    "content": f"You are a concise code intelligence worker for task '{task_type}'. Answer directly without filler.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            "max_tokens": max_tokens,
+            "temperature": 0.0,
+        }
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        }
+
+    body = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(url, data=body, headers=headers)
+
+    # Strictly enforce socket timeout
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+        if is_ollama:
+            content_val = data.get("message", {}).get("content", "") or data.get("response", "")
+            return str(content_val)
+        choices = data.get("choices", [])
+        if choices:
+            choice_content = choices[0].get("message", {}).get("content", "")
+            return str(choice_content)
+        return ""
+
+
+def query_satellite_or_fallback(
+    prompt: str,
+    task_type: str = "ast",
+    timeout: float = DEFAULT_TIMEOUT_SECONDS,
+    endpoint: str | None = None,
+    model: str | None = None,
+    api_key: str | None = None,
+    diff_against: str | None = None,
+    pattern: str | None = None,
+    text: str | None = None,
+    force_fallback: bool = False,
+    log_path: Path | str | None = None,
+    max_tokens: int = 128,
+    **kwargs: Any,
+) -> SatelliteResult:
+    """Query satellite AI endpoint or cleanly fall back to local stdlib."""
+    target_endpoint = endpoint or DEFAULT_PRIMARY_ENDPOINT
+    target_model = model or DEFAULT_MODEL
+    target_key = api_key or DEFAULT_API_KEY
+    norm_task = task_type.lower().strip()
+    timeout_val = float(timeout)
+
+    # 1. Immediate forced fallback if requested
+    if force_fallback:
+        t0 = time.perf_counter()
+        fallback_res = _execute_local_fallback(
+            task_type=norm_task,
+            prompt=prompt,
+            code=prompt,
+            pattern=pattern,
+            text=text,
+            diff_against=diff_against,
+        )
+        latency = time.perf_counter() - t0
+        log_alert(
+            endpoint=target_endpoint,
+            reason="Forced fallback requested",
+            latency=latency,
+            log_path=log_path,
+        )
+        return SatelliteResult(
+            fallback_res["output"],
+            success=True,
+            fallback_used=True,
+            source="fallback",
+            latency=latency,
+            endpoint=target_endpoint,
+            error=None,
+            task_type=norm_task,
+            details=fallback_res,
+        )
+
+    # 2. Speculative Satellite AI query
+    t0 = time.perf_counter()
+    try:
+        response_content = call_satellite_endpoint(
+            endpoint=target_endpoint,
+            model=target_model,
+            prompt=prompt,
+            task_type=norm_task,
+            timeout=timeout_val,
+            api_key=target_key,
+            max_tokens=max_tokens,
+        )
+        latency = time.perf_counter() - t0
+
+        # Log alert if latency exceeds 3.0s threshold
+        if latency >= timeout_val:
+            log_alert(
+                endpoint=target_endpoint,
+                reason=f"High latency ({latency:.3f}s >= {timeout_val:.1f}s)",
+                latency=latency,
+                log_path=log_path,
+            )
+
+        return SatelliteResult(
+            response_content,
+            success=True,
+            fallback_used=False,
+            source="satellite",
+            latency=latency,
+            endpoint=target_endpoint,
+            error=None,
+            task_type=norm_task,
+        )
+    except (
+        urllib.error.URLError,
+        urllib.error.HTTPError,
+        TimeoutError,
+        OSError,
+        ValueError,
+        json.JSONDecodeError,
+    ) as exc:
+        latency = time.perf_counter() - t0
+        err_reason = f"{type(exc).__name__}: {exc}"
+        log_alert(
+            endpoint=target_endpoint,
+            reason=err_reason,
+            latency=latency,
+            log_path=log_path,
+        )
+
+        # Seamless local fallback
+        fallback_res = _execute_local_fallback(
+            task_type=norm_task,
+            prompt=prompt,
+            code=prompt,
+            pattern=pattern,
+            text=text,
+            diff_against=diff_against,
+        )
+        return SatelliteResult(
+            fallback_res["output"],
+            success=True,
+            fallback_used=True,
+            source="fallback",
+            latency=latency,
+            endpoint=target_endpoint,
+            error=err_reason,
+            task_type=norm_task,
+            details=fallback_res,
+        )
+
+
+class SatelliteRouter:
+    """Object-oriented wrapper for Satellite AI routing and failover."""
+
+    def __init__(
+        self,
+        endpoint: str = DEFAULT_PRIMARY_ENDPOINT,
+        model: str = DEFAULT_MODEL,
+        api_key: str = DEFAULT_API_KEY,
+        timeout: float = DEFAULT_TIMEOUT_SECONDS,
+        alerts_log: Path | str = ALERTS_LOG_PATH,
+    ) -> None:
+        self.endpoint = endpoint
+        self.model = model
+        self.api_key = api_key
+        self.timeout = timeout
+        self.alerts_log = Path(alerts_log)
+
+    def query(self, prompt: str, task_type: str = "ast", **kwargs: Any) -> SatelliteResult:
+        params: dict[str, Any] = {
+            "endpoint": self.endpoint,
+            "model": self.model,
+            "api_key": self.api_key,
+            "timeout": self.timeout,
+            "log_path": self.alerts_log,
+        }
+        params.update(kwargs)
+        return query_satellite_or_fallback(prompt, task_type=task_type, **params)
+
+    def ast(self, code: str, diff_against: str | None = None, **kwargs: Any) -> SatelliteResult:
+        return self.query(code, task_type="ast", diff_against=diff_against, **kwargs)
+
+    def regex(self, pattern: str, text: str, **kwargs: Any) -> SatelliteResult:
+        prompt = f"pattern: {pattern}\ntext: {text}"
+        return self.query(prompt, task_type="regex", pattern=pattern, text=text, **kwargs)
+
+    def lint(self, code: str, **kwargs: Any) -> SatelliteResult:
+        return self.query(code, task_type="lint", **kwargs)
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    """Build unified CLI argument parser supporting flags, positional args, and subcommands."""
+    parser = argparse.ArgumentParser(
+        prog="bd-satellite-router",
+        description="Speculative Satellite AI Router & Resilient Failover Engine (AST, regex, linting).",
+    )
+    parser.add_argument(
+        "--task",
+        "--task-type",
+        "-t",
+        dest="task_type",
+        default="ast",
+        help="Task type: ast, regex, lint, or query (default: ast)",
+    )
+    parser.add_argument(
+        "--code",
+        "-c",
+        dest="code",
+        default=None,
+        help="Code snippet or path to source file for AST or linting",
+    )
+    parser.add_argument(
+        "--pattern",
+        "-p",
+        dest="pattern",
+        default=None,
+        help="Regular expression pattern",
+    )
+    parser.add_argument(
+        "--text",
+        dest="text",
+        default=None,
+        help="Target text for regex search",
+    )
+    parser.add_argument(
+        "--prompt",
+        dest="prompt",
+        default=None,
+        help="Generic task prompt or input text",
+    )
+    parser.add_argument(
+        "--diff",
+        "--diff-with",
+        dest="diff_against",
+        default=None,
+        help="Second code string or path to diff AST against",
+    )
+    parser.add_argument(
+        "--endpoint",
+        "-e",
+        dest="endpoint",
+        default=DEFAULT_PRIMARY_ENDPOINT,
+        help=f"Satellite endpoint URL (default: {DEFAULT_PRIMARY_ENDPOINT})",
+    )
+    parser.add_argument(
+        "--timeout",
+        dest="timeout",
+        type=float,
+        default=DEFAULT_TIMEOUT_SECONDS,
+        help="Socket timeout in seconds (default: 3.0)",
+    )
+    parser.add_argument(
+        "--model",
+        "-m",
+        dest="model",
+        default=DEFAULT_MODEL,
+        help=f"Model name (default: {DEFAULT_MODEL})",
+    )
+    parser.add_argument(
+        "--api-key",
+        "-k",
+        dest="api_key",
+        default=DEFAULT_API_KEY,
+        help="LiteLLM Master Key / API key (default: sk-fleet-local)",
+    )
+    parser.add_argument(
+        "--force-fallback",
+        action="store_true",
+        help="Force immediate local Python stdlib fallback execution",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit structured JSON output",
+    )
+    parser.add_argument(
+        "--alerts-log",
+        dest="alerts_log",
+        default=None,
+        help="Path to alerts log file",
+    )
+    parser.add_argument(
+        "positional_args",
+        nargs="*",
+        help="Optional positional arguments: [task_type] [prompt_or_code] [extra]",
+    )
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Main CLI entrypoint for bd-satellite-router."""
+    parser = build_arg_parser()
+    args = parser.parse_args(argv)
+
+    task_type = args.task_type
+    code = args.code
+    pattern = args.pattern
+    text = args.text
+    prompt = args.prompt
+    diff_against = args.diff_against
+
+    # Parse positional arguments if provided
+    pos = list(args.positional_args)
+    if pos:
+        first = pos[0].lower().strip()
+        if first in ("ast", "regex", "lint", "query", "diff"):
+            task_type = first
+            pos.pop(0)
+            if task_type == "diff" and len(pos) >= 2:
+                task_type = "ast"
+                code = pos[0]
+                diff_against = pos[1]
+            elif task_type == "regex":
+                if len(pos) >= 1 and not pattern:
+                    pattern = pos[0]
+                if len(pos) >= 2 and not text:
+                    text = pos[1]
+            elif task_type in ("ast", "lint") and pos and not code:
+                code = pos[0]
+            elif task_type == "query" and pos and not prompt:
+                prompt = " ".join(pos)
+        else:
+            if not prompt and not code:
+                prompt = " ".join(pos)
+
+    valid_tasks = {
+        "ast",
+        "ast-parse",
+        "ast-diff",
+        "ast_diff",
+        "regex",
+        "re",
+        "match",
+        "lint",
+        "linting",
+        "check",
+        "query",
+        "diff",
+        "general",
+    }
+    if task_type.lower().strip() not in valid_tasks:
+        sys.stderr.write(f"Error: Unknown or unsupported task type '{task_type}'\n")
+        return 2
+
+    # Read from stdin if no code, pattern, or prompt is provided
+    if code is None and pattern is None and prompt is None and not sys.stdin.isatty():
+        stdin_content = sys.stdin.read()
+        if task_type in ("ast", "lint"):
+            code = stdin_content
+        else:
+            prompt = stdin_content
+
+    # If code is a path to an existing file, read it
+    if code and os.path.exists(code):
+        try:
+            code = Path(code).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            pass
+
+    if diff_against and os.path.exists(diff_against):
+        try:
+            diff_against = Path(diff_against).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            pass
+
+    # Construct the final prompt to dispatch
+    effective_prompt = prompt or code or ""
+    if task_type == "regex" and pattern:
+        effective_prompt = f"pattern: {pattern}\ntext: {text or ''}"
+
+    res = query_satellite_or_fallback(
+        prompt=effective_prompt,
+        task_type=task_type,
+        timeout=args.timeout,
+        endpoint=args.endpoint,
+        model=args.model,
+        api_key=args.api_key,
+        diff_against=diff_against,
+        pattern=pattern,
+        text=text,
+        force_fallback=args.force_fallback,
+        log_path=args.alerts_log,
+    )
+
+    if args.json:
+        print(res.to_json(indent=2))
+    else:
+        print(str(res))
+
+    # Exit code: return 0 on successful processing (even via fallback)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

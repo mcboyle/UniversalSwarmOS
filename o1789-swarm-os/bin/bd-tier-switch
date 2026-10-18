@@ -1,0 +1,288 @@
+#!/usr/bin/env python3
+"""
+bd-tier-switch — Boylenet 4-GPU + 1.73 TB DDR4 Dynamic Tier Switcher & Telemetry CLI
+Queries and controls http://10.0.70.164:4010 (/api/tiers/status & /api/tiers/switch).
+Enforces and verifies the Argon-4 Anti-Sycophancy & Anti-Hallucination Contract.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+import urllib.error
+import urllib.request
+from typing import Any, Dict, List, Optional
+
+ORCHESTRATOR_URL = os.environ.get("BD_ORCHESTRATOR_URL", "http://10.0.70.164:4010").rstrip("/")
+
+ARGON4_CONTRACT = (
+    "STRICT ANTI-SYCOPHANCY & ZERO-HALLUCINATION CONTRACT (ARGON-4): "
+    "Never fabricate, guess, or extrapolate outputs; every claim requires raw CLI/API output and rc=0; "
+    "Rule 22 destructive git shield; Rule 60 single-turn compound execution; "
+    "Rule 74 HTAP-9 zero-filler persona; Rule 86 behavioral defect vs mutation severance; "
+    "never output uppercase placeholder tokens in DONE.md."
+)
+
+
+def verify_argon4_hooks() -> Dict[str, Any]:
+    checks: Dict[str, bool] = {}
+    claude_cfg = os.path.expanduser("~/.claude/settings.json")
+    codex_cfg = os.path.expanduser("~/.codex/hooks.json")
+    agy_cfg = os.path.expanduser("~/.gemini/config/hooks.json")
+    shield_path = "/home/mboyle/bd-persist/harness/shield.py"
+    token_guard_path = "/home/mboyle/bin/bd-token-guard.py"
+
+    try:
+        with open(claude_cfg, "r", encoding="utf-8") as f:
+            c_txt = f.read()
+        checks["claude_settings_hooks"] = ("shield.py" in c_txt) and ("bd-token-guard-hook.py" in c_txt)
+    except Exception:
+        checks["claude_settings_hooks"] = False
+
+    try:
+        with open(codex_cfg, "r", encoding="utf-8") as f:
+            cx_txt = f.read()
+        checks["codex_hooks_json"] = ("shield.py" in cx_txt) and ("bd-token-guard-hook.py" in cx_txt)
+    except Exception:
+        checks["codex_hooks_json"] = False
+
+    try:
+        with open(agy_cfg, "r", encoding="utf-8") as f:
+            ag_txt = f.read()
+        checks["agy_hooks_json"] = "shield.py" in ag_txt
+    except Exception:
+        checks["agy_hooks_json"] = False
+
+    checks["shield_py_present"] = os.path.isfile(shield_path)
+    checks["bd_token_guard_present"] = os.path.isfile(token_guard_path)
+    all_ok = all(checks.values())
+    return {
+        "all_active": all_ok,
+        "checks": checks,
+        "contract": ARGON4_CONTRACT,
+    }
+
+
+def http_get_json(url: str, timeout: float = 15.0) -> Dict[str, Any]:
+    req = urllib.request.Request(url, method="GET")
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def http_post_json(url: str, payload: Dict[str, Any], timeout: float = 180.0) -> Dict[str, Any]:
+    raw = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=raw,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def render_status_table(data: Dict[str, Any]) -> None:
+    current_mode = data.get("current_mode", "unknown")
+    effective_tier = data.get("effective_tier", current_mode)
+    active_model = data.get("active_model", "unknown")
+    cached_at = data.get("telemetry_cached_at", "now")
+    totals = data.get("cluster_totals", {})
+    pools = data.get("active_pools", {})
+    nodes: List[Dict[str, Any]] = data.get("nodes", [])
+    models: List[Dict[str, Any]] = data.get("models", [])
+    argon4 = verify_argon4_hooks()
+
+    gpu_count = totals.get("gpu_count", 4)
+    vram_used = totals.get("used_vram_mib", 0)
+    vram_total = totals.get("total_vram_mib", 61440)
+    ram_used = totals.get("used_ddr4_ram_gib", 0.0)
+    ram_total = totals.get("total_ddr4_ram_gib", 1702.45)
+    disk_free = totals.get("models_disk_free_tib", 0.0)
+
+    print("=" * 112)
+    print(
+        f" BOYLENET 4-GPU + 1.73 TB DDR4 HYBRID AI CLUSTER STATUS  (Orchestrator: {ORCHESTRATOR_URL})"
+    )
+    print("=" * 112)
+    print(
+        f" Active Mode   : {current_mode.upper()} (Effective Hardware Tier: {effective_tier.upper()})"
+    )
+    print(f" Active Model  : {active_model}")
+    print(
+        f" Cluster VRAM  : {gpu_count}x Tesla T4 (64 GB GDDR6 Pool) — {vram_used:,} / {vram_total:,} MiB used"
+    )
+    print(
+        f" Cluster DDR4  : 1.73 TB DDR4-2666 ECC Pool       — {ram_used:,.2f} / {ram_total:,.2f} GiB used (1,730 GiB configured)"
+    )
+    v72 = totals.get("vault_72_free_tib", 0.0)
+    v83 = totals.get("vault_83_free_tib", 0.0)
+    print(
+        f" Vault Storage : Dual 5.0 TB Vaults (.72 + .83)  — {disk_free:.3f} TiB free (.72={v72:.3f} TiB, .83={v83:.3f} TiB @ {cached_at})"
+    )
+    c_map = argon4["checks"]
+    print(
+        f" Argon-4 Guard : {'ACTIVE (ALL HOOKS VERIFIED)' if argon4['all_active'] else 'DEGRADED'} "
+        f"[claude={c_map['claude_settings_hooks']} codex={c_map['codex_hooks_json']} "
+        f"agy={c_map['agy_hooks_json']} shield.py={c_map['shield_py_present']} token-guard={c_map['bd_token_guard_present']}]"
+    )
+    print("-" * 112)
+
+    print(" ACTIVE EXECUTION POOLS:")
+    alpha = pools.get("tier1_pool_alpha", {})
+    beta = pools.get("tier1_pool_beta", {})
+    t23 = pools.get("tier23_unified_4gpu", {})
+    print(
+        f"  - Tier 1 Pool Alpha (32 GB 2xT4) : {alpha.get('endpoint', 'http://10.0.70.72:8082'):<24} "
+        f"| RPC: {alpha.get('rpc', '10.0.75.11:50052'):<18} | Model: {str(alpha.get('model')):<24} "
+        f"| Healthy: {'YES' if alpha.get('healthy') else 'NO'}"
+    )
+    print(
+        f"  - Tier 1 Pool Beta  (32 GB 2xT4) : {beta.get('endpoint', 'http://10.0.70.125:8081'):<24} "
+        f"| RPC: {beta.get('rpc', '10.0.75.13:50052'):<18} | Model: {str(beta.get('model')):<24} "
+        f"| Healthy: {'YES' if beta.get('healthy') else 'NO'}"
+    )
+    print(
+        f"  - Tier 2/3 Unified  (64 GB 4xT4) : {t23.get('endpoint', 'http://10.0.70.72:8083'):<24} "
+        f"| RPC: 10.0.75.11,13,14   | Model: {str(t23.get('model')):<24} "
+        f"| Healthy: {'YES' if t23.get('healthy') else 'NO'}"
+    )
+    print("-" * 112)
+
+    print(
+        f" {'NODE':<12} {'MGMT IP':<13} {'25GbE RPC':<19} {'CPU / ISA':<22} {'VRAM (MiB)':<14} {'UTIL':<6} {'PWR/TEMP':<13} {'DDR4 RAM (GiB)':<16} {'DISK FREE'}"
+    )
+    print(" " + "-" * 124)
+    for n in nodes:
+        vram_s = f"{n.get('vram_used_mib', 0):>5}/{n.get('vram_total_mib', 15360):<5}"
+        util_s = f"{n.get('gpu_util_pct', 0):>3}%"
+        pt_s = f"{n.get('power_w', 0.0):>5.1f}W/{n.get('temp_c', 0):>2}C"
+        ram_s = f"{n.get('ddr4_ram_used_gib', 0.0):>5.1f}/{n.get('ddr4_ram_total_gib', 0.0):<6.1f}"
+        disk_s = f"{n.get('models_disk_free_tib', 0.0):.3f} TiB"
+        vcpus = n.get("vcpus", 0)
+        cpu_raw = str(n.get("cpu") or n.get("cpu_desc") or "")
+        isa_tag = "Skylake AVX-512" if "AVX-512" in cpu_raw else "Broadwell AVX2"
+        cpu_s = f"{vcpus}vCPU {isa_tag}" if vcpus else isa_tag
+        print(
+            f" {n.get('node', ''):<12} {n.get('mgmt_ip', ''):<13} {n.get('rpc_endpoint', ''):<19} "
+            f"{cpu_s:<22} {vram_s:<14} {util_s:<6} {pt_s:<13} {ram_s:<16} {disk_s}"
+        )
+    print("-" * 126)
+
+    print(
+        f" {'TIER':<6} {'MODEL ID':<34} {'POOL':<17} {'TG128':<9} {'PP512':<10} {'CTX':<7} {'DISK GiB':<16} {'STATUS'}"
+    )
+    print(" " + "-" * 124)
+    for m in models:
+        tier_s = m.get("tier", "")
+        mid = m.get("id", "")
+        pool_s = m.get("pool", "")
+        tok_s = f"{m.get('measured_tok_s', 0.0):.2f}" if m.get("measured_tok_s") else "-"
+        pp_s = f"{m.get('measured_prompt_tok_s', 0.0):.2f}" if m.get("measured_prompt_tok_s") else "-"
+        ctx_s = str(m.get("ctx_size", ""))
+        gib_s = f"{m.get('gib_on_disk', 0.0):>6.2f}/{m.get('expected_gib', 0.0):<6.2f}"
+        st = m.get("status", "UNKNOWN")
+        pct = m.get("progress_pct", 0.0)
+        st_str = st if st == "READY" else f"{st} ({pct:.1f}%)"
+        marker = "*" if mid == active_model else " "
+        print(
+            f"{marker}{tier_s:<6} {mid:<34} {pool_s:<17} {tok_s:<9} {pp_s:<10} {ctx_s:<7} {gib_s:<16} {st_str}"
+        )
+    print("=" * 126)
+
+
+def cmd_status(as_json: bool = False) -> int:
+    url = f"{ORCHESTRATOR_URL}/api/tiers/status"
+    try:
+        data = http_get_json(url, timeout=15.0)
+    except Exception as exc:
+        print(f"ERROR: Failed to query {url}: {exc}", file=sys.stderr)
+        return 1
+    data["argon4_verification"] = verify_argon4_hooks()
+    if as_json:
+        print(json.dumps(data, indent=2))
+    else:
+        render_status_table(data)
+    return 0
+
+
+def cmd_switch(mode: str, model: Optional[str] = None, as_json: bool = False) -> int:
+    url = f"{ORCHESTRATOR_URL}/api/tiers/switch"
+    payload: Dict[str, Any] = {"mode": mode}
+    if model:
+        payload["model"] = model
+    if not as_json:
+        target_desc = f"mode={mode}" + (f", model={model}" if model else "")
+        print(f"[bd-tier-switch] Requesting cluster hot-swap -> {target_desc} via {url} ...")
+    try:
+        receipt = http_post_json(url, payload, timeout=180.0)
+    except urllib.error.HTTPError as he:
+        err_body = he.read().decode("utf-8", errors="replace")
+        print(f"ERROR: HTTP {he.code} from {url}: {err_body}", file=sys.stderr)
+        return 1
+    except Exception as exc:
+        print(f"ERROR: Failed to call {url}: {exc}", file=sys.stderr)
+        return 1
+
+    receipt["argon4_verification"] = verify_argon4_hooks()
+    if as_json:
+        print(json.dumps(receipt, indent=2))
+        return int(receipt.get("rc", 0))
+
+    rc = int(receipt.get("rc", 0))
+    print(
+        f"[bd-tier-switch] Switch completed in {receipt.get('elapsed_s', 0)}s (rc={rc}): "
+        f"effective_tier={receipt.get('effective_tier')} active_model={receipt.get('active_model')}"
+    )
+    if receipt.get("fallback_note"):
+        print(f"[bd-tier-switch] Note: {receipt['fallback_note']}")
+    for step in receipt.get("steps", []):
+        print(f"  step: {step}")
+
+    status_rc = cmd_status(as_json=False)
+    return rc if rc != 0 else status_rc
+
+
+def print_usage() -> None:
+    print(
+        "Usage:\n"
+        "  bd-tier-switch status [--json]\n"
+        "  bd-tier-switch <tier1|tier2|tier3|auto> [model_name] [--json]\n\n"
+        "Examples:\n"
+        "  bd-tier-switch status\n"
+        "  bd-tier-switch tier1 qwen3-coder-30b-a3b\n"
+        "  bd-tier-switch tier2 deepseek-r1-distill-llama-70b\n"
+        "  bd-tier-switch tier2 deepseek-r1-distill-llama-70b-q4_k_m\n"
+        "  bd-tier-switch tier3 swift-qwen3.8-flash-next\n"
+        "  bd-tier-switch tier3 deepseek-v4-flash-q2\n"
+        "  bd-tier-switch tier3 mimo-v2.6-pro-1024b\n"
+        "  bd-tier-switch tier3 muse-spark-816b-a42b\n"
+        "  bd-tier-switch tier3 glm-5.3-753b\n"
+        "  bd-tier-switch tier3 kimi-k3-q2k-abliterated\n"
+        "  bd-tier-switch auto\n"
+    )
+
+
+def main() -> int:
+    args = [a for a in sys.argv[1:] if a != "--json"]
+    as_json = "--json" in sys.argv[1:]
+
+    if not args or args[0] in ("-h", "--help", "help"):
+        print_usage()
+        return 0
+
+    sub = args[0].lower().strip()
+    if sub == "status":
+        return cmd_status(as_json=as_json)
+
+    if sub in ("tier1", "tier2", "tier3", "auto"):
+        model_arg = args[1] if len(args) > 1 else None
+        return cmd_switch(sub, model_arg, as_json=as_json)
+
+    print(f"ERROR: Unknown subcommand '{sub}'.", file=sys.stderr)
+    print_usage()
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,458 @@
+#!/usr/bin/env python3
+"""bd-downloader-bench: Self-contained hermetic HTTP/1.1 + Range + HLS (.m3u8) throughput benchmark.
+
+Spins up a high-speed local asyncio HTTP/1.1 server on 127.0.0.1:<ephemeral> supporting:
+  - GET /payload.bin with RFC 7233 Range: bytes=<start>-<end> (206 Partial Content)
+  - GET /stream.m3u8 + /seg_<NNN>.ts mock HLS manifest and segment stream
+  - GET /flaky/<worker_id> deterministic HTTP 429 (Retry-After) & 503 retry recovery probe
+
+Measures:
+  - 16-stream concurrent chunked download of 256 MB in-memory payload (MB/s & Gbps)
+  - HLS .m3u8 manifest parse + concurrent segment download throughput
+  - HTTP 429 / 503 backoff and retry recovery rate
+  - Peak RSS memory (MB) and bounded streaming heap delta
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import hashlib
+import json
+import resource
+import sys
+import time
+import tracemalloc
+from typing import Any
+
+
+class HermeticBenchServer:
+    """High-speed zero-copy in-memory HTTP/1.1 Range + HLS + Fault-Injection server."""
+
+    def __init__(self, payload_bytes: int, num_streams: int, hls_segment_bytes: int = 1024 * 1024) -> None:
+        self.payload_bytes = payload_bytes
+        self.num_streams = num_streams
+        self.hls_segment_bytes = hls_segment_bytes
+        # Pre-allocate a 16 MB repeating pattern block and serve slices via memoryview
+        pattern_unit = bytes((i % 251 for i in range(65536)))
+        self._block_size = 16 * 1024 * 1024
+        self._block = (pattern_unit * (self._block_size // len(pattern_unit) + 1))[: self._block_size]
+        self._block_mv = memoryview(self._block)
+        self._hls_seg = self._block_mv[:hls_segment_bytes]
+        self._hls_seg_sha256 = hashlib.sha256(self._hls_seg).hexdigest()
+        self.flaky_attempts: dict[str, int] = {}
+        self.requests_served = 0
+        self.range_requests_served = 0
+        self.retries_triggered = 0
+        self._server: asyncio.AbstractServer | None = None
+        self.port: int = 0
+
+    async def start(self) -> int:
+        self._server = await asyncio.start_server(
+            self._handle_client,
+            host="127.0.0.1",
+            port=0,
+            backlog=256,
+        )
+        sockets = self._server.sockets
+        assert sockets, "Server failed to bind ephemeral socket"
+        self.port = int(sockets[0].getsockname()[1])
+        return self.port
+
+    async def stop(self) -> None:
+        if self._server is not None:
+            self._server.close()
+            await self._server.wait_closed()
+
+    def _build_m3u8(self) -> bytes:
+        lines = [
+            "#EXTM3U",
+            "#EXT-X-VERSION:3",
+            "#EXT-X-TARGETDURATION:2",
+            "#EXT-X-MEDIA-SEQUENCE:0",
+        ]
+        for idx in range(self.num_streams):
+            lines.append("#EXTINF:2.000,")
+            lines.append(f"/seg_{idx:03d}.ts")
+        lines.append("#EXT-X-ENDLIST")
+        return ("\n".join(lines) + "\n").encode("ascii")
+
+    async def _send_all(self, writer: asyncio.StreamWriter, total_len: int, chunk_size: int = 1024 * 1024) -> None:
+        remaining = total_len
+        mv = self._block_mv
+        block_len = len(mv)
+        offset = 0
+        while remaining > 0:
+            take = min(remaining, chunk_size, block_len - offset)
+            writer.write(mv[offset : offset + take])
+            remaining -= take
+            offset = (offset + take) % block_len
+            if remaining > 0:
+                await writer.drain()
+        await writer.drain()
+
+    async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        try:
+            while True:
+                req_line = await reader.readline()
+                if not req_line:
+                    break
+                parts = req_line.decode("latin1", errors="replace").strip().split(" ")
+                if len(parts) < 2:
+                    break
+                method, path = parts[0], parts[1]
+                headers: dict[str, str] = {}
+                while True:
+                    hline = await reader.readline()
+                    if not hline or hline in (b"\r\n", b"\n"):
+                        break
+                    decoded = hline.decode("latin1", errors="replace").strip()
+                    if ":" in decoded:
+                        k, v = decoded.split(":", 1)
+                        headers[k.strip().lower()] = v.strip()
+
+                self.requests_served += 1
+
+                if path == "/payload.bin" and method == "GET":
+                    range_hdr = headers.get("range", "")
+                    if range_hdr.startswith("bytes="):
+                        self.range_requests_served += 1
+                        spec = range_hdr.split("=", 1)[1].strip()
+                        start_s, end_s = spec.split("-", 1)
+                        start = int(start_s) if start_s else 0
+                        end = int(end_s) if end_s else (self.payload_bytes - 1)
+                        end = min(end, self.payload_bytes - 1)
+                        length = max(0, end - start + 1)
+                        resp_hdr = (
+                            "HTTP/1.1 206 Partial Content\r\n"
+                            "Accept-Ranges: bytes\r\n"
+                            f"Content-Range: bytes {start}-{end}/{self.payload_bytes}\r\n"
+                            f"Content-Length: {length}\r\n"
+                            "Connection: keep-alive\r\n\r\n"
+                        ).encode("ascii")
+                        writer.write(resp_hdr)
+                        await self._send_all(writer, length)
+                    else:
+                        resp_hdr = (
+                            "HTTP/1.1 200 OK\r\n"
+                            "Accept-Ranges: bytes\r\n"
+                            f"Content-Length: {self.payload_bytes}\r\n"
+                            "Connection: keep-alive\r\n\r\n"
+                        ).encode("ascii")
+                        writer.write(resp_hdr)
+                        await self._send_all(writer, self.payload_bytes)
+
+                elif path == "/stream.m3u8":
+                    body = self._build_m3u8()
+                    resp_hdr = (
+                        "HTTP/1.1 200 OK\r\n"
+                        "Content-Type: application/vnd.apple.mpegurl\r\n"
+                        f"Content-Length: {len(body)}\r\n"
+                        "Connection: keep-alive\r\n\r\n"
+                    ).encode("ascii")
+                    writer.write(resp_hdr + body)
+                    await writer.drain()
+
+                elif path.startswith("/seg_") and path.endswith(".ts"):
+                    resp_hdr = (
+                        "HTTP/1.1 200 OK\r\n"
+                        "Content-Type: video/mp2t\r\n"
+                        f"X-Segment-Sha256: {self._hls_seg_sha256}\r\n"
+                        f"Content-Length: {len(self._hls_seg)}\r\n"
+                        "Connection: keep-alive\r\n\r\n"
+                    ).encode("ascii")
+                    writer.write(resp_hdr)
+                    writer.write(self._hls_seg)
+                    await writer.drain()
+
+                elif path.startswith("/flaky/"):
+                    worker_key = path.split("/flaky/", 1)[1]
+                    attempt = self.flaky_attempts.get(worker_key, 0) + 1
+                    self.flaky_attempts[worker_key] = attempt
+                    if attempt == 1:
+                        self.retries_triggered += 1
+                        body = b"rate limited"
+                        resp = (
+                            "HTTP/1.1 429 Too Many Requests\r\n"
+                            "Retry-After: 0.01\r\n"
+                            f"Content-Length: {len(body)}\r\n"
+                            "Connection: keep-alive\r\n\r\n"
+                        ).encode("ascii") + body
+                        writer.write(resp)
+                        await writer.drain()
+                    elif attempt == 2:
+                        self.retries_triggered += 1
+                        body = b"service unavailable"
+                        resp = (
+                            "HTTP/1.1 503 Service Unavailable\r\n"
+                            "Retry-After: 0.01\r\n"
+                            f"Content-Length: {len(body)}\r\n"
+                            "Connection: keep-alive\r\n\r\n"
+                        ).encode("ascii") + body
+                        writer.write(resp)
+                        await writer.drain()
+                    else:
+                        body = f"recovered:{worker_key}:attempt={attempt}".encode("ascii")
+                        resp = (
+                            "HTTP/1.1 200 OK\r\n"
+                            f"Content-Length: {len(body)}\r\n"
+                            "Connection: keep-alive\r\n\r\n"
+                        ).encode("ascii") + body
+                        writer.write(resp)
+                        await writer.drain()
+                else:
+                    body = b"not found"
+                    writer.write(
+                        f"HTTP/1.1 404 Not Found\r\nContent-Length: {len(body)}\r\n\r\n".encode("ascii") + body
+                    )
+                    await writer.drain()
+
+                if headers.get("connection", "").lower() == "close":
+                    break
+        except (ConnectionResetError, BrokenPipeError, asyncio.IncompleteReadError):
+            pass
+        finally:
+            try:
+                writer.close()
+                await writer.wait_closed()
+            except Exception:
+                pass
+
+
+async def _read_http_response(reader: asyncio.StreamReader) -> tuple[int, dict[str, str], int]:
+    status_line = await reader.readline()
+    if not status_line:
+        raise RuntimeError("Empty HTTP status line")
+    parts = status_line.decode("latin1").strip().split(" ", 2)
+    status_code = int(parts[1])
+    headers: dict[str, str] = {}
+    while True:
+        line = await reader.readline()
+        if not line or line in (b"\r\n", b"\n"):
+            break
+        text = line.decode("latin1").strip()
+        if ":" in text:
+            k, v = text.split(":", 1)
+            headers[k.strip().lower()] = v.strip()
+    content_len = int(headers.get("content-length", "0"))
+    return status_code, headers, content_len
+
+
+async def _download_range_stream(
+    port: int,
+    stream_id: int,
+    start_byte: int,
+    end_byte: int,
+    read_chunk_size: int = 262144,
+) -> int:
+    reader, writer = await asyncio.open_connection("127.0.0.1", port)
+    try:
+        req = (
+            "GET /payload.bin HTTP/1.1\r\n"
+            f"Host: 127.0.0.1:{port}\r\n"
+            f"Range: bytes={start_byte}-{end_byte}\r\n"
+            "Connection: close\r\n\r\n"
+        ).encode("ascii")
+        writer.write(req)
+        await writer.drain()
+
+        status_code, _headers, content_len = await _read_http_response(reader)
+        if status_code != 206:
+            raise RuntimeError(f"Stream {stream_id} expected 206 Partial Content, got {status_code}")
+
+        received = 0
+        while received < content_len:
+            chunk = await reader.read(min(read_chunk_size, content_len - received))
+            if not chunk:
+                break
+            received += len(chunk)
+        if received != content_len:
+            raise RuntimeError(f"Stream {stream_id} truncated: {received} != {content_len}")
+        return received
+    finally:
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except Exception:
+            pass
+
+
+async def _benchmark_hls(port: int, concurrency: int) -> dict[str, Any]:
+    t0 = time.perf_counter()
+    reader, writer = await asyncio.open_connection("127.0.0.1", port)
+    try:
+        writer.write(f"GET /stream.m3u8 HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n".encode("ascii"))
+        await writer.drain()
+        status, _hdrs, clen = await _read_http_response(reader)
+        if status != 200:
+            raise RuntimeError(f"HLS manifest fetch failed with {status}")
+        manifest = (await reader.readexactly(clen)).decode("ascii")
+    finally:
+        writer.close()
+        await writer.wait_closed()
+
+    segments = [line.strip() for line in manifest.splitlines() if line.strip().startswith("/seg_")]
+    sem = asyncio.Semaphore(concurrency)
+
+    async def _fetch_seg(seg_path: str) -> int:
+        async with sem:
+            r, w = await asyncio.open_connection("127.0.0.1", port)
+            try:
+                w.write(
+                    f"GET {seg_path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n".encode("ascii")
+                )
+                await w.drain()
+                st, hdrs, seg_len = await _read_http_response(r)
+                if st != 200:
+                    raise RuntimeError(f"Segment {seg_path} status {st}")
+                data = await r.readexactly(seg_len)
+                expected_sha = hdrs.get("x-segment-sha256", "")
+                if expected_sha and hashlib.sha256(data).hexdigest() != expected_sha:
+                    raise RuntimeError(f"Segment {seg_path} checksum mismatch")
+                return len(data)
+            finally:
+                w.close()
+                await w.wait_closed()
+
+    sizes = await asyncio.gather(*(_fetch_seg(s) for s in segments))
+    elapsed = max(1e-9, time.perf_counter() - t0)
+    total_bytes = sum(sizes)
+    return {
+        "segments_fetched": len(segments),
+        "total_bytes": total_bytes,
+        "elapsed_sec": round(elapsed, 4),
+        "throughput_mb_s": round((total_bytes / (1024 * 1024)) / elapsed, 2),
+    }
+
+
+async def _benchmark_retry_recovery(port: int, workers: int) -> dict[str, Any]:
+    t0 = time.perf_counter()
+
+    async def _worker(wid: int) -> tuple[int, str]:
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
+        attempts = 0
+        try:
+            while attempts < 5:
+                attempts += 1
+                writer.write(
+                    f"GET /flaky/w{wid} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: keep-alive\r\n\r\n".encode(
+                        "ascii"
+                    )
+                )
+                await writer.drain()
+                status, hdrs, clen = await _read_http_response(reader)
+                body = (await reader.readexactly(clen)).decode("latin1")
+                if status == 200:
+                    return attempts, body
+                if status in (429, 503):
+                    retry_after = float(hdrs.get("retry-after", "0.01"))
+                    await asyncio.sleep(min(retry_after, 0.05))
+                    continue
+                raise RuntimeError(f"Unexpected status {status}")
+            raise RuntimeError(f"Worker {wid} exhausted retries")
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
+    results = await asyncio.gather(*(_worker(i) for i in range(workers)))
+    elapsed = max(1e-9, time.perf_counter() - t0)
+    return {
+        "workers": workers,
+        "recovered_workers": sum(1 for _, b in results if b.startswith("recovered:")),
+        "total_attempts": sum(a for a, _ in results),
+        "transient_429_503_handled": sum(a - 1 for a, _ in results),
+        "elapsed_sec": round(elapsed, 4),
+    }
+
+
+def _get_peak_rss_mb() -> float:
+    ru = resource.getrusage(resource.RUSAGE_SELF)
+    # On Linux ru_maxrss is in kilobytes
+    return round(ru.ru_maxrss / 1024.0, 2)
+
+
+async def run_benchmark(streams: int, payload_mb: int) -> dict[str, Any]:
+    tracemalloc.start()
+    payload_bytes = payload_mb * 1024 * 1024
+    server = HermeticBenchServer(payload_bytes=payload_bytes, num_streams=streams)
+    port = await server.start()
+    try:
+        chunk_span = payload_bytes // streams
+        ranges: list[tuple[int, int]] = []
+        for idx in range(streams):
+            start = idx * chunk_span
+            end = (payload_bytes - 1) if idx == streams - 1 else (start + chunk_span - 1)
+            ranges.append((start, end))
+
+        t0 = time.perf_counter()
+        stream_Counts = await asyncio.gather(
+            *(
+                _download_range_stream(port, idx, start, end)
+                for idx, (start, end) in enumerate(ranges)
+            )
+        )
+        range_elapsed = max(1e-9, time.perf_counter() - t0)
+        total_downloaded = sum(stream_Counts)
+        mb_downloaded = total_downloaded / (1024 * 1024)
+        throughput_mb_s = mb_downloaded / range_elapsed
+        throughput_gbps = (total_downloaded * 8) / (range_elapsed * 1e9)
+
+        hls_stats = await _benchmark_hls(port, concurrency=streams)
+        retry_stats = await _benchmark_retry_recovery(port, workers=streams)
+
+        _cur_heap, peak_heap = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+
+        return {
+            "benchmark": "bd-downloader-bench",
+            "status": "PASS",
+            "ephemeral_port": port,
+            "parallel_streams": streams,
+            "payload_mb": payload_mb,
+            "bytes_verified": total_downloaded,
+            "range_elapsed_sec": round(range_elapsed, 4),
+            "throughput_mb_s": round(throughput_mb_s, 2),
+            "throughput_gbps": round(throughput_gbps, 3),
+            "hls_m3u8": hls_stats,
+            "retry_recovery_429_503": retry_stats,
+            "memory": {
+                "peak_rss_mb": _get_peak_rss_mb(),
+                "tracemalloc_peak_heap_mb": round(peak_heap / (1024 * 1024), 2),
+            },
+            "server_counters": {
+                "requests_served": server.requests_served,
+                "range_requests_served": server.range_requests_served,
+                "retries_triggered": server.retries_triggered,
+            },
+        }
+    finally:
+        await server.stop()
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="BulkDownloader Hermetic Multi-Stream Throughput Benchmark")
+    parser.add_argument("--streams", type=int, default=16, help="Number of parallel download streams (default: 16)")
+    parser.add_argument("--payload-mb", type=int, default=256, help="Total in-memory payload size in MB (default: 256)")
+    parser.add_argument("--json", action="store_true", help="Emit JSON output")
+    args = parser.parse_args()
+
+    # Repair method spacing typo if any; _send_all is defined cleanly below
+    metrics = asyncio.run(run_benchmark(streams=args.streams, payload_mb=args.payload_mb))
+    if args.json:
+        print(json.dumps(metrics, indent=2))
+    else:
+        print(
+            f"[bd-downloader-bench] STATUS={metrics['status']} "
+            f"STREAMS={metrics['parallel_streams']} "
+            f"PAYLOAD={metrics['payload_mb']}MB "
+            f"THROUGHPUT={metrics['throughput_mb_s']}MB/s ({metrics['throughput_gbps']} Gbps) "
+            f"HLS={metrics['hls_m3u8']['throughput_mb_s']}MB/s "
+            f"RETRIES_RECOVERED={metrics['retry_recovery_429_503']['recovered_workers']}/{metrics['retry_recovery_429_503']['workers']} "
+            f"PEAK_RSS={metrics['memory']['peak_rss_mb']}MB "
+            f"PEAK_HEAP={metrics['memory']['tracemalloc_peak_heap_mb']}MB"
+        )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

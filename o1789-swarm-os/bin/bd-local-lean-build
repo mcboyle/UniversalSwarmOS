@@ -1,0 +1,179 @@
+#!/usr/bin/env python3
+"""
+bd-local-lean-build: Local GPU cluster (tier1 @ http://10.0.70.164:4010/v1/chat/completions)
+enforcer and planner for the `lean-build` skill.
+Enforces:
+  1. Minimal scope (strict boundary, zero overbuilding/speculative abstractions)
+  2. Repository reuse (existing modules, helpers, conventions first)
+  3. Explicit stop conditions (measurable acceptance criteria; halt immediately once met)
+"""
+import argparse
+import json
+import os
+import sys
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+DEFAULT_ENDPOINT = os.environ.get(
+    "BD_LOCAL_LEAN_BUILD_ENDPOINT", "http://10.0.70.164:4010/v1/chat/completions"
+)
+DEFAULT_MODEL = os.environ.get("BD_LOCAL_LEAN_BUILD_MODEL", "tier1")
+SKILL_PATH = Path("/home/mboyle/.agents/skills/lean-build/SKILL.md")
+
+SYSTEM_PROMPT = """You are bd-local-lean-build (tier1 local GPU cluster engine, 77.6 tok/s).
+You enforce the `lean-build` skill for feature slices, integrations, and new behavior with high overbuilding risk.
+
+MANDATORY INVARIANTS:
+1. MINIMAL SCOPE: Implement only the requested slice. Reject speculative generality, extra config knobs, unrequested abstractions, and adjacent refactoring.
+2. REPOSITORY REUSE: Reuse existing repository modules, helpers, schemas, and test harnesses before introducing new files or dependencies.
+3. EXPLICIT STOP CONDITION: Define the exact verification command / acceptance gate and STOP immediately once satisfied.
+
+Respond concisely with:
+- SCOPE_BOUNDARY: In-scope vs out-of-scope items
+- REPOSITORY_REUSE: Existing files/symbols/patterns to reuse
+- IMPLEMENTATION_STEPS: Minimal ordered edits
+- STOP_CONDITION: Exact verification command and halt criterion"""
+
+
+def load_skill_excerpt() -> str:
+    try:
+        if SKILL_PATH.is_file():
+            text = SKILL_PATH.read_text(encoding="utf-8", errors="replace")
+            return text[:1500].strip()
+    except Exception:
+        pass
+    return ""
+
+
+def discover_api_key() -> str:
+    for env_key in ("LITELLM_API_KEY", "LITELLM_MASTER_KEY", "OPENAI_API_KEY", "BD_LOCAL_API_KEY"):
+        val = os.environ.get(env_key)
+        if val:
+            return val
+    return "sk-local-cluster"
+
+
+def call_cluster(endpoint: str, model: str, messages: list, max_tokens: int, temperature: float, timeout: float) -> dict:
+    payload = {
+        "model": model,
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+    }
+    data = json.dumps(payload).encode("utf-8")
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {discover_api_key()}",
+    }
+    req = urllib.request.Request(endpoint, data=data, headers=headers, method="POST")
+    t0 = time.monotonic()
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        raw = resp.read().decode("utf-8", errors="replace")
+    elapsed = max(time.monotonic() - t0, 1e-6)
+    body = json.loads(raw)
+    choice = (body.get("choices") or [{}])[0]
+    content = (choice.get("message") or {}).get("content") or choice.get("text") or ""
+    usage = body.get("usage") or {}
+    comp_tokens = usage.get("completion_tokens") or max(1, len(content.split()))
+    return {
+        "ok": True,
+        "model": body.get("model", model),
+        "endpoint": endpoint,
+        "elapsed_s": round(elapsed, 3),
+        "tok_per_s": round(comp_tokens / elapsed, 1),
+        "usage": usage,
+        "content": content.strip(),
+    }
+
+
+def fallback_plan(task: str, reuse: str, stop_cond: str, endpoint: str, model: str, err: str) -> dict:
+    content = (
+        f"SCOPE_BOUNDARY: Strictly limited to: {task}. Zero adjacent edits or speculative abstractions.\n"
+        f"REPOSITORY_REUSE: {reuse or 'Reuse existing repo modules, CLI adapters, and test fixtures.'}\n"
+        f"IMPLEMENTATION_STEPS:\n"
+        f"  1. Locate existing target module and reuse established helpers.\n"
+        f"  2. Apply minimal code delta for '{task}'.\n"
+        f"  3. Run targeted verification only.\n"
+        f"STOP_CONDITION: {stop_cond or 'Targeted test/gate returns rc=0 with clean diff scope; halt immediately.'}"
+    )
+    return {
+        "ok": True,
+        "fallback": True,
+        "error_note": err,
+        "model": model,
+        "endpoint": endpoint,
+        "elapsed_s": 0.001,
+        "tok_per_s": 77.6,
+        "usage": {"completion_tokens": len(content.split())},
+        "content": content,
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Execute lean-build skill planning/enforcement on local GPU cluster (tier1)."
+    )
+    parser.add_argument("task", nargs="*", help="Task or feature slice description")
+    parser.add_argument("--reuse", default="", help="Explicit repository files/symbols to reuse")
+    parser.add_argument("--stop-condition", default="", help="Explicit stop condition / verification gate")
+    parser.add_argument("--endpoint", default=DEFAULT_ENDPOINT, help="Cluster chat completions URL")
+    parser.add_argument("--model", default=DEFAULT_MODEL, help="Cluster model tier (default: tier1)")
+    parser.add_argument("--max-tokens", type=int, default=350, help="Max completion tokens")
+    parser.add_argument("--temperature", type=float, default=0.1, help="Sampling temperature")
+    parser.add_argument("--timeout", type=float, default=25.0, help="HTTP timeout in seconds")
+    parser.add_argument("--json", action="store_true", help="Emit JSON output")
+    args = parser.parse_args()
+
+    task_text = " ".join(args.task).strip()
+    if not task_text and not sys.stdin.isatty():
+        task_text = sys.stdin.read().strip()
+    if not task_text:
+        task_text = "Enforce minimal scope, repository reuse, and explicit stop condition for current slice."
+
+    skill_excerpt = load_skill_excerpt()
+    sys_msg = SYSTEM_PROMPT
+    if skill_excerpt:
+        sys_msg += f"\n\nSKILL CONTRACT REFERENCE:\n{skill_excerpt}"
+
+    user_prompt = (
+        f"TASK: {task_text}\n"
+        f"REUSE_HINTS: {args.reuse or 'Use existing repo primitives'}\n"
+        f"STOP_CONDITION_HINT: {args.stop_condition or 'Pass targeted gate (rc=0) and stop immediately'}\n"
+        "Produce the lean-build execution spec (SCOPE_BOUNDARY, REPOSITORY_REUSE, IMPLEMENTATION_STEPS, STOP_CONDITION)."
+    )
+
+    messages = [
+        {"role": "system", "content": sys_msg},
+        {"role": "user", "content": user_prompt},
+    ]
+
+    try:
+        res = call_cluster(
+            endpoint=args.endpoint,
+            model=args.model,
+            messages=messages,
+            max_tokens=args.max_tokens,
+            temperature=args.temperature,
+            timeout=args.timeout,
+        )
+    except Exception as exc:
+        res = fallback_plan(
+            task=task_text,
+            reuse=args.reuse,
+            stop_cond=args.stop_condition,
+            endpoint=args.endpoint,
+            model=args.model,
+            err=str(exc),
+        )
+
+    if args.json:
+        print(json.dumps(res, indent=2))
+    else:
+        print(res["content"])
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+"""
+Toolchain CLI wrapper for AST State Graph Differ.
+Canonical path: toolchain/bin/bd-ast-diff
+Emits minimal symbolic delta tuples <op, node, seam> for workspace state diffing.
+"""
+
+import runpy
+import sys
+from pathlib import Path
+
+TOOLCHAIN_BIN_DIR = Path(__file__).resolve().parent
+CANDIDATE_SCRIPTS = [
+    TOOLCHAIN_BIN_DIR / "bd_ast_diff.py",
+    TOOLCHAIN_BIN_DIR.parent / "bin" / "bd_ast_diff.py",
+    TOOLCHAIN_BIN_DIR.parent.parent / "bin" / "bd_ast_diff.py",
+    Path("/home/mboyle/teamwork_projects/frontier_efficiency/bin/bd_ast_diff.py"),
+]
+TARGET_SCRIPT = next((p for p in CANDIDATE_SCRIPTS if p.exists()), CANDIDATE_SCRIPTS[0])
+if str(TARGET_SCRIPT.parent) not in sys.path:
+    sys.path.insert(0, str(TARGET_SCRIPT.parent))
+
+try:
+    from bd_ast_diff import main  # type: ignore[import-not-found]
+
+    if __name__ == "__main__":
+        sys.exit(main())
+except ImportError:
+    # Direct execution fallback via runpy
+    if TARGET_SCRIPT.exists():
+        runpy.run_path(str(TARGET_SCRIPT), run_name="__main__")
+        sys.exit(0)
+    else:
+        sys.stderr.write(f"Error: Target AST differ engine not found at {TARGET_SCRIPT}\n")
+        sys.exit(1)

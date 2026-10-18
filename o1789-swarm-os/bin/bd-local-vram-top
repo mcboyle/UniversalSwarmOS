@@ -1,0 +1,237 @@
+#!/usr/bin/env python3
+"""bd-local-vram-top: Parallel live VRAM & telemetry bar chart across 4 Tesla T4 nodes."""
+import argparse
+import concurrent.futures
+import json
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+
+NODES = [
+    ("10.0.70.83", "gpu-node-83"),
+    ("10.0.70.72", "gpu-node-72"),
+    ("10.0.70.228", "ai-ollama01"),
+    ("10.0.70.125", "ai-infer01"),
+]
+
+REMOTE_CMD = (
+    "hostname -s 2>/dev/null || hostname; "
+    "echo '---GPU---'; "
+    "nvidia-smi --query-gpu=index,name,memory.used,memory.total,temperature.gpu,power.draw,power.limit,utilization.gpu "
+    "--format=csv,noheader,nounits 2>/dev/null; "
+    "echo '---APPS---'; "
+    "nvidia-smi --query-compute-apps=pid,process_name,used_gpu_memory "
+    "--format=csv,noheader,nounits 2>/dev/null || true"
+)
+
+
+def parse_float(val, default=0.0):
+    try:
+        return float(str(val).strip())
+    except Exception:
+        return default
+
+
+def query_node(ip, label, timeout=8):
+    t0 = time.monotonic()
+    cmd = [
+        "ssh",
+        "-o", "BatchMode=yes",
+        "-o", "ConnectTimeout=4",
+        "-o", "StrictHostKeyChecking=accept-new",
+        ip,
+        REMOTE_CMD,
+    ]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        elapsed_ms = int((time.monotonic() - t0) * 1000)
+        if proc.returncode != 0:
+            return {
+                "ip": ip,
+                "host": label,
+                "ok": False,
+                "error": (proc.stderr.strip() or f"ssh rc={proc.returncode}"),
+                "elapsed_ms": elapsed_ms,
+                "gpus": [],
+                "apps": [],
+            }
+        out = proc.stdout
+        parts_gpu = out.split("---GPU---", 1)
+        host = parts_gpu[0].strip().splitlines()[0] if parts_gpu[0].strip() else label
+        rest = parts_gpu[1] if len(parts_gpu) > 1 else ""
+        parts_apps = rest.split("---APPS---", 1)
+        gpu_raw = parts_apps[0].strip()
+        apps_raw = parts_apps[1].strip() if len(parts_apps) > 1 else ""
+
+        gpus = []
+        for line in gpu_raw.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            cols = [c.strip() for c in line.split(",")]
+            if len(cols) >= 8:
+                gpus.append({
+                    "index": cols[0],
+                    "name": cols[1],
+                    "mem_used_mib": parse_float(cols[2], 0.0),
+                    "mem_total_mib": parse_float(cols[3], 16384.0),
+                    "temp_c": int(parse_float(cols[4], 0.0)),
+                    "power_w": parse_float(cols[5], 0.0),
+                    "power_limit_w": parse_float(cols[6], 70.0),
+                    "util_pct": int(parse_float(cols[7], 0.0)),
+                })
+
+        apps = []
+        for line in apps_raw.splitlines():
+            line = line.strip()
+            if not line or "No running" in line or "Insufficient" in line:
+                continue
+            cols = [c.strip() for c in line.split(",")]
+            if len(cols) >= 2:
+                pid = cols[0]
+                pname = cols[1].split("/")[-1]
+                pmem = parse_float(cols[2], 0.0) if len(cols) >= 3 else 0.0
+                apps.append({"pid": pid, "name": pname, "mem_mib": pmem})
+
+        return {
+            "ip": ip,
+            "host": host,
+            "ok": bool(gpus),
+            "error": "" if gpus else "no GPU rows returned",
+            "elapsed_ms": elapsed_ms,
+            "gpus": gpus,
+            "apps": apps,
+        }
+    except Exception as exc:
+        return {
+            "ip": ip,
+            "host": label,
+            "ok": False,
+            "error": str(exc),
+            "elapsed_ms": int((time.monotonic() - t0) * 1000),
+            "gpus": [],
+            "apps": [],
+        }
+
+
+def make_bar(pct, width=24):
+    pct = max(0.0, min(100.0, pct))
+    filled = int(round((pct / 100.0) * width))
+    return "[" + ("#" * filled) + ("-" * (width - filled)) + "]"
+
+
+def render_snapshot(results):
+    now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    lines = []
+    sep = "=" * 108
+    lines.append(sep)
+    lines.append(f"BOYLENET LOCAL GPU VRAM TOP | 4x Tesla T4 (64 GB Total VRAM) | {now_utc}")
+    lines.append(sep)
+    lines.append(
+        f"{'NODE (HOST)':<24} {'GPU':<10} {'VRAM BAR (24-SEG)':<26} "
+        f"{'VRAM USED/TOT':<17} {'TEMP':<6} {'POWER':<12} {'UTIL':<6} {'ACTIVE COMPUTE PROCESSES'}"
+    )
+    lines.append("-" * 108)
+
+    total_used_mib = 0.0
+    total_cap_mib = 0.0
+    total_power_w = 0.0
+    total_power_lim_w = 0.0
+    temps = []
+    utils = []
+    online_gpus = 0
+
+    for r in results:
+        node_tag = f"{r['ip']} ({r['host']})"
+        if not r["ok"]:
+            lines.append(
+                f"{node_tag:<24} {'OFFLINE':<10} {make_bar(0):<26} "
+                f"{'0.0/16.0 GiB':<17} {'N/A':<6} {'N/A':<12} {'N/A':<6} ERR: {r['error']}"
+            )
+            continue
+
+        proc_str = (
+            ", ".join(f"{a['name']}[{a['pid']}]({int(a['mem_mib'])}M)" for a in r["apps"])
+            if r["apps"]
+            else "idle (0 procs)"
+        )
+        for g in r["gpus"]:
+            online_gpus += 1
+            used_mib = g["mem_used_mib"]
+            tot_mib = g["mem_total_mib"] if g["mem_total_mib"] > 0 else 16384.0
+            pct = (used_mib / tot_mib) * 100.0
+            used_gib = used_mib / 1024.0
+            tot_gib = tot_mib / 1024.0
+            bar = make_bar(pct, 24)
+            vram_str = f"{used_gib:4.1f}/{tot_gib:4.1f}G ({pct:4.1f}%)"
+            temp_str = f"{g['temp_c']}C"
+            pwr_str = f"{g['power_w']:4.1f}/{g['power_limit_w']:2.0f}W"
+            util_str = f"{g['util_pct']:3d}%"
+            gpu_short = g["name"].replace("NVIDIA ", "")[:10]
+
+            lines.append(
+                f"{node_tag:<24} {gpu_short:<10} {bar:<26} "
+                f"{vram_str:<17} {temp_str:<6} {pwr_str:<12} {util_str:<6} {proc_str}"
+            )
+
+            total_used_mib += used_mib
+            total_cap_mib += tot_mib
+            total_power_w += g["power_w"]
+            total_power_lim_w += g["power_limit_w"]
+            temps.append(g["temp_c"])
+            utils.append(g["util_pct"])
+
+    lines.append("-" * 108)
+    cluster_cap_gib = total_cap_mib / 1024.0 if total_cap_mib > 0 else 64.0
+    cluster_used_gib = total_used_mib / 1024.0
+    cluster_pct = (total_used_mib / total_cap_mib * 100.0) if total_cap_mib > 0 else 0.0
+    avg_temp = (sum(temps) / len(temps)) if temps else 0.0
+    avg_util = (sum(utils) / len(utils)) if utils else 0.0
+    tot_bar = make_bar(cluster_pct, 24)
+    tot_vram_str = f"{cluster_used_gib:4.1f}/{cluster_cap_gib:4.1f}G ({cluster_pct:4.1f}%)"
+    tot_temp_str = f"{avg_temp:4.1f}C"
+    tot_pwr_str = f"{total_power_w:5.1f}/{total_power_lim_w:3.0f}W"
+    tot_util_str = f"{avg_util:4.1f}%"
+
+    lines.append(
+        f"{'CLUSTER TOTAL (4x T4)':<24} {f'{online_gpus}/4 UP':<10} {tot_bar:<26} "
+        f"{tot_vram_str:<17} {tot_temp_str:<6} {tot_pwr_str:<12} {tot_util_str:<6} "
+        f"64 GB Pool ({int(total_used_mib)}/{int(total_cap_mib)} MiB)"
+    )
+    lines.append(sep)
+    return "\n".join(lines)
+
+
+def collect_all():
+    results_map = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(NODES)) as ex:
+        fut_to_ip = {ex.submit(query_node, ip, label): ip for ip, label in NODES}
+        for fut in concurrent.futures.as_completed(fut_to_ip):
+            ip = fut_to_ip[fut]
+            results_map[ip] = fut.result()
+    return [results_map[ip] for ip, _ in NODES]
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Live VRAM & GPU bar chart across 4 Tesla T4 nodes.")
+    parser.add_argument("-w", "--watch", type=float, default=0.0, help="Refresh interval in seconds (0 = run once)")
+    parser.add_argument("--json", action="store_true", help="Output raw JSON telemetry")
+    args = parser.parse_args()
+
+    while True:
+        results = collect_all()
+        if args.json:
+            print(json.dumps(results, indent=2))
+        else:
+            if args.watch > 0:
+                sys.stdout.write("\033[2J\033[H")
+            print(render_snapshot(results), flush=True)
+        if args.watch <= 0:
+            break
+        time.sleep(args.watch)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

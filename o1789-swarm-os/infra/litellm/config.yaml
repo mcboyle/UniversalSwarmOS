@@ -1,0 +1,589 @@
+# LiteLLM proxy config -- fleet-local models only (Ollama on 10.0.70.228, 10.0.70.125, 10.0.70.72).
+# Container: see run.sh beside this file. Health: GET /health (per-model), /health/liveliness, /v1/models.
+model_list:
+  # O1503 P0 (findings/GPU-WORKLOAD-READINESS-bd-worker-B1-B.md): dedicated workload aliases, one deployment each, no
+  # fallbacks. Clients send no num_ctx: a per-request num_ctx != the loaded ctx reloads the model and can evict (F3).
+  - model_name: ci-summary
+    litellm_params: {model: ollama/qwen2.5-coder:7b, api_base: http://10.0.70.228:11434, weight: 1}
+  # O1578: aidev T4 (5th Turing GPU) joins this group
+  - model_name: ci-summary
+    litellm_params: {model: ollama/qwen2.5-coder:7b, api_base: http://10.0.70.83:11434, weight: 1}
+  # O1592 proxy-routing r2: .72 on ollama 0.34.0 with .228's env (ctx 32768); a 19,360-token prompt kept its head (TEST.md).
+  - model_name: ci-summary
+    litellm_params: {model: ollama/qwen2.5-coder:7b, api_base: http://10.0.70.72:11434, weight: 1}
+  # .125 NOT in ci-summary: 4 prompts > 16384 tokens per 12 h on .228/.83 (max 28,540); .125 runs ctx 16384.
+  - model_name: rag-embed
+    litellm_params: {model: ollama/bge-m3:latest, api_base: http://10.0.70.72:11434}
+    model_info: {mode: embedding}
+  # O1510b (operator ORDER-OPTIMIZE-2080TI-CDP rev, 21:52Z): embeddings balanced 72 + 137, 137 on CPU-only variants
+  # (Modelfile num_gpu 0 by bd-worker-B8-B) -- the 2080 Ti is reserved for qwen2.5-coder. Supersedes P0's "72 only".
+  - model_name: rag-embed
+    litellm_params: {model: ollama/bge-m3-cpu:latest, api_base: http://10.0.10.137:11434}
+    model_info: {mode: embedding}
+  # O1503: 125 removed from qwen2.5-coder-14b and trivial (MAX_LOADED_MODELS=1 there; every switch reloads, F2).
+  - model_name: qwen2.5-coder-14b
+    # TURING T2: fixed num_ctx so 14b fits the T4 (measured 12.15 GB all-VRAM, 15.0 tok/s, load 9.1 s; at the host
+    # default 32768x4 slots it is 23.64 GB, 14.14 on GPU, 8.4 tok/s, load 20.1 s). Always the same value -> no extra reload.
+    # LIMIT: prompts over 8192 tokens are SILENTLY truncated (ollama keeps the tail, done_reason not an error); the
+    # 14b->7b fallback does NOT fire for them. Prompts <= 16384 tokens: use qwen2.5-coder-7b (.137 there is 7b-16k,
+    # ctx 16384; .228/.83 are 32768). Prompts > 16384 tokens have NO safe group today (any group with .137 truncates).
+    litellm_params: {model: ollama/qwen2.5-coder:14b, api_base: http://10.0.70.228:11434, num_ctx: 8192}
+  - model_name: qwen2.5-coder-7b
+    litellm_params: {model: ollama/qwen2.5-coder:7b, api_base: http://10.0.70.228:11434, weight: 1}
+  # O1578: aidev T4 (5th Turing GPU) joins this group
+  - model_name: qwen2.5-coder-7b
+    litellm_params: {model: ollama/qwen2.5-coder:7b, api_base: http://10.0.70.83:11434, weight: 1}
+  - model_name: qwen2.5-coder-7b
+    litellm_params: {model: ollama/qwen2.5-coder:7b-16k, api_base: http://10.0.10.137:11434, weight: 2}
+  # O1592 proxy-routing r2: .72 on ollama 0.34.0 with .228's env (ctx 32768); a 19,360-token prompt kept its head (TEST.md).
+  - model_name: qwen2.5-coder-7b
+    litellm_params: {model: ollama/qwen2.5-coder:7b, api_base: http://10.0.70.72:11434, weight: 1}
+  # O1592 proxy-routing r2: .125 joins ONLY after its env is MAX_LOADED_MODELS=3 CONTEXT_LENGTH=16384 NUM_PARALLEL=2
+  # (hermes + qwen7b + nomic co-resident; with MAX_LOADED_MODELS=1 each swap costs 7.5-10.4 s, TEST.md). ctx 16384 there.
+  - model_name: qwen2.5-coder-7b
+    litellm_params: {model: ollama/qwen2.5-coder:7b, api_base: http://10.0.70.125:11434, weight: 1}
+  - model_name: qwen2.5-coder-7b-16k
+    litellm_params: {model: ollama/qwen2.5-coder:7b-16k, api_base: http://10.0.10.137:11434}
+  # O1505 (G2): 125 serves Hermes only (findings/HERMES-125-bd-worker-B8-B.md). qwen3:8b and llama-guard3:8b were removed
+  # from 125 at 19:37Z; their only caller (bd-prewarm-kv) now warms "distill". Dedicated aliases, no fallbacks.
+  - model_name: distill
+    litellm_params: {model: ollama/hermes3:8b-llama3.1-q4_K_M, api_base: http://10.0.70.125:11434}
+  - model_name: intake
+    litellm_params: {model: ollama/hermes3:8b-llama3.1-q4_K_M, api_base: http://10.0.70.125:11434}
+  - model_name: nomic-embed-text
+    litellm_params: {model: ollama/nomic-embed-text, api_base: http://10.0.70.228:11434, weight: 1}
+    model_info: {mode: embedding}
+  - model_name: nomic-embed-text
+    litellm_params: {model: ollama/nomic-embed-text-cpu:latest, api_base: http://10.0.10.137:11434, weight: 1}  # O1510b CPU
+    model_info: {mode: embedding}
+  # O1592 r2: .125 GPU nomic (308 MiB measured on .228). .72 not added: nomic-embed-text is not pulled there.
+  - model_name: nomic-embed-text
+    litellm_params: {model: ollama/nomic-embed-text, api_base: http://10.0.70.125:11434, weight: 1}
+    model_info: {mode: embedding}
+  - model_name: bge-m3
+    litellm_params: {model: ollama/bge-m3:latest, api_base: http://10.0.70.72:11434}
+    model_info: {mode: embedding}
+  - model_name: bge-m3
+    litellm_params: {model: ollama/bge-m3-cpu:latest, api_base: http://10.0.10.137:11434}  # O1510b CPU
+    model_info: {mode: embedding}
+  - model_name: trivial
+    litellm_params: {model: ollama/qwen2.5-coder:7b, api_base: http://10.0.70.228:11434, weight: 1}
+  # O1578: aidev T4 (5th Turing GPU) joins this group
+  - model_name: trivial
+    litellm_params: {model: ollama/qwen2.5-coder:7b, api_base: http://10.0.70.83:11434, weight: 1}
+  # TURING R3: .72 removed from trivial: host ctx 4096 (ollama 0.30.11) silently truncated a 16,571-token prompt to
+  # 2,050 and answered wrong (done_reason stop); .228 answered right on the same prompt. trivial's ceiling is now
+  # 16384 tokens (.137 = 7b-16k; a 16,476-tok prompt there kept 8194 and answered wrong). Re-add .72 at ctx >= 16384.
+  # O1510b: trivial on 137 = the resident GPU coder (7b-16k); qwen2.5:7b there would evict it
+  - model_name: trivial
+    litellm_params: {model: ollama/qwen2.5-coder:7b-16k, api_base: http://10.0.10.137:11434, weight: 2}
+  # O1592 proxy-routing r2: .72 on ollama 0.34.0 with .228's env (ctx 32768); a 19,360-token prompt kept its head (TEST.md).
+  - model_name: trivial
+    litellm_params: {model: ollama/qwen2.5-coder:7b, api_base: http://10.0.70.72:11434, weight: 1}
+  # O1592 proxy-routing r2: .125 joins ONLY after its env is MAX_LOADED_MODELS=3 CONTEXT_LENGTH=16384 NUM_PARALLEL=2
+  # (hermes + qwen7b + nomic co-resident; with MAX_LOADED_MODELS=1 each swap costs 7.5-10.4 s, TEST.md). ctx 16384 there.
+  - model_name: trivial
+    litellm_params: {model: ollama/qwen2.5-coder:7b, api_base: http://10.0.70.125:11434, weight: 1}
+  # O1720 G1 aliases (bd-pm-C): stable names for fleet callers; Rule 84 placement on .137
+  - model_name: local-coder
+    litellm_params: {model: ollama/qwen2.5-coder:7b-16k, api_base: http://10.0.10.137:11434}
+  - model_name: local-embed
+    litellm_params: {model: ollama/bge-m3-cpu:latest, api_base: http://10.0.10.137:11434}  # CPU, single model (no mixed embedding spaces)
+    model_info: {mode: embedding}
+  # O1789 Hermes-3 integration: 10.0.70.83 (aidev T4 GPU, resident 32k context)
+  - model_name: hermes-3
+    litellm_params: {model: ollama/hermes3:8b, api_base: http://10.0.70.83:11434}
+  - model_name: hermes-fast
+    litellm_params: {model: ollama/hermes3:8b, api_base: http://10.0.70.83:11434}
+  - model_name: hermes-ultracode
+    litellm_params: {model: ollama/hermes3:8b, api_base: http://10.0.70.83:11434}
+  - model_name: qwen2.5-coder
+    litellm_params: {model: ollama/qwen2.5-coder:7b, api_base: http://10.0.70.228:11434, weight: 1}
+  - model_name: qwen2.5-coder
+    litellm_params: {model: ollama/qwen2.5-coder:7b, api_base: http://10.0.70.125:11434, weight: 1}
+  # O1789 Tier-1 Distributed 32B Coder (2x Tesla T4 32GB VRAM Pool via llama.cpp GGML_RPC over 25GbE 10.0.75.14 + 10.0.75.13:50052)
+  - model_name: qwen2.5-coder-32b-distributed
+    litellm_params: {model: openai/qwen2.5-coder-32b-distributed, api_base: http://10.0.70.125:8081/v1, api_key: sk-local}
+  - model_name: qwen2.5-coder-32b
+    litellm_params: {model: openai/qwen2.5-coder-32b-distributed, api_base: http://10.0.70.125:8081/v1, api_key: sk-local}
+  - model_name: tier1-qwen2.5-coder-32b
+    litellm_params: {model: openai/qwen2.5-coder-32b-distributed, api_base: http://10.0.70.125:8081/v1, api_key: sk-local}
+  # O1789 Tier-1 Pool Alpha 30B-A3B MoE Coder (2x Tesla T4 32GB VRAM Pool: 10.0.75.12 + 10.0.75.11:50052 @ 77.62 tok/s)
+  - model_name: tier1-fast
+    litellm_params: {model: openai/qwen3-coder-30b-a3b, api_base: http://10.0.70.72:8082/v1, api_key: sk-local}
+  - model_name: tier1-qwen3-coder-30b-a3b
+    litellm_params: {model: openai/qwen3-coder-30b-a3b, api_base: http://10.0.70.72:8082/v1, api_key: sk-local}
+  - model_name: qwen3-coder-30b-a3b
+    litellm_params: {model: openai/qwen3-coder-30b-a3b, api_base: http://10.0.70.72:8082/v1, api_key: sk-local}
+  # O1789 Dynamic Tier 1/2/3 GPU Mode Orchestrator & Smart Auto-Router (10.0.70.164:4010)
+  - model_name: auto-local
+    litellm_params: {model: openai/auto-local, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: tier1-deepseek-v4-flash-bf16
+    litellm_params: {model: openai/tier1-deepseek-v4-flash-bf16, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: tier1-qwythos-9b-bf16
+    litellm_params: {model: openai/tier1-qwythos-9b-bf16, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: tier2-70b
+    litellm_params: {model: openai/tier2-70b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: tier2-deepseek-r1-70b
+    litellm_params: {model: openai/tier2-deepseek-r1-70b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: tier2-llama3.3-70b
+    litellm_params: {model: openai/tier2-llama3.3-70b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: tier2-qwythos-27b-bf16
+    litellm_params: {model: openai/tier2-qwythos-27b-bf16, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: tier2-cyberstrike-35b-bf16
+    litellm_params: {model: openai/tier2-cyberstrike-35b-bf16, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: tier3-hybrid
+    litellm_params: {model: openai/tier3-hybrid, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: tier3-deepseek-v4-flash
+    litellm_params: {model: openai/tier3-deepseek-v4-flash, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: tier3-qwen3-235b-a22b
+    litellm_params: {model: openai/tier3-qwen3-235b-a22b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: tier3-qwen3-coder-480b
+    litellm_params: {model: openai/tier3-qwen3-coder-480b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: tier3-glm-5.2
+    litellm_params: {model: openai/tier3-glm-5.2, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: tier3-qwen3.8-flash-bf16
+    litellm_params: {model: openai/tier3-qwen3.8-flash-bf16, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: tier3-deepseek-v3-671b
+    litellm_params: {model: openai/tier3-deepseek-v3-671b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: tier1-cyberstrike-35b-q4km
+    litellm_params: {model: ollama/cyberstrike:35b-a3b-q4_K_M, api_base: http://10.0.10.137:11434}
+  # O1789 Newly Completed Frontier Models & Canonical Short Aliases (.72 & .83 Skylake-SP AVX-512)
+  - model_name: mimo-v2.6-pro-1024b
+    litellm_params: {model: openai/mimo-v2.6-pro-1024b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: muse-spark-816b-a42b
+    litellm_params: {model: openai/muse-spark-816b-a42b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: glm-5.3-753b
+    litellm_params: {model: openai/glm-5.3-753b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: kimi-k3-q2k-abliterated
+    litellm_params: {model: openai/kimi-k3-q2k-abliterated, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: deepseek-r1-distill-llama-70b-q4_k_m
+    litellm_params: {model: openai/deepseek-r1-distill-llama-70b-q4_k_m, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: swift-qwen3.8-flash-next
+    litellm_params: {model: openai/swift-qwen3.8-flash-next, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: swift-qwen3.8-flash-next-iq2_xs
+    litellm_params: {model: openai/swift-qwen3.8-flash-next-iq2_xs, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: qwen3.8-flash-next-ud-iq4_xs
+    litellm_params: {model: openai/qwen3.8-flash-next-ud-iq4_xs, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: deepseek-v4-flash
+    litellm_params: {model: openai/deepseek-v4-flash, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: deepseek-v4-flash-q2
+    litellm_params: {model: openai/deepseek-v4-flash-q2, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: deepseek-v4-flash-q4k
+    litellm_params: {model: openai/deepseek-v4-flash-q4k, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: glm-5.2-abliterated
+    litellm_params: {model: openai/glm-5.2-abliterated, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: qwen3-235b-a22b
+    litellm_params: {model: openai/qwen3-235b-a22b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: cyberstrike-offsec-35b
+    litellm_params: {model: openai/cyberstrike-offsec-35b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: qwythos-27b
+    litellm_params: {model: openai/qwythos-27b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: qwythos-9b
+    litellm_params: {model: openai/qwythos-9b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: deepseek-r1-70b
+    litellm_params: {model: openai/deepseek-r1-70b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: llama-3.3-70b
+    litellm_params: {model: openai/llama-3.3-70b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: qwen3-coder-480b-a35b
+    litellm_params: {model: openai/qwen3-coder-480b-a35b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: deepseek-v3-0324-671b
+    litellm_params: {model: openai/deepseek-v3-0324-671b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+
+  # O1789 Swarm #13 Unified Voice, Vision & Multimodal Cockpit Bridge (10.0.70.164:4093)
+  - model_name: tts-1
+    litellm_params: {model: openai/tts-1, api_base: http://10.0.70.164:4093/v1, api_key: sk-local}
+  - model_name: kokoro
+    litellm_params: {model: openai/kokoro, api_base: http://10.0.70.164:4093/v1, api_key: sk-local}
+  - model_name: piper
+    litellm_params: {model: openai/piper, api_base: http://10.0.70.164:4093/v1, api_key: sk-local}
+  - model_name: whisper-1
+    litellm_params: {model: openai/whisper-1, api_base: http://10.0.70.164:4093/v1, api_key: sk-local}
+  - model_name: boylenet-vision
+    litellm_params: {model: openai/boylenet-vision, api_base: http://10.0.70.164:4093/v1, api_key: sk-local}
+  - model_name: multimodal-cockpit
+    litellm_params: {model: openai/multimodal-cockpit, api_base: http://10.0.70.164:4093/v1, api_key: sk-local}
+
+  # O1789 Agent-95 Complete 86-Model Vault Catalog & vault/<dir> Aliases (10.0.70.164:4010)
+  - model_name: kimi-k3-abliterated-q2k-gguf
+    litellm_params: {model: openai/kimi-k3-abliterated-q2k-gguf, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/kimi-k3-abliterated-q2k-gguf
+    litellm_params: {model: openai/vault/kimi-k3-abliterated-q2k-gguf, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: kimi-k3-abliterated-iq1s-gguf
+    litellm_params: {model: openai/kimi-k3-abliterated-iq1s-gguf, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/kimi-k3-abliterated-iq1s-gguf
+    litellm_params: {model: openai/vault/kimi-k3-abliterated-iq1s-gguf, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: qwen3.8-flash-next
+    litellm_params: {model: openai/qwen3.8-flash-next, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/qwen3.8-flash-next
+    litellm_params: {model: openai/vault/qwen3.8-flash-next, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: deepseek-v4.1-flash-abliterated-755b
+    litellm_params: {model: openai/deepseek-v4.1-flash-abliterated-755b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/deepseek-v4.1-flash-abliterated-755b
+    litellm_params: {model: openai/vault/deepseek-v4.1-flash-abliterated-755b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: deepseek-v3.2-685b
+    litellm_params: {model: openai/deepseek-v3.2-685b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/deepseek-v3.2-685b
+    litellm_params: {model: openai/vault/deepseek-v3.2-685b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: minimax-m3-426b-uncensored
+    litellm_params: {model: openai/minimax-m3-426b-uncensored, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/minimax-m3-426b-uncensored
+    litellm_params: {model: openai/vault/minimax-m3-426b-uncensored, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: nemotron-3-ultra-550b-a55b
+    litellm_params: {model: openai/nemotron-3-ultra-550b-a55b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/nemotron-3-ultra-550b-a55b
+    litellm_params: {model: openai/vault/nemotron-3-ultra-550b-a55b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: beam-1.0-501b-a23b
+    litellm_params: {model: openai/beam-1.0-501b-a23b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/beam-1.0-501b-a23b
+    litellm_params: {model: openai/vault/beam-1.0-501b-a23b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/deepseek-v4-flash
+    litellm_params: {model: openai/vault/deepseek-v4-flash, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/qwythos-27b
+    litellm_params: {model: openai/vault/qwythos-27b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: minimax-m2.7-ultra-uncensored-heretic
+    litellm_params: {model: openai/minimax-m2.7-ultra-uncensored-heretic, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/minimax-m2.7-ultra-uncensored-heretic
+    litellm_params: {model: openai/vault/minimax-m2.7-ultra-uncensored-heretic, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: command-a-plus-111b
+    litellm_params: {model: openai/command-a-plus-111b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/command-a-plus-111b
+    litellm_params: {model: openai/vault/command-a-plus-111b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/tier2-70b
+    litellm_params: {model: openai/vault/tier2-70b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: glm-5.3-flash-uncensored
+    litellm_params: {model: openai/glm-5.3-flash-uncensored, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/glm-5.3-flash-uncensored
+    litellm_params: {model: openai/vault/glm-5.3-flash-uncensored, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: hy3-295b-heretic
+    litellm_params: {model: openai/hy3-295b-heretic, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/hy3-295b-heretic
+    litellm_params: {model: openai/vault/hy3-295b-heretic, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: cyberstrike-35b
+    litellm_params: {model: openai/cyberstrike-35b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/cyberstrike-35b
+    litellm_params: {model: openai/vault/cyberstrike-35b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: laguna-s-2.1-118b-uncensored
+    litellm_params: {model: openai/laguna-s-2.1-118b-uncensored, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/laguna-s-2.1-118b-uncensored
+    litellm_params: {model: openai/vault/laguna-s-2.1-118b-uncensored, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: gpt-oss-120b-heretic-v2
+    litellm_params: {model: openai/gpt-oss-120b-heretic-v2, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/gpt-oss-120b-heretic-v2
+    litellm_params: {model: openai/vault/gpt-oss-120b-heretic-v2, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: tier3a-qwen3-235b-a22b
+    litellm_params: {model: openai/tier3a-qwen3-235b-a22b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/tier3a-qwen3-235b-a22b
+    litellm_params: {model: openai/vault/tier3a-qwen3-235b-a22b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/tier1-qwen3-coder-30b-a3b
+    litellm_params: {model: openai/vault/tier1-qwen3-coder-30b-a3b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: hermes-4-70b-heretic
+    litellm_params: {model: openai/hermes-4-70b-heretic, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/hermes-4-70b-heretic
+    litellm_params: {model: openai/vault/hermes-4-70b-heretic, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: llama-3.3-70b-abliterated
+    litellm_params: {model: openai/llama-3.3-70b-abliterated, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/llama-3.3-70b-abliterated
+    litellm_params: {model: openai/vault/llama-3.3-70b-abliterated, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: deepseek-r1-70b-abliterated
+    litellm_params: {model: openai/deepseek-r1-70b-abliterated, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/deepseek-r1-70b-abliterated
+    litellm_params: {model: openai/vault/deepseek-r1-70b-abliterated, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: captcha-agent
+    litellm_params: {model: openai/captcha-agent, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/captcha-agent
+    litellm_params: {model: openai/vault/captcha-agent, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: mirothinker-v1.5-30b-heretic
+    litellm_params: {model: openai/mirothinker-v1.5-30b-heretic, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/mirothinker-v1.5-30b-heretic
+    litellm_params: {model: openai/vault/mirothinker-v1.5-30b-heretic, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: nemotron-3.5-lightning-30b-heretic
+    litellm_params: {model: openai/nemotron-3.5-lightning-30b-heretic, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/nemotron-3.5-lightning-30b-heretic
+    litellm_params: {model: openai/vault/nemotron-3.5-lightning-30b-heretic, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: granite-4.0-h-32b-heretic
+    litellm_params: {model: openai/granite-4.0-h-32b-heretic, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/granite-4.0-h-32b-heretic
+    litellm_params: {model: openai/vault/granite-4.0-h-32b-heretic, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: gemma-4-31b-uncensored
+    litellm_params: {model: openai/gemma-4-31b-uncensored, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/gemma-4-31b-uncensored
+    litellm_params: {model: openai/vault/gemma-4-31b-uncensored, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: supergemma4-31b-abliterated
+    litellm_params: {model: openai/supergemma4-31b-abliterated, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/supergemma4-31b-abliterated
+    litellm_params: {model: openai/vault/supergemma4-31b-abliterated, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: twilight-embrace-31b-heretic
+    litellm_params: {model: openai/twilight-embrace-31b-heretic, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/twilight-embrace-31b-heretic
+    litellm_params: {model: openai/vault/twilight-embrace-31b-heretic, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: glm-4.7-flash-30b-heretic-neocode
+    litellm_params: {model: openai/glm-4.7-flash-30b-heretic-neocode, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/glm-4.7-flash-30b-heretic-neocode
+    litellm_params: {model: openai/vault/glm-4.7-flash-30b-heretic-neocode, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: qwen3.8-27b-turbo-fable-heretic-neocoder
+    litellm_params: {model: openai/qwen3.8-27b-turbo-fable-heretic-neocoder, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/qwen3.8-27b-turbo-fable-heretic-neocoder
+    litellm_params: {model: openai/vault/qwen3.8-27b-turbo-fable-heretic-neocoder, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/qwythos-9b
+    litellm_params: {model: openai/vault/qwythos-9b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: cyberstag-security-26b-a4b-heretic
+    litellm_params: {model: openai/cyberstag-security-26b-a4b-heretic, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/cyberstag-security-26b-a4b-heretic
+    litellm_params: {model: openai/vault/cyberstag-security-26b-a4b-heretic, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: qwen3.8-27b-heretic-abliterated-uncensored
+    litellm_params: {model: openai/qwen3.8-27b-heretic-abliterated-uncensored, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/qwen3.8-27b-heretic-abliterated-uncensored
+    litellm_params: {model: openai/vault/qwen3.8-27b-heretic-abliterated-uncensored, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: hemmingway-1-27b-heretic
+    litellm_params: {model: openai/hemmingway-1-27b-heretic, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/hemmingway-1-27b-heretic
+    litellm_params: {model: openai/vault/hemmingway-1-27b-heretic, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: gemma-4-26b-a4b-uncensored
+    litellm_params: {model: openai/gemma-4-26b-a4b-uncensored, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/gemma-4-26b-a4b-uncensored
+    litellm_params: {model: openai/vault/gemma-4-26b-a4b-uncensored, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: captchakraken-v1.2-gguf
+    litellm_params: {model: openai/captchakraken-v1.2-gguf, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/captchakraken-v1.2-gguf
+    litellm_params: {model: openai/vault/captchakraken-v1.2-gguf, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: lfm2.5-24b-a2b-uncensored
+    litellm_params: {model: openai/lfm2.5-24b-a2b-uncensored, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/lfm2.5-24b-a2b-uncensored
+    litellm_params: {model: openai/vault/lfm2.5-24b-a2b-uncensored, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: ternary-bonsai-2-27b-heretic-v2
+    litellm_params: {model: openai/ternary-bonsai-2-27b-heretic-v2, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/ternary-bonsai-2-27b-heretic-v2
+    litellm_params: {model: openai/vault/ternary-bonsai-2-27b-heretic-v2, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: ocr-captcha-v3
+    litellm_params: {model: openai/ocr-captcha-v3, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/ocr-captcha-v3
+    litellm_params: {model: openai/vault/ocr-captcha-v3, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: captcha_ocr
+    litellm_params: {model: openai/captcha_ocr, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/captcha_ocr
+    litellm_params: {model: openai/vault/captcha_ocr, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: cloudflare_captcha
+    litellm_params: {model: openai/cloudflare_captcha, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/cloudflare_captcha
+    litellm_params: {model: openai/vault/cloudflare_captcha, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: ocr-for-captcha
+    litellm_params: {model: openai/ocr-for-captcha, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/ocr-for-captcha
+    litellm_params: {model: openai/vault/ocr-for-captcha, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: Uniboshi--Kimi-K3-Abliterated-V1
+    litellm_params: {model: openai/Uniboshi--Kimi-K3-Abliterated-V1, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/Uniboshi--Kimi-K3-Abliterated-V1
+    litellm_params: {model: openai/vault/Uniboshi--Kimi-K3-Abliterated-V1, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: glm-5.2
+    litellm_params: {model: openai/glm-5.2, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/glm-5.2
+    litellm_params: {model: openai/vault/glm-5.2, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: tier3a-qwen3-coder-480b-a35b
+    litellm_params: {model: openai/tier3a-qwen3-coder-480b-a35b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/tier3a-qwen3-coder-480b-a35b
+    litellm_params: {model: openai/vault/tier3a-qwen3-coder-480b-a35b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: deepseek-v4-flash-83
+    litellm_params: {model: openai/deepseek-v4-flash-83, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/deepseek-v4-flash-83
+    litellm_params: {model: openai/vault/deepseek-v4-flash-83, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/mimo-v2.6-pro-1024b
+    litellm_params: {model: openai/vault/mimo-v2.6-pro-1024b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/glm-5.3-753b
+    litellm_params: {model: openai/vault/glm-5.3-753b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/muse-spark-816b-a42b
+    litellm_params: {model: openai/vault/muse-spark-816b-a42b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: ling-3.1-flash-564b
+    litellm_params: {model: openai/ling-3.1-flash-564b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/ling-3.1-flash-564b
+    litellm_params: {model: openai/vault/ling-3.1-flash-564b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: tier3b-deepseek-v3-0324
+    litellm_params: {model: openai/tier3b-deepseek-v3-0324, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/tier3b-deepseek-v3-0324
+    litellm_params: {model: openai/vault/tier3b-deepseek-v3-0324, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: mimo-v2.6-flash-rl-heretic-311b
+    litellm_params: {model: openai/mimo-v2.6-flash-rl-heretic-311b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/mimo-v2.6-flash-rl-heretic-311b
+    litellm_params: {model: openai/vault/mimo-v2.6-flash-rl-heretic-311b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: glm-5.3-flash-abliterated
+    litellm_params: {model: openai/glm-5.3-flash-abliterated, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/glm-5.3-flash-abliterated
+    litellm_params: {model: openai/vault/glm-5.3-flash-abliterated, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: tier3a-qwen3-235b-a22b-83
+    litellm_params: {model: openai/tier3a-qwen3-235b-a22b-83, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/tier3a-qwen3-235b-a22b-83
+    litellm_params: {model: openai/vault/tier3a-qwen3-235b-a22b-83, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: ling-3.0-flash-abliterated-128b
+    litellm_params: {model: openai/ling-3.0-flash-abliterated-128b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/ling-3.0-flash-abliterated-128b
+    litellm_params: {model: openai/vault/ling-3.0-flash-abliterated-128b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: rvn-qwen3.8-flash-next-abliterated-177b
+    litellm_params: {model: openai/rvn-qwen3.8-flash-next-abliterated-177b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/rvn-qwen3.8-flash-next-abliterated-177b
+    litellm_params: {model: openai/vault/rvn-qwen3.8-flash-next-abliterated-177b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: nemotron-3.5-super-vl-120b
+    litellm_params: {model: openai/nemotron-3.5-super-vl-120b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/nemotron-3.5-super-vl-120b
+    litellm_params: {model: openai/vault/nemotron-3.5-super-vl-120b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: qwen3.5-122b-a10b-abliterated
+    litellm_params: {model: openai/qwen3.5-122b-a10b-abliterated, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/qwen3.5-122b-a10b-abliterated
+    litellm_params: {model: openai/vault/qwen3.5-122b-a10b-abliterated, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: huihui-gemma-4-31b-it-abliterated-v2
+    litellm_params: {model: openai/huihui-gemma-4-31b-it-abliterated-v2, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/huihui-gemma-4-31b-it-abliterated-v2
+    litellm_params: {model: openai/vault/huihui-gemma-4-31b-it-abliterated-v2, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: qwen3-coder-next-80b
+    litellm_params: {model: openai/qwen3-coder-next-80b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/qwen3-coder-next-80b
+    litellm_params: {model: openai/vault/qwen3-coder-next-80b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: glm-4.5-air-reap-82b-heretic
+    litellm_params: {model: openai/glm-4.5-air-reap-82b-heretic, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/glm-4.5-air-reap-82b-heretic
+    litellm_params: {model: openai/vault/glm-4.5-air-reap-82b-heretic, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: nemotron-3.5-bolt-74b-a9b
+    litellm_params: {model: openai/nemotron-3.5-bolt-74b-a9b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/nemotron-3.5-bolt-74b-a9b
+    litellm_params: {model: openai/vault/nemotron-3.5-bolt-74b-a9b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: kolibri-1-78b-abliterated
+    litellm_params: {model: openai/kolibri-1-78b-abliterated, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/kolibri-1-78b-abliterated
+    litellm_params: {model: openai/vault/kolibri-1-78b-abliterated, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: qwen-image-2.1-uncensored-quantized
+    litellm_params: {model: openai/qwen-image-2.1-uncensored-quantized, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/qwen-image-2.1-uncensored-quantized
+    litellm_params: {model: openai/vault/qwen-image-2.1-uncensored-quantized, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: flux.1dev-abliteratedv2
+    litellm_params: {model: openai/flux.1dev-abliteratedv2, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/flux.1dev-abliteratedv2
+    litellm_params: {model: openai/vault/flux.1dev-abliteratedv2, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: l3.1-dark-planet-47b-uncensored
+    litellm_params: {model: openai/l3.1-dark-planet-47b-uncensored, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/l3.1-dark-planet-47b-uncensored
+    litellm_params: {model: openai/vault/l3.1-dark-planet-47b-uncensored, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: qwen3-48b-savant-heretic
+    litellm_params: {model: openai/qwen3-48b-savant-heretic, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/qwen3-48b-savant-heretic
+    litellm_params: {model: openai/vault/qwen3-48b-savant-heretic, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: moss-music-8b-instruct-gguf
+    litellm_params: {model: openai/moss-music-8b-instruct-gguf, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/moss-music-8b-instruct-gguf
+    litellm_params: {model: openai/vault/moss-music-8b-instruct-gguf, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: agents-a1-35b-uncensored
+    litellm_params: {model: openai/agents-a1-35b-uncensored, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/agents-a1-35b-uncensored
+    litellm_params: {model: openai/vault/agents-a1-35b-uncensored, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: minicpm-v-4.7-35b-a3b
+    litellm_params: {model: openai/minicpm-v-4.7-35b-a3b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/minicpm-v-4.7-35b-a3b
+    litellm_params: {model: openai/vault/minicpm-v-4.7-35b-a3b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: hermes-4.3-36b-abliterated-heretic
+    litellm_params: {model: openai/hermes-4.3-36b-abliterated-heretic, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/hermes-4.3-36b-abliterated-heretic
+    litellm_params: {model: openai/vault/hermes-4.3-36b-abliterated-heretic, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: qwen3.6-35b-claude-opus-abliterated
+    litellm_params: {model: openai/qwen3.6-35b-claude-opus-abliterated, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/qwen3.6-35b-claude-opus-abliterated
+    litellm_params: {model: openai/vault/qwen3.6-35b-claude-opus-abliterated, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: audio-flamingo-3-hf
+    litellm_params: {model: openai/audio-flamingo-3-hf, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/audio-flamingo-3-hf
+    litellm_params: {model: openai/vault/audio-flamingo-3-hf, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: qwen2-audio-7b-instruct
+    litellm_params: {model: openai/qwen2-audio-7b-instruct, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/qwen2-audio-7b-instruct
+    litellm_params: {model: openai/vault/qwen2-audio-7b-instruct, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vibevoice-asr-hf
+    litellm_params: {model: openai/vibevoice-asr-hf, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/vibevoice-asr-hf
+    litellm_params: {model: openai/vault/vibevoice-asr-hf, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: gemma-4-e4b-it
+    litellm_params: {model: openai/gemma-4-e4b-it, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/gemma-4-e4b-it
+    litellm_params: {model: openai/vault/gemma-4-e4b-it, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: occamy-1.0-35b-abliterated
+    litellm_params: {model: openai/occamy-1.0-35b-abliterated, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/occamy-1.0-35b-abliterated
+    litellm_params: {model: openai/vault/occamy-1.0-35b-abliterated, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: qwythos-9b-83
+    litellm_params: {model: openai/qwythos-9b-83, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/qwythos-9b-83
+    litellm_params: {model: openai/vault/qwythos-9b-83, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: pix2struct-docvqa-large
+    litellm_params: {model: openai/pix2struct-docvqa-large, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/pix2struct-docvqa-large
+    litellm_params: {model: openai/vault/pix2struct-docvqa-large, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: nemotron-3.5-embed-1b-bf16
+    litellm_params: {model: openai/nemotron-3.5-embed-1b-bf16, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/nemotron-3.5-embed-1b-bf16
+    litellm_params: {model: openai/vault/nemotron-3.5-embed-1b-bf16, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: moss-transcribe-diarize
+    litellm_params: {model: openai/moss-transcribe-diarize, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/moss-transcribe-diarize
+    litellm_params: {model: openai/vault/moss-transcribe-diarize, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: git-large-textvqa
+    litellm_params: {model: openai/git-large-textvqa, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/git-large-textvqa
+    litellm_params: {model: openai/vault/git-large-textvqa, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: ultravox-v0_5-llama-3_2-1b
+    litellm_params: {model: openai/ultravox-v0_5-llama-3_2-1b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/ultravox-v0_5-llama-3_2-1b
+    litellm_params: {model: openai/vault/ultravox-v0_5-llama-3_2-1b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: matcha-plotqa-v2
+    litellm_params: {model: openai/matcha-plotqa-v2, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: vault/matcha-plotqa-v2
+    litellm_params: {model: openai/vault/matcha-plotqa-v2, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+
+router_settings:
+  # O1588/O1592 proxy-routing (claude/proxy-routing): simple-shuffle picks by litellm_params.weight. In litellm 1.103.0 a
+  # deployment WITHOUT weight scores 0.0 and is never picked if any peer in its group has one: weight all or none of a group.
+  # Weighted: trivial, qwen2.5-coder-7b (.137 2080 Ti = 2, T4s = 1), ci-summary, nomic-embed-text (1 each). bge-m3/rag-embed = uniform.
+  routing_strategy: simple-shuffle # was usage-based-routing-v2
+  enable_pre_call_checks: true
+  optional_pre_call_checks:
+    - session_affinity
+    - deployment_affinity
+    - prompt_caching
+  deployment_affinity_ttl_seconds: 86400
+  # O1510 (RULING-O1510-137-AFFINITY amend): embeddings exempt from deployment_affinity so they balance onto
+  # the 137 CPU variants; an explicit entry replaces the global flags for that group, so session_affinity is kept.
+  model_group_affinity_config:
+    bge-m3: [session_affinity]
+    nomic-embed-text: [session_affinity]
+    # O1578: deployment_affinity pins one API key to one backend for 24h; with the single master key the chat groups
+    # never balanced (24/24 probes on one GPU). These three keep session_affinity only, so sessions stay put, keys spread.
+    trivial: [session_affinity]
+    ci-summary: [session_affinity]
+    qwen2.5-coder-7b: [session_affinity]
+    qwen2.5-coder: [session_affinity]
+  redis_host: 10.0.70.164
+  redis_port: 6379
+  num_retries: 2
+  retry_after: 0.5
+  fallbacks:
+    - tier1-fast: ["auto-local", "qwen2.5-coder-32b-distributed"]
+    - tier1-qwen3-coder-30b-a3b: ["auto-local", "qwen2.5-coder-32b-distributed"]
+    - qwen2.5-coder-32b-distributed: ["tier1-fast", "qwen2.5-coder-14b", "qwen2.5-coder-7b"]
+    - qwen2.5-coder-14b: ["qwen2.5-coder-7b", "trivial"]
+    - qwen2.5-coder-7b: ["trivial"]
+    - trivial: ["qwen2.5-coder-7b"]
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
+  store_model_in_db: true
+  custom_auth: custom_auth.user_api_key_auth
+litellm_settings:
+  drop_params: true
+  request_timeout: 300
+  health_check_timeout: 300
+  success_callbacks: ["langfuse"]
+  success_callback: ["langfuse"]
+  cache: true
+  cache_type: "redis"
+  cache_host: 10.0.70.164
+  cache_port: 6379
+
+environment_variables:
+  LANGFUSE_PUBLIC_KEY: "pk-lf-boylenet-local"
+  LANGFUSE_SECRET_KEY: "sk-lf-boylenet-local"
+  LANGFUSE_HOST: "http://10.0.70.228:3000"

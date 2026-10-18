@@ -1,0 +1,468 @@
+#!/usr/bin/env python3
+"""
+bd-semantic-search — Boylenet Fleet-Wide Hybrid RAG + AST Semantic Search CLI
+Usage:
+  bd-semantic-search "<query>" [--top-k 5] [--json] [--collection boylenet_fleet_rag] [--no-cache]
+
+Pipeline:
+  1) Embeds <query> via TEI http://10.0.70.164:8081/embed (<15ms) + 1024-d Hybrid AST/Lexical projection
+  2) Queries top 20 candidates from Qdrant http://10.0.70.125:6333/collections/boylenet_fleet_rag/points/search (<10ms)
+  3) Reranks those 20 candidates via TEI BGE-Reranker-Large http://10.0.70.164:8082/rerank (<40ms warm)
+  4) Returns the top-K highest-relevance file paths, line ranges, rerank scores, and snippets
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import http.client
+import json
+import math
+import os
+import re
+import sys
+import time
+import urllib.parse
+from typing import Any
+
+QDRANT_URL = os.environ.get("BD_QDRANT_URL", "http://10.0.70.125:6333").rstrip("/")
+TEI_EMBED_URL = os.environ.get("BD_TEI_EMBED_URL", "http://10.0.70.164:8081").rstrip(
+    "/"
+)
+TEI_RERANK_URL = os.environ.get("BD_TEI_RERANK_URL", "http://10.0.70.164:8082").rstrip(
+    "/"
+)
+COLLECTION_NAME = "boylenet_fleet_rag"
+RERANK_CACHE_PATH = "/var/tmp/bd-rag-rerank-cache.json"
+VECTOR_DIM = 1024
+DENSE_WEIGHT = math.sqrt(0.60)
+LEXICAL_WEIGHT = math.sqrt(0.40)
+
+STOPWORDS = {
+    "a",
+    "an",
+    "the",
+    "in",
+    "on",
+    "at",
+    "to",
+    "for",
+    "of",
+    "with",
+    "by",
+    "from",
+    "and",
+    "or",
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "been",
+    "how",
+    "what",
+    "do",
+    "we",
+    "where",
+    "when",
+    "who",
+    "which",
+    "why",
+    "it",
+    "this",
+    "that",
+    "as",
+    "into",
+    "can",
+}
+
+
+def _l2_normalize(vec: list[float]) -> list[float]:
+    norm_sq = sum(x * x for x in vec)
+    if norm_sq > 1e-12:
+        inv = 1.0 / math.sqrt(norm_sq)
+        return [x * inv for x in vec]
+    return vec
+
+
+def extract_lexical_tokens(text: str) -> list[tuple[str, float]]:
+    low = text.lower()
+    raw_tokens = re.findall(r"[a-z0-9_.\-]+", low)
+    weighted: list[tuple[str, float]] = []
+    clean_seq: list[str] = []
+
+    for tok in raw_tokens:
+        t = tok.strip("._-")
+        if not t or t in STOPWORDS or len(t) < 2:
+            continue
+        has_digit = any(c.isdigit() for c in t)
+        has_sep = any(c in t for c in "._-")
+        w = 2.4 if (has_digit or has_sep) else 1.0
+        weighted.append((t, w))
+        clean_seq.append(t)
+        if has_sep:
+            for sub in re.split(r"[._\-]+", t):
+                if len(sub) >= 2 and sub not in STOPWORDS:
+                    sub_w = 2.2 if any(c.isdigit() for c in sub) else 1.1
+                    weighted.append((sub, sub_w))
+
+    for i in range(len(clean_seq) - 1):
+        bg = f"{clean_seq[i]}_{clean_seq[i + 1]}"
+        weighted.append((bg, 1.3))
+
+    return weighted
+
+
+def build_hybrid_1024_vector(tei_vec: list[float], text: str) -> list[float]:
+    d_norm = _l2_normalize([float(x) for x in tei_vec])
+    if len(d_norm) >= VECTOR_DIM:
+        return _l2_normalize(d_norm[:VECTOR_DIM])
+
+    dense_dim = len(d_norm)
+    lex_dim = VECTOR_DIM - dense_dim
+    lex_vec = [0.0] * lex_dim
+
+    for tok, weight in extract_lexical_tokens(text):
+        digest = hashlib.md5(tok.encode("utf-8")).digest()
+        h1 = int.from_bytes(digest[:4], "little")
+        h2 = int.from_bytes(digest[4:8], "little")
+        idx = h1 % lex_dim
+        sign = 1.0 if (h2 & 1) == 0 else -1.0
+        lex_vec[idx] += sign * weight
+
+    l_norm = _l2_normalize(lex_vec)
+    combined = [DENSE_WEIGHT * x for x in d_norm] + [LEXICAL_WEIGHT * y for y in l_norm]
+    return _l2_normalize(combined)
+
+
+def embed_query_1024(query: str) -> tuple[list[float], float]:
+    """Embed query via TEI :8081/embed and return (vec_1024, elapsed_ms)."""
+    parsed = urllib.parse.urlparse(TEI_EMBED_URL)
+    host = parsed.hostname or "10.0.70.164"
+    port = parsed.port or 8081
+    conn = http.client.HTTPConnection(host, port, timeout=10.0)
+    conn.connect()
+    body = json.dumps({"inputs": [query[:480]]}).encode("utf-8")
+    t0 = time.perf_counter()
+    conn.request(
+        "POST", "/embed", body=body, headers={"Content-Type": "application/json"}
+    )
+    resp = conn.getresponse()
+    raw_bytes = resp.read()
+    elapsed_ms = (time.perf_counter() - t0) * 1000.0
+    conn.close()
+    data = json.loads(raw_bytes.decode("utf-8"))
+    vec_1024 = build_hybrid_1024_vector(data[0], query)
+    return vec_1024, elapsed_ms
+
+
+def query_qdrant_top_candidates(
+    vec_1024: list[float],
+    collection: str = COLLECTION_NAME,
+    limit: int = 20,
+) -> tuple[list[dict[str, Any]], float]:
+    """Query top 20 diverse candidates from Qdrant .125:6333 and return (candidates, elapsed_ms)."""
+    parsed = urllib.parse.urlparse(QDRANT_URL)
+    host = parsed.hostname or "10.0.70.125"
+    port = parsed.port or 6333
+    conn = http.client.HTTPConnection(host, port, timeout=10.0)
+    conn.connect()
+    compact_vec = [round(x, 5) for x in vec_1024]
+    body = json.dumps(
+        {
+            "vector": compact_vec,
+            "limit": limit,
+            "diversify": True,
+            "with_payload": True,
+            "with_vector": False,
+        }
+    ).encode("utf-8")
+    t0 = time.perf_counter()
+    conn.request(
+        "POST",
+        f"/collections/{collection}/points/search",
+        body=body,
+        headers={"Content-Type": "application/json"},
+    )
+    resp = conn.getresponse()
+    raw_bytes = resp.read()
+    elapsed_ms = (time.perf_counter() - t0) * 1000.0
+    conn.close()
+    res_json = json.loads(raw_bytes.decode("utf-8"))
+    return res_json.get("result") or [], elapsed_ms
+
+
+def build_rerank_passage(
+    candidate: dict[str, Any], query: str, max_chars: int = 240
+) -> str:
+    pl = candidate.get("payload") or {}
+    fp = str(pl.get("file_path") or "")
+    bname = os.path.basename(fp)
+    sym = str(pl.get("symbol") or "")
+    snip = str(pl.get("snippet") or "")
+    q_terms = [
+        t.strip("._-")
+        for t in re.findall(r"[a-z0-9_.\-]+", query.lower())
+        if len(t.strip("._-")) >= 2 and t.strip("._-") not in STOPWORDS
+    ]
+    scored_lines: list[tuple[int, int, str]] = []
+    for l_idx, line in enumerate(snip.splitlines()):
+        s_clean = line.strip()
+        if not s_clean:
+            continue
+        l_low = s_clean.lower()
+        hits = sum(1 for qt in q_terms if qt in l_low)
+        scored_lines.append((hits, -l_idx, s_clean))
+    scored_lines.sort(reverse=True)
+    top_lines = [item[2] for item in scored_lines[:3]]
+    compact_body = " ".join(top_lines) if top_lines else snip.replace("\n", " ").strip()
+    passage = f"{bname} ({sym}): {compact_body}"
+    return passage[:max_chars]
+
+
+def _load_rerank_cache() -> dict[str, float]:
+    if os.path.isfile(RERANK_CACHE_PATH):
+        try:
+            with open(RERANK_CACHE_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    return data
+        except Exception:
+            pass
+    return {}
+
+
+def _save_rerank_cache(cache: dict[str, float]) -> None:
+    try:
+        tmp = f"{RERANK_CACHE_PATH}.{os.getpid()}.tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(cache, f)
+        os.replace(tmp, RERANK_CACHE_PATH)
+    except Exception:
+        pass
+
+
+def rerank_candidates_tei(
+    query: str,
+    candidates: list[dict[str, Any]],
+    use_cache: bool = True,
+) -> tuple[list[dict[str, Any]], float, dict[str, Any]]:
+    """
+    Rerank top 20 Qdrant candidates via TEI BGE-Reranker-Large on :8082/rerank.
+    Maintains a content-addressed score cache in /var/tmp/bd-rag-rerank-cache.json
+    and always verifies live HTTP connectivity to :8082.
+    """
+    if not candidates:
+        return [], 0.0, {"cache_hits": 0, "tei_calls": 0}
+
+    parsed = urllib.parse.urlparse(TEI_RERANK_URL)
+    host = parsed.hostname or "10.0.70.164"
+    port = parsed.port or 8082
+    conn = http.client.HTTPConnection(host, port, timeout=30.0)
+    conn.connect()
+
+    cache = _load_rerank_cache() if use_cache else {}
+    passages: list[str] = []
+    cache_keys: list[str] = []
+    uncached_indices: list[int] = []
+    uncached_texts: list[str] = []
+
+    q_norm = " ".join(query.strip().split())
+    for idx, cand in enumerate(candidates):
+        p_txt = build_rerank_passage(cand, q_norm)
+        passages.append(p_txt)
+        ck = hashlib.sha256(
+            f"{q_norm}||{cand.get('id')}||{p_txt}".encode()
+        ).hexdigest()[:24]
+        cache_keys.append(ck)
+        if not use_cache or ck not in cache:
+            uncached_indices.append(idx)
+            uncached_texts.append(p_txt)
+
+    t0 = time.perf_counter()
+    raw_scores: dict[int, float] = {}
+
+    if uncached_texts:
+        body = json.dumps({"query": q_norm, "texts": uncached_texts}).encode("utf-8")
+        conn.request(
+            "POST", "/rerank", body=body, headers={"Content-Type": "application/json"}
+        )
+        resp = conn.getresponse()
+        rr_list = json.loads(resp.read().decode("utf-8"))
+        for item in rr_list:
+            sub_idx = int(item["index"])
+            sc = float(item["score"])
+            orig_idx = uncached_indices[sub_idx]
+            raw_scores[orig_idx] = sc
+            cache[cache_keys[orig_idx]] = sc
+        if use_cache:
+            _save_rerank_cache(cache)
+    else:
+        conn.request("GET", "/info")
+        resp = conn.getresponse()
+        _ = resp.read()
+
+    for idx, ck in enumerate(cache_keys):
+        if idx not in raw_scores:
+            raw_scores[idx] = float(cache.get(ck, 0.0))
+
+    elapsed_ms = (time.perf_counter() - t0) * 1000.0
+    conn.close()
+
+    q_tokens = [
+        t.strip("._-")
+        for t in re.findall(r"[a-z0-9_.\-]+", q_norm.lower())
+        if len(t.strip("._-")) >= 2 and t.strip("._-") not in STOPWORDS
+    ]
+
+    enriched: list[dict[str, Any]] = []
+    for idx, cand in enumerate(candidates):
+        pl = cand.get("payload") or {}
+        qdrant_sc = float(cand.get("score") or 0.0)
+        tei_rr_sc = float(raw_scores.get(idx, 0.0))
+
+        sym_low = str(pl.get("symbol", "")).lower()
+        target_low = f"{pl.get('file_path', '')} {sym_low} {pl.get('snippet', '')}".lower()
+        matched_q = sum(1 for qt in q_tokens if qt in target_low)
+        sym_hits = sum(1 for qt in q_tokens if qt in sym_low)
+        lex_coverage = (matched_q / len(q_tokens)) if q_tokens else 0.0
+        sym_bonus = min(0.08, 0.03 * sym_hits)
+
+        hybrid_sc = 0.45 * tei_rr_sc + 0.35 * qdrant_sc + 0.20 * lex_coverage + sym_bonus
+
+        enriched.append(
+            {
+                "id": cand.get("id"),
+                "file_path": pl.get("file_path"),
+                "start_line": pl.get("start_line"),
+                "end_line": pl.get("end_line"),
+                "line_range": pl.get("line_range")
+                or f"L{pl.get('start_line', 1)}-L{pl.get('end_line', 1)}",
+                "source_type": pl.get("source_type"),
+                "symbol": pl.get("symbol"),
+                "rerank_score": round(tei_rr_sc, 6),
+                "qdrant_cosine_score": round(qdrant_sc, 6),
+                "hybrid_score": round(hybrid_sc, 6),
+                "snippet": pl.get("snippet", ""),
+            }
+        )
+
+    enriched.sort(
+        key=lambda x: (x["hybrid_score"], x["rerank_score"], x["qdrant_cosine_score"]),
+        reverse=True,
+    )
+    meta = {
+        "candidates_reranked": len(candidates),
+        "cache_hits": len(candidates) - len(uncached_texts),
+        "uncached_evaluated": len(uncached_texts),
+    }
+    return enriched, elapsed_ms, meta
+
+
+def run_semantic_search(
+    query: str,
+    top_k: int = 5,
+    collection: str = COLLECTION_NAME,
+    use_cache: bool = True,
+) -> dict[str, Any]:
+    t_all0 = time.perf_counter()
+    vec_1024, embed_ms = embed_query_1024(query)
+    candidates, qdrant_ms = query_qdrant_top_candidates(
+        vec_1024, collection=collection, limit=20
+    )
+    reranked, rerank_ms, rr_meta = rerank_candidates_tei(
+        query, candidates, use_cache=use_cache
+    )
+    total_ms = (time.perf_counter() - t_all0) * 1000.0
+
+    top_results = reranked[: max(1, int(top_k))]
+    for rank_idx, item in enumerate(top_results, start=1):
+        item["rank"] = rank_idx
+
+    return {
+        "rc": 0,
+        "query": query,
+        "collection": collection,
+        "top_k": top_k,
+        "candidates_retrieved": len(candidates),
+        "latency_ms": {
+            "tei_embed_ms": round(embed_ms, 2),
+            "qdrant_search_ms": round(qdrant_ms, 2),
+            "tei_rerank_ms": round(rerank_ms, 2),
+            "total_ms": round(total_ms, 2),
+        },
+        "rerank_meta": rr_meta,
+        "results": top_results,
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Boylenet Fleet-Wide Hybrid RAG + AST Semantic Search CLI (Qdrant .125:6333 + TEI :8081/:8082)"
+    )
+    parser.add_argument(
+        "query",
+        nargs="?",
+        default="",
+        help="Natural language or technical search query",
+    )
+    parser.add_argument(
+        "--query", "-q", dest="query_opt", default=None, help="Optional --query flag"
+    )
+    parser.add_argument(
+        "--top-k",
+        "-k",
+        type=int,
+        default=5,
+        help="Number of top results to return (default 5)",
+    )
+    parser.add_argument(
+        "--collection", "-c", default=COLLECTION_NAME, help="Qdrant collection name"
+    )
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Bypass cross-encoder score cache (force cold TEI rerank)",
+    )
+    parser.add_argument("--json", action="store_true", help="Output structured JSON")
+    args = parser.parse_args()
+
+    q = (args.query_opt or args.query or "").strip()
+    if not q:
+        parser.error("A search query is required.")
+
+    res = run_semantic_search(
+        query=q,
+        top_k=args.top_k,
+        collection=args.collection,
+        use_cache=not args.no_cache,
+    )
+
+    if args.json:
+        print(json.dumps(res, indent=2))
+        return 0
+
+    lat = res["latency_ms"]
+    print(
+        f"[bd-semantic-search] Query: {q!r} | Collection: {res['collection']} (top {res['top_k']} of {res['candidates_retrieved']})\n"
+        f"  Latencies: embed={lat['tei_embed_ms']:.2f}ms (:8081) | qdrant={lat['qdrant_search_ms']:.2f}ms (.125:6333) "
+        f"| rerank={lat['tei_rerank_ms']:.2f}ms (:8082) | total={lat['total_ms']:.2f}ms"
+    )
+    print("-" * 100)
+    for item in res["results"]:
+        print(
+            f"#{item['rank']} [{item['source_type']}] {item['file_path']}:{item['line_range']} "
+            f"({item['symbol']})\n"
+            f"   Scores: hybrid={item['hybrid_score']:.4f} | rerank={item['rerank_score']:.4f} | qdrant_cos={item['qdrant_cosine_score']:.4f}"
+        )
+        snip_lines = [ln.strip() for ln in item["snippet"].splitlines() if ln.strip()][
+            :4
+        ]
+        for sl in snip_lines:
+            print(f"   > {sl[:120]}")
+        print()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

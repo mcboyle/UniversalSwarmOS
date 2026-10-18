@@ -1,0 +1,16 @@
+[Unit]
+Description=Boylenet Live 3D/2D Architecture Topology & Swarm Visualizer (:4088)
+After=network.target
+
+[Service]
+Type=simple
+User=mboyle
+WorkingDirectory=/home/mboyle
+Environment="HOME=/home/mboyle"
+Environment="BD_TOPOLOGY_PORT=4088"
+ExecStart=/usr/bin/python3 /home/mboyle/bin/bd-topology-visualizer.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

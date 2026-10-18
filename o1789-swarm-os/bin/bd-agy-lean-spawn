@@ -1,0 +1,156 @@
+#!/usr/bin/env bash
+# bd-agy-lean-spawn: Wraps Antigravity CLI to spawn lean subagents
+# Enforces --agent lean_worker and --disable-slash-commands for zero-waste token efficiency.
+
+set -euo pipefail
+
+AGY_BIN="/home/mboyle/.local/bin/agy"
+LEAN_AGENT_DIR="/home/mboyle/.agents/agents/lean_worker"
+CONFIG_AGENT_DIR="/home/mboyle/.gemini/config/agents/lean_worker"
+
+# Ensure lean_worker agent definition exists
+if [[ ! -f "${LEAN_AGENT_DIR}/agent.md" ]]; then
+  mkdir -p "${LEAN_AGENT_DIR}"
+  cat << 'AGENT_DEF' > "${LEAN_AGENT_DIR}/agent.md"
+---
+name: lean_worker
+description: Minimal agent profile for subagent tasks without skill or tool bloat.
+inheritCustomizations: false
+inheritMcp: true
+tools:
+  - run_command
+  - view_file
+  - replace_file_content
+  - send_message
+---
+# Lean Worker Agent
+Minimal agent profile for subagent tasks without skill or tool bloat.
+AGENT_DEF
+fi
+
+# Ensure global discovery symlink exists in ~/.gemini/config/agents/
+if [[ ! -e "${CONFIG_AGENT_DIR}/agent.md" ]]; then
+  mkdir -p "${CONFIG_AGENT_DIR}"
+  ln -sf "${LEAN_AGENT_DIR}/agent.md" "${CONFIG_AGENT_DIR}/agent.md"
+fi
+
+ARGS=()
+PRINT_MODE=0
+PROMPT=""
+CONV_ID=""
+CWD=""
+MODEL=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --conversation|--conversation-id)
+      CONV_ID="$2"
+      shift 2
+      ;;
+    --conversation=*)
+      CONV_ID="${1#*=}"
+      shift
+      ;;
+    --cwd)
+      CWD="$2"
+      shift 2
+      ;;
+    --cwd=*)
+      CWD="${1#*=}"
+      shift
+      ;;
+    --task)
+      TASK_ARG="$2"
+      if [[ -f "$TASK_ARG" ]]; then
+        PROMPT="$(cat "$TASK_ARG")"
+      else
+        PROMPT="$TASK_ARG"
+      fi
+      shift 2
+      ;;
+    --task=*)
+      TASK_ARG="${1#*=}"
+      if [[ -f "$TASK_ARG" ]]; then
+        PROMPT="$(cat "$TASK_ARG")"
+      else
+        PROMPT="$TASK_ARG"
+      fi
+      shift
+      ;;
+    -p|--print|--prompt)
+      PRINT_MODE=1
+      if [[ $# -gt 1 && ! "$2" =~ ^- ]]; then
+        PROMPT="$2"
+        shift 2
+      else
+        shift
+      fi
+      ;;
+    --model)
+      MODEL="$2"
+      shift 2
+      ;;
+    --model=*)
+      MODEL="${1#*=}"
+      shift
+      ;;
+    -h|--help)
+      echo "Usage: bd-agy-lean-spawn [OPTIONS] [PROMPT]"
+      echo "Spawns a lean Antigravity subagent with masked tools and pruned skills."
+      echo ""
+      echo "Options:"
+      echo "  --task <file|text>      Task description or path to task markdown"
+      echo "  --conversation <id>     Resume/target specific conversation ID"
+      echo "  --cwd <path>            Working directory for subagent execution"
+      echo "  --model <name>          Override default model"
+      echo "  -p, --print [prompt]    Run single prompt non-interactively"
+      echo "  -h, --help              Show this help message"
+      exit 0
+      ;;
+    *)
+      if [[ -z "$PROMPT" && ! "$1" =~ ^- ]]; then
+        PROMPT="$1"
+      else
+        ARGS+=("$1")
+      fi
+      shift
+      ;;
+  esac
+done
+
+if [[ -n "$CWD" ]]; then
+  cd "$CWD"
+fi
+
+EXEC_CMD=("$AGY_BIN" "--agent" "lean_worker" "--disable-slash-commands" "--dangerously-skip-permissions")
+
+if [[ -n "$MODEL" ]]; then
+  EXEC_CMD+=("--model" "$MODEL")
+fi
+
+if [[ -n "$CONV_ID" ]]; then
+  EXEC_CMD+=("--conversation" "$CONV_ID")
+fi
+
+if [[ -n "$PROMPT" ]]; then
+  EXEC_CMD+=("-p" "$PROMPT")
+elif [[ "$PRINT_MODE" -eq 1 ]]; then
+  EXEC_CMD+=("-p")
+fi
+
+if [[ ${#ARGS[@]} -gt 0 ]]; then
+  EXEC_CMD+=("${ARGS[@]}")
+fi
+
+# Register active lease with Keepalive Daemon (R3 TTL Defense)
+if command -v bd-cache-keepalive &>/dev/null; then
+  PLAT="agy-gemini"
+  if [[ "$MODEL" =~ claude ]]; then
+    PLAT="agy-claude"
+  elif [[ "$MODEL" =~ gpt ]]; then
+    PLAT="codex"
+  fi
+  bd-cache-keepalive acquire-lease "${CONV_ID:-agy-worker}" --platform "$PLAT" --timeout 3600 &>/dev/null || true
+fi
+
+exec "${EXEC_CMD[@]}"

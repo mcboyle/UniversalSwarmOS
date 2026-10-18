@@ -1,0 +1,17 @@
+[Unit]
+Description=Boylenet Unified OS Single-Window Desktop Shell (:4085)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mboyle
+WorkingDirectory=/home/mboyle
+Environment="HOME=/home/mboyle"
+Environment="BD_OS_SHELL_PORT=4085"
+ExecStart=/usr/bin/python3 /home/mboyle/bin/bd-os-shell.py --port 4085
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

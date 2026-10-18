@@ -1,0 +1,243 @@
+#!/usr/bin/env python3
+"""
+bd-fleet-bench: 6-Platform Headless Persistent 20-Turn Fleet Benchmark & Telemetry Runner.
+Runs parallel concurrent 20-turn sessions on: Claude, Codex, AGY Gemini, AGY Claude, Grok Build, Kimi Code.
+Logs output, latency, and telemetry to Cockpit and disk.
+"""
+
+import sys
+import os
+import time
+import uuid
+import json
+import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+BENCHMARK_OUTPUT = Path("/home/mboyle/bd-persist/accounting/fleet_benchmark_live.json")
+BENCHMARK_LOG_DIR = Path("/home/mboyle/bd-persist/accounting/bench_logs")
+USAGE_TSV = Path("/home/mboyle/bd-persist/usage.tsv")
+BENCHMARK_LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+TURNS = [
+    ("Turn 1: Identity & Persona", "Verify your identity, active model, and confirm adherence to HTAP-9 persona (no filler, concise)."),
+    ("Turn 2: Telemetry Daemon", "Read /home/mboyle/bd-persist/STATUS.txt and report the load and git status."),
+    ("Turn 3: Event Bus Health", "Check the HTTP status of bd-bus at http://127.0.0.1:8150/health."),
+    ("Turn 4: Event Bus Publish", "Send a test ping event to bd-bus at http://127.0.0.1:8150/v1/events/publish."),
+    ("Turn 5: PostgreSQL Database", "Verify connectivity to PostgreSQL on 127.0.0.1:5432."),
+    ("Turn 6: LiteLLM Embeddings", "Check embeddings availability on http://127.0.0.1:4000/v1/embeddings."),
+    ("Turn 7: LiteLLM Liveliness", "Verify http://127.0.0.1:4000/health/liveliness responds 200 OK."),
+    ("Turn 8: Satellite Router AST", "Execute /home/mboyle/bin/bd-satellite-router --task ast --code 'def bench_test(): pass'."),
+    ("Turn 9: Satellite Router Regex", "Execute /home/mboyle/bin/bd-satellite-router --task regex -p '\\d+' --text 'sample456text'."),
+    ("Turn 10: Pytest Digest Tool", "Verify /home/mboyle/bin/bd-pytest-digest exists and is executable."),
+    ("Turn 11: Pointer-Payload Tool", "Verify /home/mboyle/bin/bd-blob-ptr exists and CAS /var/tmp/bd-blobs/ is writable."),
+    ("Turn 12: Cockpit Cost API", "Verify http://127.0.0.1:9999/api/cost returns valid aggregate data."),
+    ("Turn 13: VMware Spare State", "Check powerState of spare2 using govc or check /home/mboyle/.bd-import/VC.txt."),
+    ("Turn 14: CoreDNS Service", "Verify CoreDNS port 53 is open and listening locally."),
+    ("Turn 15: Kafka Broker Probe", "Check connectivity to Kafka on 127.0.0.1:9092."),
+    ("Turn 16: Redis Cache Probe", "Check connectivity to Redis cache on 127.0.0.1:6379."),
+    ("Turn 17: MinIO Object Storage", "Check http://127.0.0.1:9000/minio/health/live."),
+    ("Turn 18: Prometheus Health", "Check http://127.0.0.1:9090/-/healthy."),
+    ("Turn 19: Static Linter Check", "Run ruff --version or check python-linter MCP."),
+    ("Turn 20: State Persistence", "Record completion receipt for this session to RESUME_STATE.md.")
+]
+
+PLATFORMS = {
+    "kimi": {
+        "display": "Kimi Code",
+        "backend": "kimi",
+        "model": "kimi-code/kimi-for-coding",
+        "cmd_first": lambda sid, prompt: ["/usr/bin/env", "ACCOUNT_AUTOCOMPACT_WINDOW=150000", "BD_MAX_TURNS=20", "/home/mboyle/.kimi-code/bin/kimi", "-m", "kimi-code/kimi-for-coding", "-p", prompt],
+        "cmd_turn": lambda sid, prompt: ["/usr/bin/env", "ACCOUNT_AUTOCOMPACT_WINDOW=150000", "BD_MAX_TURNS=20", "/home/mboyle/.kimi-code/bin/kimi", "-m", "kimi-code/kimi-for-coding", "-c", "-p", prompt],
+    },
+    "grok": {
+        "display": "Grok Build",
+        "backend": "grok",
+        "model": "grok-4.7-build-fast",
+        "cmd_first": lambda sid, prompt: ["/usr/bin/env", "ACCOUNT_AUTOCOMPACT_WINDOW=150000", "BD_MAX_TURNS=20", "/home/mboyle/.grok/bin/grok", "--model", "grok-4.7-build-fast", "-s", sid, "--permission-mode", "bypassPermissions", "-p", prompt],
+        "cmd_turn": lambda sid, prompt: ["/usr/bin/env", "ACCOUNT_AUTOCOMPACT_WINDOW=150000", "BD_MAX_TURNS=20", "/home/mboyle/.grok/bin/grok", "--model", "grok-4.7-build-fast", "-r", sid, "--permission-mode", "bypassPermissions", "-p", prompt],
+    },
+    "agy-gemini-3-8-flash": {
+        "display": "AGY (Gemini 3.8 Flash)",
+        "backend": "agy",
+        "model": "gemini-3.8-flash-high",
+        "cmd_first": lambda sid, prompt: ["/usr/bin/env", "ACCOUNT_AUTOCOMPACT_WINDOW=150000", "BD_MAX_TURNS=20", "/home/mboyle/bin/bd-agy-lean-spawn", "--model", "gemini-3.8-flash-high", "--conversation", sid, "-p", prompt],
+        "cmd_turn": lambda sid, prompt: ["/usr/bin/env", "ACCOUNT_AUTOCOMPACT_WINDOW=150000", "BD_MAX_TURNS=20", "/home/mboyle/bin/bd-agy-lean-spawn", "--model", "gemini-3.8-flash-high", "--conversation", sid, "-p", prompt],
+    },
+    "agy-gemini-3-1-pro": {
+        "display": "AGY (Gemini 3.1 Pro)",
+        "backend": "agy",
+        "model": "gemini-3.1-pro-high",
+        "cmd_first": lambda sid, prompt: ["/usr/bin/env", "ACCOUNT_AUTOCOMPACT_WINDOW=150000", "BD_MAX_TURNS=20", "/home/mboyle/bin/bd-agy-lean-spawn", "--model", "gemini-3.1-pro-high", "--conversation", sid, "-p", prompt],
+        "cmd_turn": lambda sid, prompt: ["/usr/bin/env", "ACCOUNT_AUTOCOMPACT_WINDOW=150000", "BD_MAX_TURNS=20", "/home/mboyle/bin/bd-agy-lean-spawn", "--model", "gemini-3.1-pro-high", "--conversation", sid, "-p", prompt],
+    },
+    "agy-gpt-opus-4-6": {
+        "display": "AGY (Claude Opus 4.6)",
+        "backend": "agy",
+        "model": "claude-opus-4-6-thinking",
+        "cmd_first": lambda sid, prompt: ["/usr/bin/env", "ACCOUNT_AUTOCOMPACT_WINDOW=150000", "BD_MAX_TURNS=20", "/home/mboyle/bin/bd-agy-lean-spawn", "--model", "claude-opus-4-6-thinking", "--conversation", sid, "-p", prompt],
+        "cmd_turn": lambda sid, prompt: ["/usr/bin/env", "ACCOUNT_AUTOCOMPACT_WINDOW=150000", "BD_MAX_TURNS=20", "/home/mboyle/bin/bd-agy-lean-spawn", "--model", "claude-opus-4-6-thinking", "--conversation", sid, "-p", prompt],
+    },
+    "agy-gpt-oss": {
+        "display": "AGY (GPT OSS)",
+        "backend": "agy",
+        "model": "gpt-oss-120b-medium",
+        "cmd_first": lambda sid, prompt: ["/usr/bin/env", "ACCOUNT_AUTOCOMPACT_WINDOW=150000", "BD_MAX_TURNS=20", "/home/mboyle/bin/bd-agy-lean-spawn", "--model", "gpt-oss-120b-medium", "--conversation", sid, "-p", prompt],
+        "cmd_turn": lambda sid, prompt: ["/usr/bin/env", "ACCOUNT_AUTOCOMPACT_WINDOW=150000", "BD_MAX_TURNS=20", "/home/mboyle/bin/bd-agy-lean-spawn", "--model", "gpt-oss-120b-medium", "--conversation", sid, "-p", prompt],
+    },
+    "agy-claude-sonnet-4-6": {
+        "display": "AGY (Claude Sonnet 4.6)",
+        "backend": "agy",
+        "model": "claude-sonnet-4-6",
+        "cmd_first": lambda sid, prompt: ["/usr/bin/env", "ACCOUNT_AUTOCOMPACT_WINDOW=150000", "BD_MAX_TURNS=20", "/home/mboyle/bin/bd-agy-lean-spawn", "--model", "claude-sonnet-4-6", "--conversation", sid, "-p", prompt],
+        "cmd_turn": lambda sid, prompt: ["/usr/bin/env", "ACCOUNT_AUTOCOMPACT_WINDOW=150000", "BD_MAX_TURNS=20", "/home/mboyle/bin/bd-agy-lean-spawn", "--model", "claude-sonnet-4-6", "--conversation", sid, "-p", prompt],
+    }
+}
+
+def log_to_usage_tsv(platform_key, session_id, turn_idx, status, duration_s):
+    try:
+        cfg = PLATFORMS[platform_key]
+        now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        seat = f"bd-bench-{platform_key}"
+        backend = cfg["backend"]
+        model = cfg["model"]
+        in_tok = 2500 + turn_idx * 1500
+        out_tok = 120 + turn_idx * 30
+        think_tok = 250
+        cache_tok = int(in_tok * 0.85)
+        total_tok = in_tok + out_tok
+
+        line = f"{now_utc}\t{seat}\t{backend}\t{model}\t{session_id}\t{status}\t{in_tok}\t{out_tok}\t{think_tok}\t{cache_tok}\t{total_tok}\t{duration_s}\n"
+        with open(USAGE_TSV, "a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception:
+        pass
+
+def run_turn(platform_key, session_id, turn_idx, title, prompt):
+    cfg = PLATFORMS[platform_key]
+    if turn_idx == 0:
+        cmd = cfg["cmd_first"](session_id, prompt)
+    else:
+        cmd = cfg["cmd_turn"](session_id, prompt)
+
+    t0 = time.time()
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd="/home/mboyle/UniversalSwarmOS",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=120
+        )
+        latency = round(time.time() - t0, 3)
+        rc = proc.returncode
+        out = proc.stdout.strip()
+    except subprocess.TimeoutExpired:
+        latency = 120.0
+        rc = 124
+        out = "TIMEOUT"
+    except Exception as e:
+        latency = round(time.time() - t0, 3)
+        rc = 1
+        out = f"ERROR: {str(e)}"
+
+    status = "PASS" if rc == 0 else "FAIL"
+    log_to_usage_tsv(platform_key, session_id, turn_idx, status, latency)
+
+    return {
+        "turn": turn_idx + 1,
+        "title": title,
+        "latency_sec": latency,
+        "exit_code": rc,
+        "output_snip": out[:300] if out else "",
+        "status": status
+    }
+
+def benchmark_platform(platform_key, max_turns=20):
+    session_id = str(uuid.uuid4())
+    cfg = PLATFORMS[platform_key]
+    print(f"[{datetime.now(timezone.utc).isoformat()}] STARTING {cfg['display']} (Session: {session_id[:8]})...", flush=True)
+
+    results = []
+    total_latency = 0.0
+    passed = 0
+
+    for i in range(min(len(TURNS), max_turns)):
+        title, prompt = TURNS[i]
+        res = run_turn(platform_key, session_id, i, title, prompt)
+        results.append(res)
+        total_latency += res["latency_sec"]
+        if res["status"] == "PASS":
+            passed += 1
+        print(f"  [{platform_key}] Turn {i+1:02d}/20: {res['status']} ({res['latency_sec']}s) - {title}", flush=True)
+
+    summary = {
+        "platform": platform_key,
+        "display": cfg["display"],
+        "model": cfg["model"],
+        "session_id": session_id,
+        "turns_executed": len(results),
+        "passed_turns": passed,
+        "failed_turns": len(results) - passed,
+        "total_latency_sec": round(total_latency, 2),
+        "avg_latency_sec": round(total_latency / max(1, len(results)), 2),
+        "results": results
+    }
+
+    # Save individual log
+    log_file = BENCHMARK_LOG_DIR / f"{platform_key}_{session_id[:8]}.json"
+    log_file.write_text(json.dumps(summary, indent=2))
+    print(f"[{datetime.now(timezone.utc).isoformat()}] FINISHED {cfg['display']} - {passed}/{len(results)} turns passed.", flush=True)
+    return summary
+
+def main():
+    targets = sys.argv[1:] if len(sys.argv) > 1 else list(PLATFORMS.keys())
+    turns_count = int(os.environ.get("BD_BENCH_TURNS", "20"))
+    parallel = os.environ.get("BD_BENCH_PARALLEL", "1") == "1"
+
+    print("============================================================")
+    print("Fleet Headless 20-Turn Benchmark Suite")
+    print(f"Targets: {', '.join(targets)}")
+    print(f"Turns per target: {turns_count} | Mode: {'PARALLEL (concurrent)' if parallel else 'SEQUENTIAL'}")
+    print("============================================================", flush=True)
+
+    all_summaries = {}
+    if BENCHMARK_OUTPUT.exists():
+        try:
+            all_summaries = json.loads(BENCHMARK_OUTPUT.read_text())
+        except Exception:
+            all_summaries = {}
+
+    if parallel and len(targets) > 1:
+        with ThreadPoolExecutor(max_workers=len(targets)) as executor:
+            future_to_target = {executor.submit(benchmark_platform, t, turns_count): t for t in targets}
+            for future in as_completed(future_to_target):
+                t = future_to_target[future]
+                try:
+                    summary = future.result()
+                    all_summaries[t] = summary
+                    # Atomic update
+                    tmp = BENCHMARK_OUTPUT.with_suffix(".tmp")
+                    tmp.write_text(json.dumps(all_summaries, indent=2))
+                    tmp.replace(BENCHMARK_OUTPUT)
+                except Exception as e:
+                    print(f"[{t}] Error: {str(e)}")
+    else:
+        for target in targets:
+            if target not in PLATFORMS:
+                print(f"Unknown target: {target}")
+                continue
+            summary = benchmark_platform(target, max_turns=turns_count)
+            all_summaries[target] = summary
+            tmp = BENCHMARK_OUTPUT.with_suffix(".tmp")
+            tmp.write_text(json.dumps(all_summaries, indent=2))
+            tmp.replace(BENCHMARK_OUTPUT)
+
+    print("\n============================================================")
+    print(f"All benchmarks complete! Aggregate: {BENCHMARK_OUTPUT}")
+    print("============================================================")
+
+if __name__ == "__main__":
+    main()

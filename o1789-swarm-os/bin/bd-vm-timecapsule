@@ -1,0 +1,541 @@
+#!/usr/bin/env python3
+"""
+bd-vm-timecapsule — vSphere Snapshot TimeCapsule (Swarm #19 & #C14)
+Manages safe, thin-provisioned VM snapshots on vc04 (10.0.20.70) with automatic TTL pruning.
+Uses /home/mboyle/bin/lib_vsphere_govc.py and pyVmomi (connected via /home/mboyle/.config/bd/vsphere.env).
+"""
+
+import argparse
+import datetime
+import json
+import os
+import re
+import ssl
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+sys.path.insert(0, "/home/mboyle/bin")
+try:
+    import lib_vsphere_govc  # type: ignore
+except Exception:
+    lib_vsphere_govc = None
+
+VSPHERE_ENV_PATH = Path("/home/mboyle/.config/bd/vsphere.env")
+SNAP_REGEX = re.compile(r"^boylenet-timecapsule-(\d{8}T\d{6}Z)-ttl(\d+)h$")
+
+
+def load_vsphere_env(env_path: Path = VSPHERE_ENV_PATH) -> Dict[str, str]:
+    env: Dict[str, str] = dict(os.environ)
+    if env_path.exists():
+        for raw_line in env_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("export "):
+                line = line[len("export ") :].strip()
+            if "=" in line:
+                k, v = line.split("=", 1)
+                v = v.strip()
+                if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
+                    v = v[1:-1]
+                env[k.strip()] = v
+    return env
+
+
+def extract_credentials(env: Dict[str, str]) -> Tuple[str, str, str]:
+    host = (
+        env.get("VSPHERE_HOST")
+        or env.get("VCENTER_HOST")
+        or env.get("GOVC_HOST")
+        or "10.0.20.70"
+    )
+    user = (
+        env.get("VSPHERE_USER")
+        or env.get("VCENTER_USER")
+        or env.get("GOVC_USERNAME")
+        or "administrator@vsphere.local"
+    )
+    password = (
+        env.get("VSPHERE_PASSWORD")
+        or env.get("VSPHERE_PASS")
+        or env.get("VCENTER_PASSWORD")
+        or env.get("GOVC_PASSWORD")
+        or ""
+    )
+    govc_url = env.get("GOVC_URL", "")
+    if govc_url and "://" in govc_url:
+        rest = govc_url.split("://", 1)[1]
+        if "@" in rest:
+            userinfo, hostpart = rest.rsplit("@", 1)
+            host = hostpart.split("/", 1)[0].split(":", 1)[0] or host
+            if ":" in userinfo and not password:
+                u, p = userinfo.split(":", 1)
+                user = u or user
+                password = p or password
+        else:
+            host = rest.split("/", 1)[0].split(":", 1)[0] or host
+    return host, user, password
+
+
+def parse_snap_ttl(name: str, created_dt: Optional[datetime.datetime] = None) -> Tuple[Optional[int], Optional[datetime.datetime], bool]:
+    m = SNAP_REGEX.match(name)
+    if not m:
+        return None, None, False
+    ts_str, ttl_str = m.group(1), m.group(2)
+    ttl_hours = int(ttl_str)
+    try:
+        snap_dt = datetime.datetime.strptime(ts_str, "%Y%m%dT%H%M%SZ").replace(tzinfo=datetime.timezone.utc)
+    except ValueError:
+        snap_dt = created_dt or datetime.datetime.now(datetime.timezone.utc)
+    expires_at = snap_dt + datetime.timedelta(hours=ttl_hours)
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    return ttl_hours, expires_at, (now_utc >= expires_at)
+
+
+def connect_pyvmomi(host: str, user: str, password: str):
+    from pyVim.connect import SmartConnect, Disconnect  # type: ignore
+    from pyVmomi import vim  # type: ignore
+
+    ctx = ssl._create_unverified_context()
+    si = SmartConnect(host=host, user=user, pwd=password, port=443, sslContext=ctx, connectionPoolTimeout=10)
+    return si, vim, Disconnect
+
+
+def walk_SnapshotTree(snap_list, vm_name: str, vm_size_map: Dict[int, int]) -> List[Dict[str, Any]]:
+    results: List[Dict[str, Any]] = []
+    if not snap_list:
+        return results
+    for snap in snap_list:
+        create_time = getattr(snap, "createTime", None)
+        if isinstance(create_time, datetime.datetime):
+            if create_time.tzinfo is None:
+                create_time = create_time.replace(tzinfo=datetime.timezone.utc)
+            else:
+                create_time = create_time.astimezone(datetime.timezone.utc)
+            created_iso = create_time.strftime("%Y-%m-%dT%H:%M:%SZ")
+        else:
+            create_time = None
+            created_iso = "unknown"
+
+        snap_name = getattr(snap, "name", "")
+        snap_id = getattr(snap, "id", 0)
+        size_bytes = vm_size_map.get(snap_id, 0)
+        ttl_hours, expires_at, expired = parse_snap_ttl(snap_name, create_time)
+
+        results.append(
+            {
+                "vm": vm_name,
+                "name": snap_name,
+                "id": snap_id,
+                "description": getattr(snap, "description", ""),
+                "created_at": created_iso,
+                "quiesced": bool(getattr(snap, "quiesced", False)),
+                "size_mb": round(size_bytes / (1024 * 1024), 2),
+                "is_timecapsule": SNAP_REGEX.match(snap_name) is not None,
+                "ttl_hours": ttl_hours,
+                "expires_at": expires_at.strftime("%Y-%m-%dT%H:%M:%SZ") if expires_at else None,
+                "expired": expired,
+                "_ref": getattr(snap, "snapshot", None),
+            }
+        )
+        children = getattr(snap, "childSnapshotList", None)
+        if children:
+            results.extend(walk_SnapshotTree(children, vm_name, vm_size_map))
+    return results
+
+
+def compute_vm_snapshot_sizes(vm) -> Dict[int, int]:
+    """Compute approximate delta/snapshot size in bytes keyed by snapshot id or fallback 0."""
+    size_map: Dict[int, int] = {}
+    try:
+        layout = getattr(vm, "layoutEx", None)
+        if not layout or not getattr(layout, "file", None):
+            return size_map
+        file_sizes = {f.key: getattr(f, "size", 0) for f in layout.file}
+        for snap_layout in getattr(layout, "snapshot", []) or []:
+            total = 0
+            data_key = getattr(snap_layout, "dataKey", -1)
+            if data_key in file_sizes:
+                total += file_sizes[data_key]
+            for disk in getattr(snap_layout, "disk", []) or []:
+                for chain in getattr(disk, "chain", []) or []:
+                    for fk in getattr(chain, "fileKey", []) or []:
+                        total += file_sizes.get(fk, 0)
+            # Also sum delta files in layout.file matching -0000*.vmdk or .vmsn if single snapshot
+            snap_ref = getattr(snap_layout, "key", None)
+            if snap_ref is not None:
+                snap_id = getattr(snap_ref, "_moId", None)
+                if snap_id:
+                    size_map[snap_id] = total
+    except Exception:
+        pass
+    return size_map
+
+
+def list_snapshots_pyvmomi(host: str, user: str, password: str) -> Tuple[int, List[Dict[str, Any]]]:
+    si, vim, disconnect = connect_pyvmomi(host, user, password)
+    try:
+        content = si.RetrieveContent()
+        container = content.viewManager.CreateContainerView(content.rootFolder, [vim.VirtualMachine], True)
+        vms = list(container.view)
+        total_vms = len(vms)
+        all_snaps: List[Dict[str, Any]] = []
+        for vm in vms:
+            try:
+                snap_info = getattr(vm, "snapshot", None)
+                if not snap_info or not getattr(snap_info, "rootSnapshotList", None):
+                    continue
+                vm_name = getattr(vm, "name", "unknown")
+                # Approximate delta file sum for VM
+                delta_bytes = 0
+                try:
+                    layout = getattr(vm, "layoutEx", None)
+                    if layout and getattr(layout, "file", None):
+                        for f in layout.file:
+                            fname = getattr(f, "name", "")
+                            if ".vmsn" in fname or re.search(r"-0000\d+\.vmdk", fname):
+                                delta_bytes += getattr(f, "size", 0)
+                except Exception:
+                    pass
+                snaps = walk_SnapshotTree(snap_info.rootSnapshotList, vm_name, {})
+                if snaps and delta_bytes > 0:
+                    per_snap_mb = round((delta_bytes / len(snaps)) / (1024 * 1024), 2)
+                    for s in snaps:
+                        if s["size_mb"] == 0:
+                            s["size_mb"] = per_snap_mb
+                all_snaps.extend(snaps)
+            except Exception:
+                continue
+        container.Destroy()
+        return total_vms, all_snaps
+    finally:
+        try:
+            disconnect(si)
+        except Exception:
+            pass
+
+
+def list_snapshots_govc(env: Dict[str, str]) -> Tuple[int, List[Dict[str, Any]]]:
+    cmd_vms = ["govc", "find", "/", "-type", "m"]
+    proc = subprocess.run(cmd_vms, env=env, capture_output=True, text=True, timeout=15)
+    if proc.returncode != 0:
+        raise RuntimeError(f"govc find failed: {proc.stderr.strip()}")
+    vm_paths = [p.strip() for p in proc.stdout.splitlines() if p.strip()]
+    snaps: List[Dict[str, Any]] = []
+    for vmp in vm_paths:
+        vm_name = vmp.rsplit("/", 1)[-1]
+        p2 = subprocess.run(
+            ["govc", "snapshot.tree", "-vm", vmp],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if p2.returncode == 0 and p2.stdout.strip():
+            for line in p2.stdout.splitlines():
+                sname = line.strip()
+                if not sname:
+                    continue
+                ttl_hours, expires_at, expired = parse_snap_ttl(sname, None)
+                snaps.append(
+                    {
+                        "vm": vm_name,
+                        "name": sname,
+                        "id": 0,
+                        "description": "",
+                        "created_at": "govc-tree",
+                        "quiesced": False,
+                        "size_mb": 0.0,
+                        "is_timecapsule": SNAP_REGEX.match(sname) is not None,
+                        "ttl_hours": ttl_hours,
+                        "expires_at": expires_at.strftime("%Y-%m-%dT%H:%M:%SZ") if expires_at else None,
+                        "expired": expired,
+                        "_ref": None,
+                    }
+                )
+    return len(vm_paths), snaps
+
+
+def create_snapshot(
+    host: str,
+    user: str,
+    password: str,
+    env: Dict[str, str],
+    vm_name: str,
+    ttl_hours: int,
+    reason: str,
+    dry_run: bool = False,
+) -> Dict[str, Any]:
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    ts_label = now_utc.strftime("%Y%m%dT%H%M%SZ")
+    snap_name = f"boylenet-timecapsule-{ts_label}-ttl{ttl_hours}h"
+    expires_at = (now_utc + datetime.timedelta(hours=ttl_hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    desc = json.dumps(
+        {
+            "manager": "bd-vm-timecapsule",
+            "reason": reason or "scheduled-timecapsule",
+            "created_at": now_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "ttl_hours": ttl_hours,
+            "expires_at": expires_at,
+            "thin_memory_free": True,
+        }
+    )
+
+    if dry_run:
+        return {
+            "status": "DRY_RUN",
+            "vm": vm_name,
+            "snapshot": snap_name,
+            "ttl_hours": ttl_hours,
+            "expires_at": expires_at,
+            "description": desc,
+        }
+
+    si, vim, disconnect = connect_pyvmomi(host, user, password)
+    try:
+        content = si.RetrieveContent()
+        container = content.viewManager.CreateContainerView(content.rootFolder, [vim.VirtualMachine], True)
+        target_vm = None
+        for vm in container.view:
+            if getattr(vm, "name", "") == vm_name:
+                target_vm = vm
+                break
+        container.Destroy()
+        if target_vm is None:
+            raise ValueError(f"VM '{vm_name}' not found on {host}")
+
+        # Create thin (memory=False), try quiesced first then fallback to unquiesced if Tools unavailable
+        task = target_vm.CreateSnapshot_Task(
+            name=snap_name,
+            description=desc,
+            memory=False,
+            quiesce=True,
+        )
+        # Wait up to 60s for task completion
+        import time
+
+        deadline = time.time() + 60
+        while task.info.state not in (vim.TaskInfo.State.success, vim.TaskInfo.State.error):
+            if time.time() > deadline:
+                break
+            time.sleep(0.5)
+
+        if task.info.state == vim.TaskInfo.State.error:
+            # Retry without guest filesystem quiescing if VMware Tools quiesce unsupported
+            task = target_vm.CreateSnapshot_Task(
+                name=snap_name,
+                description=desc,
+                memory=False,
+                quiesce=False,
+            )
+            deadline = time.time() + 60
+            while task.info.state not in (vim.TaskInfo.State.success, vim.TaskInfo.State.error):
+                if time.time() > deadline:
+                    break
+                time.sleep(0.5)
+            if task.info.state == vim.TaskInfo.State.error:
+                err_msg = getattr(task.info.error, "msg", str(task.info.error))
+                raise RuntimeError(f"Snapshot creation failed: {err_msg}")
+
+        return {
+            "status": "CREATED",
+            "vm": vm_name,
+            "snapshot": snap_name,
+            "ttl_hours": ttl_hours,
+            "expires_at": expires_at,
+        }
+    finally:
+        try:
+            disconnect(si)
+        except Exception:
+            pass
+
+
+def prune_expired_snapshots(
+    host: str,
+    user: str,
+    password: str,
+    dry_run: bool = False,
+) -> Dict[str, Any]:
+    total_vms, all_snaps = list_snapshots_pyvmomi(host, user, password)
+    expired_snaps = [s for s in all_snaps if s.get("is_timecapsule") and s.get("expired")]
+    pruned: List[Dict[str, Any]] = []
+    skipped_non_tc = [s["name"] for s in all_snaps if not s.get("is_timecapsule")]
+
+    if not expired_snaps or dry_run:
+        for s in expired_snaps:
+            pruned.append(
+                {
+                    "vm": s["vm"],
+                    "snapshot": s["name"],
+                    "expires_at": s["expires_at"],
+                    "action": "DRY_RUN_PRUNE" if dry_run else "NONE",
+                }
+            )
+        return {
+            "status": "OK",
+            "vc_host": host,
+            "total_vms": total_vms,
+            "total_snapshots": len(all_snaps),
+            "timecapsule_snapshots": sum(1 for s in all_snaps if s.get("is_timecapsule")),
+            "preserved_non_timecapsule": len(skipped_non_tc),
+            "expired_found": len(expired_snaps),
+            "pruned": pruned,
+        }
+
+    si, vim, disconnect = connect_pyvmomi(host, user, password)
+    try:
+        content = si.RetrieveContent()
+        container = content.viewManager.CreateContainerView(content.rootFolder, [vim.VirtualMachine], True)
+        for vm in container.view:
+            snap_info = getattr(vm, "snapshot", None)
+            if not snap_info or not getattr(snap_info, "rootSnapshotList", None):
+                continue
+            vm_name = getattr(vm, "name", "unknown")
+            vm_snaps = walk_SnapshotTree(snap_info.rootSnapshotList, vm_name, {})
+            for s in vm_snaps:
+                if s.get("is_timecapsule") and s.get("expired") and s.get("_ref") is not None:
+                    task = s["_ref"].RemoveSnapshot_Task(removeChildren=False, consolidate=True)
+                    pruned.append(
+                        {
+                            "vm": vm_name,
+                            "snapshot": s["name"],
+                            "expires_at": s["expires_at"],
+                            "task": str(getattr(task, "_moId", "submitted")),
+                            "action": "PRUNED",
+                        }
+                    )
+        container.Destroy()
+    finally:
+        try:
+            disconnect(si)
+        except Exception:
+            pass
+
+    return {
+        "status": "OK",
+        "vc_host": host,
+        "total_vms": total_vms,
+        "total_snapshots": len(all_snaps),
+        "timecapsule_snapshots": sum(1 for s in all_snaps if s.get("is_timecapsule")),
+        "preserved_non_timecapsule": len(skipped_non_tc),
+        "expired_found": len(expired_snaps),
+        "pruned": pruned,
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="bd-vm-timecapsule: vSphere Snapshot TimeCapsule with automatic TTL pruning (vc04 10.0.20.70)"
+    )
+    parser.add_argument("--list", action="store_true", help="List all existing snapshots across all VMs in vc04")
+    parser.add_argument("--snapshot", metavar="VM_NAME", help="Create a thin TTL-bound snapshot on the specified VM")
+    parser.add_argument("--ttl-hours", type=int, default=72, help="TTL in hours for --snapshot (default: 72)")
+    parser.add_argument("--reason", type=str, default="manual-checkpoint", help="Reason metadata for snapshot")
+    parser.add_argument(
+        "--prune-expired",
+        action="store_true",
+        help="Remove only boylenet-timecapsule-* snapshots older than their TTL",
+    )
+    parser.add_argument("--dry-run", action="store_true", help="Preview snapshot or prune operation without mutating")
+    parser.add_argument("--json", action="store_true", help="Emit structured JSON output")
+    args = parser.parse_args()
+
+    if not (args.list or args.snapshot or args.prune_expired):
+        args.list = True
+
+    env = load_vsphere_env()
+    host, user, password = extract_credentials(env)
+
+    try:
+        if args.list:
+            try:
+                total_vms, snaps = list_snapshots_pyvmomi(host, user, password)
+                backend = "pyVmomi"
+            except Exception:
+                total_vms, snaps = list_snapshots_govc(env)
+                backend = "govc"
+
+            clean_snaps = [{k: v for k, v in s.items() if k != "_ref"} for s in snaps]
+            payload = {
+                "status": "OK",
+                "vc_host": host,
+                "backend": backend,
+                "lib_vsphere_govc_loaded": lib_vsphere_govc is not None,
+                "total_vms": total_vms,
+                "snapshot_count": len(clean_snaps),
+                "timecapsule_count": sum(1 for s in clean_snaps if s["is_timecapsule"]),
+                "expired_count": sum(1 for s in clean_snaps if s["expired"]),
+                "snapshots": clean_snaps,
+            }
+            if args.json:
+                print(json.dumps(payload, indent=2))
+            else:
+                print(
+                    f"[bd-vm-timecapsule] vc04={host} backend={backend} "
+                    f"total_vms={total_vms} snapshots={len(clean_snaps)} "
+                    f"timecapsules={payload['timecapsule_count']} expired={payload['expired_count']}"
+                )
+                if not clean_snaps:
+                    print("  (0 active VM snapshots on vc04 — vSAN delta chain clean)")
+                else:
+                    print(f"  {'VM':<28} {'SNAPSHOT':<42} {'CREATED_UTC':<22} {'SIZE_MB':<10} {'TTL/STATUS'}")
+                    for s in clean_snaps:
+                        status_str = (
+                            f"EXPIRED({s['expires_at']})"
+                            if s["expired"]
+                            else (f"TTL={s['ttl_hours']}h (exp {s['expires_at']})" if s["is_timecapsule"] else "NON-TC (preserved)")
+                        )
+                        print(
+                            f"  {s['vm']:<28} {s['name']:<42} {s['created_at']:<22} "
+                            f"{s['size_mb']:<10.2f} {status_str}"
+                        )
+            return 0
+
+        if args.snapshot:
+            res = create_snapshot(
+                host=host,
+                user=user,
+                password=password,
+                env=env,
+                vm_name=args.snapshot,
+                ttl_hours=args.ttl_hours,
+                reason=args.reason,
+                dry_run=args.dry_run,
+            )
+            if args.json:
+                print(json.dumps(res, indent=2))
+            else:
+                print(
+                    f"[bd-vm-timecapsule] {res['status']} vm={res['vm']} "
+                    f"snapshot={res['snapshot']} expires_at={res['expires_at']}"
+                )
+            return 0
+
+        if args.prune_expired:
+            res = prune_expired_snapshots(host=host, user=user, password=password, dry_run=args.dry_run)
+            if args.json:
+                print(json.dumps(res, indent=2))
+            else:
+                print(
+                    f"[bd-vm-timecapsule] PRUNE_CHECK vc04={host} total_vms={res['total_vms']} "
+                    f"total_snaps={res['total_snapshots']} timecapsules={res['timecapsule_snapshots']} "
+                    f"expired={res['expired_found']} pruned={len(res['pruned'])}"
+                )
+            return 0
+
+    except Exception as exc:
+        err = {"status": "ERROR", "vc_host": host, "error": str(exc)}
+        if args.json:
+            print(json.dumps(err, indent=2))
+        else:
+            print(f"[bd-vm-timecapsule] ERROR vc04={host}: {exc}", file=sys.stderr)
+        return 1
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+"""
+bd-token-efficiency -- Measure and report Boylenet Fleet token usage and caching efficiency.
+Analyzes rolling 5-minute and 1-hour windows from usage.sqlite and CAS blob storage.
+"""
+from __future__ import annotations
+
+import json
+import sqlite3
+import subprocess
+from datetime import datetime, timezone, timedelta
+from pathlib import Path
+
+USAGE_DB = Path("/home/mboyle/bd-persist/accounting/usage.sqlite")
+POOL_STATE = Path("/home/mboyle/bd-persist/POOL_STATE.tsv")
+BLOBS_DIR = Path("/var/tmp/bd-blobs")
+
+
+def get_token_metrics(minutes: int = 5) -> dict:
+    if not USAGE_DB.exists():
+        return {}
+    conn = sqlite3.connect(str(USAGE_DB))
+    now = datetime.now(timezone.utc)
+    t_start = (now - timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%S")
+
+    rows = conn.execute(
+        "SELECT provider, model, usage FROM usage_responses WHERE timestamp >= ? ORDER BY timestamp DESC",
+        (t_start,),
+    ).fetchall()
+
+    tot_in = 0
+    tot_cached = 0
+    tot_out = 0
+    by_model: dict[str, dict[str, int]] = {}
+
+    for prov, model, usage_str in rows:
+        try:
+            u = json.loads(usage_str)
+            inp = u.get("input_tokens", 0)
+            cached = u.get("cached_input_tokens", 0) or u.get("cache_read_input_tokens", 0)
+            out = u.get("output_tokens", 0)
+
+            tot_in += inp
+            tot_cached += cached
+            tot_out += out
+
+            m = model or prov
+            if m not in by_model:
+                by_model[m] = {"turns": 0, "in": 0, "cached": 0, "out": 0}
+            by_model[m]["turns"] += 1
+            by_model[m]["in"] += inp
+            by_model[m]["cached"] += cached
+            by_model[m]["out"] += out
+        except Exception:
+            pass
+
+    cache_pct = (tot_cached / tot_in * 100) if tot_in > 0 else 0.0
+    out_pct = (tot_out / tot_in * 100) if tot_in > 0 else 0.0
+
+    return {
+        "window_minutes": minutes,
+        "turns": len(rows),
+        "input_tokens": tot_in,
+        "cached_tokens": tot_cached,
+        "cache_hit_pct": round(cache_pct, 2),
+        "output_tokens": tot_out,
+        "output_ratio_pct": round(out_pct, 2),
+        "by_model": by_model,
+    }
+
+
+def get_blob_metrics() -> dict:
+    if not BLOBS_DIR.exists():
+        return {"blob_count": 0, "total_bytes": 0, "mb": 0.0, "est_tokens_saved": 0}
+    try:
+        res = subprocess.check_output(["du", "-sb", str(BLOBS_DIR)], text=True, stderr=subprocess.DEVNULL)
+        total_bytes = int(res.split()[0])
+    except Exception:
+        total_bytes = 0
+
+    try:
+        blob_count = sum(1 for _ in BLOBS_DIR.iterdir())
+    except Exception:
+        blob_count = 0
+
+    mb = round(total_bytes / (1024 * 1024), 1)
+    # 1 token ≈ 4 bytes of text
+    est_tokens_saved = int(total_bytes / 4)
+
+    return {
+        "blob_count": blob_count,
+        "total_bytes": total_bytes,
+        "mb": mb,
+        "est_tokens_saved": est_tokens_saved,
+    }
+
+
+def format_report(m5: dict, blobs: dict) -> str:
+    lines = [
+        "=== BOYLENET TOKEN EFFICIENCY (ROLLING 5m) ===",
+        f"• Turns (5m):           {m5.get('turns', 0):,}",
+        f"• Total Input Tokens:    {m5.get('input_tokens', 0):,}",
+        f"• Cached Input Tokens:   {m5.get('cached_tokens', 0):,} ({m5.get('cache_hit_pct', 0.0)}% hit rate)",
+        f"• Fresh Input Tokens:    {(m5.get('input_tokens', 0) - m5.get('cached_tokens', 0)):,} ({(100 - m5.get('cache_hit_pct', 0.0)):.2f}%)",
+        f"• Total Output Tokens:   {m5.get('output_tokens', 0):,} ({m5.get('output_ratio_pct', 0.0)}% of input)",
+        "",
+        "=== RULE 80 POINTER-PAYLOAD CAS DECOUPLING ===",
+        f"• CAS Blobs Captured:   {blobs.get('blob_count', 0):,} files",
+        f"• CAS Blob Storage:      {blobs.get('mb', 0.0):,} MB",
+        f"• Context Tokens Spared: ~{blobs.get('est_tokens_saved', 0):,} tokens",
+    ]
+    return "\n".join(lines)
+
+
+if __name__ == "__main__":
+    m5 = get_token_metrics(5)
+    blobs = get_blob_metrics()
+    print(format_report(m5, blobs))
