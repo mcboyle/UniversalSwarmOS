@@ -1,0 +1,1 @@
+{"name":"vm_list","description":"List virtual machines registered across the cluster in vCenter/ESXi.","parameters":{"properties":{},"title":"vm_listArguments","type":"object"}}

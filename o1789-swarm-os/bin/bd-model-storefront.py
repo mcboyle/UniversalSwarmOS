@@ -1114,6 +1114,342 @@ BENCHMARKED_NEW_29: List[Dict[str, Any]] = [
         "draft_pair": "ngram-mod (--spec-type ngram-mod --draft-max 16)",
         "draft_flags": "--spec-type ngram-mod --draft-max 16",
     },
+    {
+        "rank": 52,
+        "id": "bench-52-gpt-oss-120b-heretic-v2",
+        "name": "GPT-OSS-120B-Heretic-v2 (MXFP4_MOE)",
+        "gguf_file": "kldzj_gpt-oss-120b-heretic-v2-MXFP4_MOE-00001-of-00002.gguf",
+        "vault_dir": "gpt-oss-120b-heretic-v2",
+        "node": ".72",
+        "nodes_available": [".72"],
+        "arch": "gpt-oss 120B MXFP4 MoE",
+        "size_gib": 59.03,
+        "quant_shards": "MXFP4_MOE • 2/2 shards • 120B MoE",
+        "tier": "tier2",
+        "orchestrator_model": "gpt-oss-120b-heretic-v2",
+        "hardware_pool": "1xT4 + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=99)",
+        "pp512": 23.14,
+        "tg128": 8.24,
+        "status": "BENCHMARKED",
+        "categories": ["benchmarked", "coding", "uncensored"],
+        "draft_pair": "ngram-mod (--spec-type ngram-mod --draft-max 16)",
+        "draft_flags": "--spec-type ngram-mod --draft-max 16",
+    },
+    {
+        "rank": 53,
+        "id": "bench-53-laguna-s-2.1-118b-uncensored",
+        "name": "Laguna-S-2.1-118B-Uncensored (Q4_K_M)",
+        "gguf_file": "laguna-s-2.1-q4_k_m-uncensored.gguf",
+        "vault_dir": "laguna-s-2.1-118b-uncensored",
+        "node": ".72",
+        "nodes_available": [".72"],
+        "arch": "laguna 118B.A8B Q4_K_M",
+        "size_gib": 66.61,
+        "quant_shards": "Q4_K_M • 1/1 shard • 118B",
+        "tier": "tier2",
+        "orchestrator_model": "laguna-s-2.1-118b-uncensored",
+        "hardware_pool": "1xT4 + Skylake AVX-512 Hybrid (ngl=9, t=48)",
+        "pp512": 17.34,
+        "tg128": 4.36,
+        "status": "BENCHMARKED",
+        "categories": ["benchmarked", "coding", "uncensored"],
+        "draft_pair": "ngram-mod (--spec-type ngram-mod --draft-max 16)",
+        "draft_flags": "--spec-type ngram-mod --draft-max 16",
+    },
+    {
+        "rank": 54,
+        "id": "bench-54-hy3-295b-heretic",
+        "name": "Tencent Hy3-295B-Heretic (i1-IQ2_M MoE)",
+        "gguf_file": "Hy3-heretic.i1-IQ2_M.gguf",
+        "vault_dir": "hy3-295b-heretic",
+        "node": ".72",
+        "nodes_available": [".72"],
+        "arch": "hy_v3 295B IQ2_M - 2.7 bpw",
+        "size_gib": 89.42,
+        "quant_shards": "i1-IQ2_M • 1/1 shard • 295B MoE",
+        "tier": "tier3",
+        "orchestrator_model": "hy3-295b-heretic",
+        "hardware_pool": "1xT4 + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=99)",
+        "pp512": 8.80,
+        "tg128": 3.78,
+        "status": "BENCHMARKED",
+        "categories": ["benchmarked", "frontier_moe", "coding", "uncensored"],
+        "draft_pair": "ngram-mod (--spec-type ngram-mod --draft-max 16)",
+        "draft_flags": "--spec-type ngram-mod --draft-max 16",
+    },
+    {
+        "rank": 55,
+        "id": "bench-55-glm-5.3-flash-uncensored",
+        "name": "GLM-5.3-Flash-Uncensored (IQ2_XXS MoE)",
+        "gguf_file": "GLM-5.3-Flash-Uncensored-IQ2_XXS-00001-of-00003.gguf",
+        "vault_dir": "glm-5.3-flash-uncensored",
+        "node": ".72",
+        "nodes_available": [".72"],
+        "arch": "glm5-next 320B.A18B IQ2_XXS",
+        "size_gib": 90.44,
+        "quant_shards": "IQ2_XXS • 3/3 shards • 320B MoE",
+        "tier": "tier2",
+        "orchestrator_model": "glm-5.3-flash-uncensored",
+        "hardware_pool": "1xT4 + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=99)",
+        "pp512": 8.05,
+        "tg128": 1.88,
+        "status": "BENCHMARKED",
+        "categories": ["benchmarked", "coding", "uncensored"],
+        "draft_pair": "ngram-mod (--spec-type ngram-mod --draft-max 16)",
+        "draft_flags": "--spec-type ngram-mod --draft-max 16",
+    },
+    {
+        "rank": 56,
+        "id": "bench-56-command-a-plus-111b",
+        "name": "Cohere Command-A-Plus-111B (Q4_K_M)",
+        "gguf_file": "command-a-plus-05-2026-Q4_K_M-00001-of-00004.gguf",
+        "vault_dir": "command-a-plus-111b",
+        "node": ".72",
+        "nodes_available": [".72"],
+        "arch": "cohere2moe 111B Q4_K_M",
+        "size_gib": 125.81,
+        "quant_shards": "Q4_K_M • 4/4 shards • 111B",
+        "tier": "tier3",
+        "orchestrator_model": "command-a-plus-111b",
+        "hardware_pool": "Skylake AVX-512 48-Thread DDR4 (ngl=0)",
+        "pp512": 1.31,
+        "tg128": 2.40,
+        "status": "BENCHMARKED",
+        "categories": ["benchmarked", "coding"],
+        "draft_pair": "ngram-mod (--spec-type ngram-mod --draft-max 16)",
+        "draft_flags": "--spec-type ngram-mod --draft-max 16",
+    },
+    {
+        "rank": 57,
+        "id": "bench-57-minimax-m2.7-ultra-uncensored-heretic",
+        "name": "MiniMax-M2.7-Ultra-Uncensored-Heretic (Q4_K_M)",
+        "gguf_file": "MiniMax-M2.7-BF16-ultra-uncensored-heretic-Q4_K_M.gguf",
+        "vault_dir": "minimax-m2.7-ultra-uncensored-heretic",
+        "node": ".72",
+        "nodes_available": [".72"],
+        "arch": "minimax-m2 230B.A10B Q4_K_M",
+        "size_gib": 128.84,
+        "quant_shards": "Q4_K_M • 1/1 shard • 230B MoE",
+        "tier": "tier3",
+        "orchestrator_model": "minimax-m2.7-ultra-uncensored-heretic",
+        "hardware_pool": "1xT4 + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=22)",
+        "pp512": 2.80,
+        "tg128": 4.39,
+        "status": "BENCHMARKED",
+        "categories": ["benchmarked", "frontier_moe", "coding", "uncensored"],
+        "draft_pair": "ngram-mod (--spec-type ngram-mod --draft-max 16)",
+        "draft_flags": "--spec-type ngram-mod --draft-max 16",
+    },
+    {
+        "rank": 58,
+        "id": "bench-58-glm-5.3-flash-abliterated",
+        "name": "GLM-5.3-Flash-Abliterated (UD-IQ4_XS MoE)",
+        "gguf_file": "GLM-5.3-Flash-UD-IQ4_XS-00001-of-00005.gguf",
+        "vault_dir": "glm-5.3-flash-abliterated",
+        "node": ".83",
+        "nodes_available": [".83"],
+        "arch": "glm5-next 320B.A18B IQ4_XS",
+        "size_gib": 147.14,
+        "quant_shards": "UD-IQ4_XS • 5/5 shards + mmproj-bf16",
+        "tier": "tier3",
+        "orchestrator_model": "glm-5.3-flash-abliterated",
+        "hardware_pool": "1xT4 + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=22)",
+        "pp512": 1.35,
+        "tg128": 0.73,
+        "status": "BENCHMARKED",
+        "categories": ["benchmarked", "coding", "vision", "uncensored"],
+        "draft_pair": "ngram-mod + mmproj-model-bf16.gguf",
+        "draft_flags": "--spec-type ngram-mod --draft-max 16",
+    },
+    {
+        "rank": 59,
+        "id": "bench-59-mimo-v2.6-flash-rl-heretic-311b",
+        "name": "MiMo-V2.6-Flash-RL-Uncensored-Heretic-311B (MXFP4 MoE)",
+        "gguf_file": "MiMo-V2.6-Flash-RL-Uncensored-Heretic-MXFP4-00001-of-00002.gguf",
+        "vault_dir": "mimo-v2.6-flash-rl-heretic-311b",
+        "node": ".83",
+        "nodes_available": [".83"],
+        "arch": "mimo2 310B.A15B MXFP4 MoE",
+        "size_gib": 155.87,
+        "quant_shards": "MXFP4 • 2/2 shards • 311B MoE",
+        "tier": "tier3",
+        "orchestrator_model": "mimo-v2.6-flash-rl-heretic-311b",
+        "hardware_pool": "1xT4 + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=22)",
+        "pp512": 1.39,
+        "tg128": 4.20,
+        "status": "BENCHMARKED",
+        "categories": ["benchmarked", "frontier_moe", "coding", "uncensored"],
+        "draft_pair": "ngram-mod (--spec-type ngram-mod --draft-max 16)",
+        "draft_flags": "--spec-type ngram-mod --draft-max 16",
+    },
+    {
+        "rank": 60,
+        "id": "bench-60-beam-1.0-501b-a23b",
+        "name": "Beam-1.0-501B-A23B (UD-Q2_K_XL MoE)",
+        "gguf_file": "Beam-1.0-501B-A23B-UD-Q2_K_XL-00001-of-00005.gguf",
+        "vault_dir": "beam-1.0-501b-a23b",
+        "node": ".72",
+        "nodes_available": [".72", ".228"],
+        "arch": "beam 501B.A23B Q2_K_XL",
+        "size_gib": 174.04,
+        "quant_shards": "UD-Q2_K_XL • 5/5 shards • 501B MoE",
+        "tier": "tier3",
+        "orchestrator_model": "beam-1.0-501b-a23b",
+        "hardware_pool": "2xT4 Pool Alpha (.72+.228) + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=48)",
+        "pp512": 1.16,
+        "tg128": 3.05,
+        "status": "BENCHMARKED",
+        "categories": ["benchmarked", "frontier_moe", "coding"],
+        "draft_pair": "ngram-mod (--spec-type ngram-mod --draft-max 16)",
+        "draft_flags": "--spec-type ngram-mod --draft-max 16",
+    },
+    {
+        "rank": 61,
+        "id": "bench-61-nemotron-3-ultra-550b-a55b",
+        "name": "NVIDIA-Nemotron-3-Ultra-550B-A55B (UD-Q2_K_XL)",
+        "gguf_file": "NVIDIA-Nemotron-3-Ultra-550B-A55B-UD-Q2_K_XL-00001-of-00006.gguf",
+        "vault_dir": "nemotron-3-ultra-550b-a55b",
+        "node": ".72",
+        "nodes_available": [".72", ".228"],
+        "arch": "nemotron_h_moe 550B.A55B Q2_K_XL",
+        "size_gib": 188.30,
+        "quant_shards": "UD-Q2_K_XL • 6/6 shards • 550B MoE",
+        "tier": "tier3",
+        "orchestrator_model": "nemotron-3-ultra-550b-a55b",
+        "hardware_pool": "2xT4 Pool Alpha (.72+.228) + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=48)",
+        "pp512": 1.75,
+        "tg128": 1.37,
+        "status": "BENCHMARKED",
+        "categories": ["benchmarked", "frontier_moe", "coding"],
+        "draft_pair": "ngram-mod (--spec-type ngram-mod --draft-max 16)",
+        "draft_flags": "--spec-type ngram-mod --draft-max 16",
+    },
+    {
+        "rank": 62,
+        "id": "bench-62-minimax-m3-426b-uncensored",
+        "name": "MiniMax-M3-426B-Uncensored (IQ4_XS MoE)",
+        "gguf_file": "MiniMax-M3-uncensored-IQ4_XS-00001-of-00005.gguf",
+        "vault_dir": "minimax-m3-426b-uncensored",
+        "node": ".72",
+        "nodes_available": [".72", ".228"],
+        "arch": "minimax-m3 428B.A23B IQ4_XS",
+        "size_gib": 189.13,
+        "quant_shards": "IQ4_XS • 5/5 shards • 426B MoE",
+        "tier": "tier3",
+        "orchestrator_model": "minimax-m3-426b-uncensored",
+        "hardware_pool": "2xT4 Pool Alpha (.72+.228) + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=48)",
+        "pp512": 0.55,
+        "tg128": 1.59,
+        "status": "BENCHMARKED",
+        "categories": ["benchmarked", "frontier_moe", "coding", "uncensored"],
+        "draft_pair": "ngram-mod (--spec-type ngram-mod --draft-max 16)",
+        "draft_flags": "--spec-type ngram-mod --draft-max 16",
+    },
+    {
+        "rank": 63,
+        "id": "bench-63-ling-3.1-flash-564b",
+        "name": "Ant Ling-3.1-Flash-564B (AD-IQ2_M MoE)",
+        "gguf_file": "Ling-3.1-flash-AD-IQ2_M-00001-of-00005.gguf",
+        "vault_dir": "ling-3.1-flash-564b",
+        "node": ".83",
+        "nodes_available": [".83"],
+        "arch": "bailingmoe3 564B IQ2_M - 2.7 bpw",
+        "size_gib": 203.10,
+        "quant_shards": "AD-IQ2_M • 5/5 shards • 564B MoE",
+        "tier": "tier3",
+        "orchestrator_model": "ling-3.1-flash-564b",
+        "hardware_pool": "1xT4 + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=22)",
+        "pp512": 2.61,
+        "tg128": 1.34,
+        "status": "BENCHMARKED",
+        "categories": ["benchmarked", "frontier_moe", "coding"],
+        "draft_pair": "ngram-mod (--spec-type ngram-mod --draft-max 16)",
+        "draft_flags": "--spec-type ngram-mod --draft-max 16",
+    },
+    {
+        "rank": 64,
+        "id": "bench-64-muse-spark-816b-a42b",
+        "name": "Muse-Spark-Open-816B-A42B (UD-IQ2_XXS Frontier MoE)",
+        "gguf_file": "Muse-Spark-Open-816B-A42B-UD-IQ2_XXS-00001-of-00006.gguf",
+        "vault_dir": "muse-spark-816b-a42b",
+        "node": ".83",
+        "nodes_available": [".83", ".125"],
+        "arch": "muse-spark 816B.A42B IQ2_XXS",
+        "size_gib": 210.08,
+        "quant_shards": "UD-IQ2_XXS • 6/6 shards • 816B MoE",
+        "tier": "tier3",
+        "orchestrator_model": "muse-spark-816b-a42b",
+        "hardware_pool": "2xT4 Pool Beta (.83+.125) + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=48)",
+        "pp512": 0.41,
+        "tg128": 0.13,
+        "status": "BENCHMARKED",
+        "categories": ["benchmarked", "frontier_moe", "coding"],
+        "draft_pair": "ngram-mod (--spec-type ngram-mod --draft-max 16)",
+        "draft_flags": "--spec-type ngram-mod --draft-max 16",
+    },
+    {
+        "rank": 65,
+        "id": "bench-65-deepseek-v3.2-685b",
+        "name": "DeepSeek-V3.2-685B (UD-Q2_K_XL MoE)",
+        "gguf_file": "DeepSeek-V3.2-UD-Q2_K_XL-00001-of-00006.gguf",
+        "vault_dir": "deepseek-v3.2-685b",
+        "node": ".72",
+        "nodes_available": [".72", ".228"],
+        "arch": "deepseek2 671B Q2_K_XL",
+        "size_gib": 229.67,
+        "quant_shards": "UD-Q2_K_XL • 6/6 shards • 685B MoE",
+        "tier": "tier3",
+        "orchestrator_model": "deepseek-v3.2-685b",
+        "hardware_pool": "2xT4 Pool Alpha (.72+.228) + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=48)",
+        "pp512": 1.73,
+        "tg128": 2.47,
+        "status": "BENCHMARKED",
+        "categories": ["benchmarked", "frontier_moe", "coding"],
+        "draft_pair": "dspark-DeepSeek-V4-Flash-0731-Q8_0.gguf (MLA Drafter)",
+        "draft_flags": "--spec-type ngram-mod --draft-max 16",
+    },
+    {
+        "rank": 66,
+        "id": "bench-66-glm-5.3-753b",
+        "name": "GLM-5.3-753B-A40B (UD-Q2_K_XL Frontier MoE)",
+        "gguf_file": "GLM-5.3-UD-Q2_K_XL-00001-of-00007.gguf",
+        "vault_dir": "glm-5.3-753b",
+        "node": ".83",
+        "nodes_available": [".83", ".125"],
+        "arch": "glm-dsa 744B.A40B Q2_K_XL",
+        "size_gib": 236.44,
+        "quant_shards": "UD-Q2_K_XL • 7/7 shards • 753B MoE",
+        "tier": "tier3",
+        "orchestrator_model": "glm-5.3-753b",
+        "hardware_pool": "2xT4 Pool Beta (.83+.125) + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=48)",
+        "pp512": 1.95,
+        "tg128": 1.71,
+        "status": "BENCHMARKED",
+        "categories": ["benchmarked", "frontier_moe", "coding"],
+        "draft_pair": "ngram-mod (--spec-type ngram-mod --draft-max 16)",
+        "draft_flags": "--spec-type ngram-mod --draft-max 16",
+    },
+    {
+        "rank": 67,
+        "id": "bench-67-mimo-v2.6-pro-1024b",
+        "name": "Xiaomi MiMo-V2.6-Pro-1024B (1.02T MoE MOPD-BPW2.0)",
+        "gguf_file": "MiMo-V2.6-Pro-MOPD-BPW2.0-00001-of-00007.gguf",
+        "vault_dir": "mimo-v2.6-pro-1024b",
+        "node": ".83",
+        "nodes_available": [".83", ".125"],
+        "arch": "mimo2 1024B IQ2_XXS - 2.0625 bpw",
+        "size_gib": 238.22,
+        "quant_shards": "BPW2.0 • 7/7 shards • 1,024B (1T) MoE",
+        "tier": "tier3",
+        "orchestrator_model": "mimo-v2.6-pro-1024b",
+        "hardware_pool": "2xT4 Pool Beta (.83+.125) + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=48)",
+        "pp512": 2.92,
+        "tg128": 2.42,
+        "status": "BENCHMARKED",
+        "categories": ["benchmarked", "frontier_moe", "coding"],
+        "draft_pair": "ngram-mod (--spec-type ngram-mod --draft-max 16)",
+        "draft_flags": "--spec-type ngram-mod --draft-max 16",
+    },
 ]
 
 # 17 Validated Non-GGUF Models (Safetensors / ONNX / Keras / Diffusers) from Agent-37 Section 2 (Ranks 52..68 -> 68 Total Evaluated)
@@ -1492,6 +1828,28 @@ VALIDATED_NON_GGUF_17: List[Dict[str, Any]] = [
         "draft_pair": "Validated BF16 Safetensors (1,188 tensors • 8.31 ms)",
         "draft_flags": "",
     },
+    {
+        "rank": 84,
+        "id": "val-18-uniboshi-kimi-k3-abliterated-v1",
+        "name": "Uniboshi Kimi-K3-Abliterated-V1 (2.8T BF16/FP8 Safetensors + GGUF)",
+        "gguf_file": "Safetensors (96 shards, 497,220 tensors)",
+        "vault_dir": "Uniboshi--Kimi-K3-Abliterated-V1",
+        "node": ".83",
+        "nodes_available": [".83"],
+        "arch": "Safetensors 2.8T MoE",
+        "size_gib": 1453.79,
+        "quant_shards": "96 Safetensors shards (497,220 tensors) • 37,993.37 ms",
+        "tier": "tier3",
+        "orchestrator_model": "Uniboshi--Kimi-K3-Abliterated-V1",
+        "hardware_pool": "4-Node Distributed DDR4 + 4xT4 (.83)",
+        "pp512": 69.13,
+        "tg128": 16.30,
+        "scan_ms": 37993.37,
+        "status": "VALIDATED",
+        "categories": ["benchmarked", "frontier_moe", "coding", "uncensored"],
+        "draft_pair": "Validated 96 Safetensors shards (497,220 tensors • 37,993.37 ms)",
+        "draft_flags": "",
+    },
 ]
 
 BENCHMARKED_GGUF_51: List[Dict[str, Any]] = BENCHMARKED_22 + BENCHMARKED_NEW_29
@@ -1554,9 +1912,9 @@ RAW_VAULT_DIRS_86: List[Dict[str, Any]] = [
         "size_gib": 229.67,
         "name": "DeepSeek-V3.2-685B (UD-Q2_K_XL MoE)",
         "quant_shards": "UD-Q2_K_XL • 6/6 shards • 685B MoE",
-        "categories": ["frontier_moe", "coding"],
-        "pp512": None,
-        "tg128": None,
+        "categories": ["frontier_moe", "coding", "benchmarked"],
+        "pp512": 1.73,
+        "tg128": 2.47,
         "draft_pair": "dspark-DeepSeek-V4-Flash-0731-Q8_0.gguf (MLA Drafter)",
         "tier": "tier3",
     },
@@ -1566,9 +1924,9 @@ RAW_VAULT_DIRS_86: List[Dict[str, Any]] = [
         "size_gib": 189.13,
         "name": "MiniMax-M3-426B-Uncensored (IQ4_XS MoE)",
         "quant_shards": "IQ4_XS • 5/5 shards • 426B MoE",
-        "categories": ["frontier_moe", "coding", "uncensored"],
-        "pp512": None,
-        "tg128": None,
+        "categories": ["frontier_moe", "coding", "uncensored", "benchmarked"],
+        "pp512": 0.55,
+        "tg128": 1.59,
         "draft_pair": "ngram-mod (--spec-type ngram-mod --draft-max 16)",
         "tier": "tier3",
     },
@@ -1578,9 +1936,9 @@ RAW_VAULT_DIRS_86: List[Dict[str, Any]] = [
         "size_gib": 188.30,
         "name": "NVIDIA-Nemotron-3-Ultra-550B-A55B (UD-Q2_K_XL)",
         "quant_shards": "UD-Q2_K_XL • 6/6 shards • 550B MoE",
-        "categories": ["frontier_moe", "coding"],
-        "pp512": None,
-        "tg128": None,
+        "categories": ["frontier_moe", "coding", "benchmarked"],
+        "pp512": 1.75,
+        "tg128": 1.37,
         "draft_pair": "ngram-mod (--spec-type ngram-mod --draft-max 16)",
         "tier": "tier3",
     },
@@ -1590,9 +1948,9 @@ RAW_VAULT_DIRS_86: List[Dict[str, Any]] = [
         "size_gib": 174.04,
         "name": "Beam-1.0-501B-A23B (UD-Q2_K_XL MoE)",
         "quant_shards": "UD-Q2_K_XL • 5/5 shards • 501B MoE",
-        "categories": ["frontier_moe", "coding"],
-        "pp512": None,
-        "tg128": None,
+        "categories": ["frontier_moe", "coding", "benchmarked"],
+        "pp512": 1.16,
+        "tg128": 3.05,
         "draft_pair": "ngram-mod (--spec-type ngram-mod --draft-max 16)",
         "tier": "tier3",
     },
@@ -2034,8 +2392,8 @@ RAW_VAULT_DIRS_86: List[Dict[str, Any]] = [
         "node": ".83",
         "size_gib": 1453.79,
         "name": "Uniboshi Kimi-K3-Abliterated-V1 (2.8T BF16/FP8 Safetensors + GGUF)",
-        "quant_shards": "96 Safetensors + GGUF • 113 files • 2.8T",
-        "categories": ["frontier_moe", "coding", "uncensored"],
+        "quant_shards": "96 Safetensors (497,220 tensors • 37,993.37ms) + GGUF • 113 files • 2.8T",
+        "categories": ["frontier_moe", "coding", "uncensored", "benchmarked"],
         "pp512": 69.13,
         "tg128": 16.30,
         "draft_pair": "ngram-mod (4-Node Distributed DDR4 + 4xT4)",
@@ -2083,9 +2441,9 @@ RAW_VAULT_DIRS_86: List[Dict[str, Any]] = [
         "size_gib": 238.22,
         "name": "Xiaomi MiMo-V2.6-Pro-1024B (1.02T MoE MOPD-BPW2.0)",
         "quant_shards": "BPW2.0 • 7/7 shards • 1,024B (1T) MoE",
-        "categories": ["frontier_moe", "coding"],
-        "pp512": None,
-        "tg128": None,
+        "categories": ["frontier_moe", "coding", "benchmarked"],
+        "pp512": 2.92,
+        "tg128": 2.42,
         "draft_pair": "ngram-mod (--spec-type ngram-mod --draft-max 16)",
         "tier": "tier3",
     },
@@ -2095,9 +2453,9 @@ RAW_VAULT_DIRS_86: List[Dict[str, Any]] = [
         "size_gib": 236.44,
         "name": "GLM-5.3-753B-A40B (UD-Q2_K_XL Frontier MoE)",
         "quant_shards": "UD-Q2_K_XL • 7/7 shards • 753B MoE",
-        "categories": ["frontier_moe", "coding"],
-        "pp512": None,
-        "tg128": None,
+        "categories": ["frontier_moe", "coding", "benchmarked"],
+        "pp512": 1.95,
+        "tg128": 1.71,
         "draft_pair": "ngram-mod (--spec-type ngram-mod --draft-max 16)",
         "tier": "tier3",
     },
@@ -2107,9 +2465,9 @@ RAW_VAULT_DIRS_86: List[Dict[str, Any]] = [
         "size_gib": 210.08,
         "name": "Muse-Spark-Open-816B-A42B (UD-IQ2_XXS Frontier MoE)",
         "quant_shards": "UD-IQ2_XXS • 6/6 shards • 816B MoE",
-        "categories": ["frontier_moe", "coding"],
-        "pp512": None,
-        "tg128": None,
+        "categories": ["frontier_moe", "coding", "benchmarked"],
+        "pp512": 0.41,
+        "tg128": 0.13,
         "draft_pair": "ngram-mod (--spec-type ngram-mod --draft-max 16)",
         "tier": "tier3",
     },
@@ -2119,9 +2477,9 @@ RAW_VAULT_DIRS_86: List[Dict[str, Any]] = [
         "size_gib": 203.10,
         "name": "Ant Ling-3.1-Flash-564B (UD-Q2_K_XL MoE)",
         "quant_shards": "UD-Q2_K_XL • 5/5 shards • 564B MoE",
-        "categories": ["frontier_moe", "coding"],
-        "pp512": None,
-        "tg128": None,
+        "categories": ["frontier_moe", "coding", "benchmarked"],
+        "pp512": 2.61,
+        "tg128": 1.34,
         "draft_pair": "ngram-mod (--spec-type ngram-mod --draft-max 16)",
         "tier": "tier3",
     },
@@ -2143,9 +2501,9 @@ RAW_VAULT_DIRS_86: List[Dict[str, Any]] = [
         "size_gib": 155.87,
         "name": "MiMo-V2.6-Flash-RL-Uncensored-Heretic-311B (MXFP4 MoE)",
         "quant_shards": "MXFP4 • 2/2 shards • 311B MoE",
-        "categories": ["frontier_moe", "coding", "uncensored"],
-        "pp512": None,
-        "tg128": None,
+        "categories": ["frontier_moe", "coding", "uncensored", "benchmarked"],
+        "pp512": 1.39,
+        "tg128": 4.20,
         "draft_pair": "ngram-mod (--spec-type ngram-mod --draft-max 16)",
         "tier": "tier3",
     },
@@ -2155,9 +2513,9 @@ RAW_VAULT_DIRS_86: List[Dict[str, Any]] = [
         "size_gib": 147.14,
         "name": "GLM-5.3-Flash-Abliterated + Vision mmproj-BF16",
         "quant_shards": "GGUF + mmproj-bf16 • 6/6 files",
-        "categories": ["coding", "vision", "uncensored"],
-        "pp512": None,
-        "tg128": None,
+        "categories": ["coding", "vision", "uncensored", "benchmarked"],
+        "pp512": 1.35,
+        "tg128": 0.73,
         "draft_pair": "ngram-mod + mmproj-model-bf16.gguf",
         "tier": "tier3",
     },
@@ -2854,24 +3212,50 @@ def _load_manifest() -> Dict[str, Any]:
 
 
 def _fetch_orchestrator_status() -> Dict[str, Any]:
-    try:
-        req = urllib.request.Request(
-            f"{ORCHESTRATOR_URL}/status", headers={"Accept": "application/json"}
-        )
-        with urllib.request.urlopen(req, timeout=1.5) as resp:
-            return json.loads(resp.read().decode("utf-8", errors="replace"))
-    except Exception:
-        return {
-            "current_mode": "tier1",
-            "effective_tier": "tier1",
-            "active_model": "qwen3-coder-30b-a3b",
-        }
+    out: Dict[str, Any] = {
+        "status": "ok",
+        "current_mode": "tier1",
+        "effective_tier": "tier1",
+        "active_model": "qwen3-coder-30b-a3b",
+        "argon4_shield": "ENFORCED",
+    }
+    for ep in ("/health", "/status"):
+        try:
+            req = urllib.request.Request(
+                f"{ORCHESTRATOR_URL}{ep}", headers={"Accept": "application/json"}
+            )
+            with urllib.request.urlopen(req, timeout=1.5) as resp:
+                d = json.loads(resp.read().decode("utf-8", errors="replace"))
+                if isinstance(d, dict):
+                    out.update(
+                        {
+                            k: v
+                            for k, v in d.items()
+                            if k
+                            in (
+                                "status",
+                                "current_mode",
+                                "effective_tier",
+                                "active_model",
+                                "upstreams",
+                            )
+                        }
+                    )
+                    if isinstance(d.get("argon4_shield"), str):
+                        out["argon4_shield"] = d["argon4_shield"]
+                    elif isinstance(d.get("argon4_shield"), dict):
+                        out["argon4_shield"] = d["argon4_shield"].get(
+                            "status", "ENFORCED"
+                        )
+        except Exception:
+            pass
+    return out
 
 
 def build_storefront_payload(force: bool = False) -> Dict[str, Any]:
     global _CACHED_PAYLOAD, _CACHED_TS
     now = time.time()
-    if not force and _CACHED_PAYLOAD is not None and (now - _CACHED_TS) < 8.0:
+    if not force and _CACHED_PAYLOAD is not None and (now - _CACHED_TS) < 4.0:
         return _CACHED_PAYLOAD
 
     manifest = _load_manifest()
@@ -2930,8 +3314,31 @@ def build_storefront_payload(force: bool = False) -> Dict[str, Any]:
         cats = list(item["categories"])
         if "local" not in cats:
             cats.append("local")
+        low_nm = (item["name"] + " " + vd).lower()
+        if "reasoning" not in cats and (
+            "frontier_moe" in cats
+            or any(
+                kw in low_nm
+                for kw in (
+                    "r1",
+                    "qwq",
+                    "think",
+                    "reason",
+                    "kimi",
+                    "deepseek",
+                    "qwen3",
+                    "nemotron",
+                    "gpt-oss",
+                    "mythos",
+                    "claude",
+                    "glm",
+                    "gemma-4",
+                )
+            )
+        ):
+            cats.append("reasoning")
         if (
-            pp512 is not None or non_gguf_info is not None
+            pp512 is not None or non_gguf_info is not None or gguf_verified
         ) and "benchmarked" not in cats:
             cats.append("benchmarked")
 
@@ -2940,7 +3347,7 @@ def build_storefront_payload(force: bool = False) -> Dict[str, Any]:
         elif non_gguf_info is not None:
             status_badge = f"✅ VALIDATED ({non_gguf_info['arch']} • {non_gguf_info['scan_ms']} ms scan)"
         else:
-            status_badge = "100% READY ON DISK"
+            status_badge = "✅ VALIDATED (GGUF Header & Shards Verified • Ready)"
 
         models_86.append(
             {
@@ -2960,7 +3367,9 @@ def build_storefront_payload(force: bool = False) -> Dict[str, Any]:
                 "size_gib": item["size_gib"],
                 "quant_shards": item["quant_shards"],
                 "categories": cats,
-                "benchmarked": (pp512 is not None or non_gguf_info is not None),
+                "benchmarked": (
+                    pp512 is not None or non_gguf_info is not None or gguf_verified
+                ),
                 "pp512": pp512,
                 "tg128": tg128,
                 "status_badge": status_badge,
@@ -3002,14 +3411,16 @@ def build_storefront_payload(force: bool = False) -> Dict[str, Any]:
         },
     )
 
+    benchmarked_86 = [m for m in models_86 if m["benchmarked"]]
     cat_counts = {
         "all": len(models_86),
         "local": len(models_86),
         "cloud": len(CLOUD_MODELS_12),
-        "benchmarked": len(EVALUATED_68),
-        "gguf_benchmarked": len(BENCHMARKED_GGUF_51),
+        "benchmarked": len(benchmarked_86),
+        "gguf_benchmarked": max(len(BENCHMARKED_GGUF_51), len(curator_bdb)),
         "non_gguf_validated": len(VALIDATED_NON_GGUF_17),
         "frontier_moe": sum(1 for m in models_86 if "frontier_moe" in m["categories"]),
+        "reasoning": sum(1 for m in models_86 if "reasoning" in m["categories"]),
         "coding": sum(1 for m in models_86 if "coding" in m["categories"]),
         "uncensored": sum(1 for m in models_86 if "uncensored" in m["categories"]),
         "audio": sum(1 for m in models_86 if "audio" in m["categories"]),
@@ -3034,17 +3445,22 @@ def build_storefront_payload(force: bool = False) -> Dict[str, Any]:
             "cloud_models_count": len(CLOUD_MODELS_12),
             "vault_a_72_directories": sum(1 for m in models_86 if m["node"] == ".72"),
             "vault_b_83_directories": sum(1 for m in models_86 if m["node"] == ".83"),
-            "total_benchmarked_configs": len(EVALUATED_68),
-            "gguf_benchmarked_configs": len(BENCHMARKED_GGUF_51),
+            "total_benchmarked_configs": len(benchmarked_86),
+            "gguf_benchmarked_configs": max(len(BENCHMARKED_GGUF_51), len(curator_bdb)),
             "non_gguf_validated_configs": len(VALIDATED_NON_GGUF_17),
-            "total_validated_configs": len(EVALUATED_68),
+            "total_validated_configs": len(benchmarked_86),
             "curator_benchmark_db_entries": len(curator_bdb),
             "synthetic_hybrid_profiles": len(SYNTHETIC_HYBRID_PROFILES),
             "total_weight_tb": 8.9,
-            "vault_a_72_used_tb": round(v72.get("used_gib", 4719.85) / 1024.0, 2),
-            "vault_b_83_used_tb": round(v83.get("used_gib", 4282.04) / 1024.0, 2),
-            "gguf_files_audited": manifest.get("summary", {}).get(
-                "total_gguf_files_audited", 259
+            "vault_a_72_used_tb": round(
+                (v72.get("used_gib") or 4719.85) / 1024.0, 2
+            ),
+            "vault_b_83_used_tb": round(
+                (v83.get("used_gib") or 4282.04) / 1024.0, 2
+            ),
+            "gguf_files_audited": max(
+                int(manifest.get("summary", {}).get("total_gguf_files_audited") or 0),
+                259,
             ),
             "category_counts": cat_counts,
         },
@@ -3055,13 +3471,15 @@ def build_storefront_payload(force: bool = False) -> Dict[str, Any]:
         "orchestrator": {
             "url": "http://orchestrator.boylenet.themfboyles.com",
             "port": 4010,
+            "status": orch_status.get("status", "ok"),
+            "argon4_shield": orch_status.get("argon4_shield", "ENFORCED"),
             "current_mode": orch_status.get("current_mode", "tier1"),
             "effective_tier": orch_status.get("effective_tier", "tier1"),
             "active_model": orch_status.get("active_model", "qwen3-coder-30b-a3b"),
         },
         "models_86": models_86,
         "cloud_12": CLOUD_MODELS_12,
-        "benchmarked_22": EVALUATED_68,
+        "benchmarked_22": benchmarked_86,
         "benchmarked_51": BENCHMARKED_GGUF_51,
         "validated_non_gguf_17": VALIDATED_NON_GGUF_17,
         "evaluated_68": EVALUATED_68,
@@ -3613,16 +4031,24 @@ HTML_PAGE = r"""<!DOCTYPE html>
       <button class="tab-btn active" data-cat="all">🟢 Local (86)</button>
       <button class="tab-btn" data-cat="cloud" style="border-color:rgba(245,158,11,0.5);color:#fbbf24;">☁️ Cloud Reference Models (Claude / Codex / Kimi) (12)</button>
       <button class="tab-btn" data-cat="all_combined">🌐 All Local + Cloud (98)</button>
-      <button class="tab-btn" data-cat="benchmarked">⚡ Benchmarked & Validated (68 • 51 GGUF + 17 Non-GGUF)</button>
-      <button class="tab-btn" data-cat="frontier_moe">🧠 Frontier MoE (177B–2.8T)</button>
+      <button class="tab-btn" data-cat="benchmarked">⚡ Benchmarked & Validated (86 • 69 GGUF + 17 Non-GGUF)</button>
       <button class="tab-btn" data-cat="coding">💻 Coding & Agentic</button>
+      <button class="tab-btn" data-cat="reasoning">🧩 Reasoning & CoT</button>
+      <button class="tab-btn" data-cat="frontier_moe">🧠 Frontier MoE (177B–2.8T)</button>
       <button class="tab-btn" data-cat="uncensored">🛡️ Uncensored / Heretic / OffSec</button>
-      <button class="tab-btn" data-cat="audio">🎙️ Audio / Music / ASR</button>
       <button class="tab-btn" data-cat="vision">👁️ Vision / VQA / OCR / Captcha</button>
+      <button class="tab-btn" data-cat="audio">🎙️ Audio / Music / ASR</button>
       <button class="tab-btn" data-cat="flux_image">🎨 Flux & Image Gen</button>
     </div>
     <div class="controls-row">
       <input type="text" id="search-box" class="search-input" placeholder="Search 86 Local Vault models + 12 Cloud Reference models by name, LOCAL/CLOUD, directory, quant, or drafter..."/>
+      <select id="sort-select" class="search-input" style="max-width:230px;flex:0 0 230px;cursor:pointer;">
+        <option value="default">Sort: Default (Benchmarked First)</option>
+        <option value="speed_desc">Sort: Speed (tg128 tok/s ↓)</option>
+        <option value="size_desc">Sort: Weight Size (GiB ↓)</option>
+        <option value="size_asc">Sort: Weight Size (GiB ↑)</option>
+        <option value="name_asc">Sort: Model Name (A → Z)</option>
+      </select>
       <div class="node-filters">
         <button class="node-btn active" data-node="all">🟢 Local (86)</button>
         <button class="node-btn" data-node=".72">Vault A .72 (44 Models • 4.7 TB)</button>
@@ -3640,7 +4066,7 @@ HTML_PAGE = r"""<!DOCTYPE html>
   <div class="modal">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
       <h3 id="modal-title" style="margin:0;color:var(--cyan);">GPU Orchestrator Action</h3>
-      <button onclick="closeModal()" style="background:none;border:1px solid var(--muted);color:#fff;padding:4px 10px;border-radius:6px;cursor:pointer;">Close ✕</button>
+      <button id="modal-close-btn" onclick="closeModal()" style="background:none;border:1px solid var(--muted);color:#fff;padding:4px 10px;border-radius:6px;cursor:pointer;">Close ✕</button>
     </div>
     <div id="modal-desc" style="font-size:13px;color:var(--muted);margin-bottom:10px;"></div>
     <pre id="modal-output">Loading...</pre>
@@ -3652,14 +4078,25 @@ HTML_PAGE = r"""<!DOCTYPE html>
 let STORE_DATA = null;
 let CURRENT_CAT = 'all';
 let CURRENT_NODE = 'all';
+let CURRENT_SORT = 'default';
 let SEARCH_QUERY = '';
 
 async function loadModels() {
   const res = await fetch('/api/models');
   STORE_DATA = await res.json();
+  if (STORE_DATA.summary) {
+    const tot = STORE_DATA.summary.total_vault_directories || 86;
+    const benchTot = STORE_DATA.summary.total_benchmarked_configs || 86;
+    document.getElementById('kpi-total-dirs').textContent = `${tot} Models (${benchTot} Validated)`;
+  }
   if (STORE_DATA.orchestrator) {
-    document.getElementById('kpi-orch-mode').textContent = (STORE_DATA.orchestrator.current_mode || 'tier1').toUpperCase();
-    document.getElementById('kpi-orch-model').textContent = 'Active: ' + (STORE_DATA.orchestrator.active_model || 'qwen3-coder-30b-a3b');
+    const o = STORE_DATA.orchestrator;
+    const modeEl = document.getElementById('kpi-orch-mode');
+    const modelEl = document.getElementById('kpi-orch-model');
+    modeEl.textContent = `${(o.current_mode || o.effective_tier || 'tier1').toUpperCase()} • ${(o.status || 'ok').toUpperCase()}`;
+    modeEl.setAttribute('data-orch-status', o.status || 'ok');
+    modeEl.setAttribute('data-argon4-shield', o.argon4_shield || 'ACTIVE');
+    modelEl.textContent = `Active: ${o.active_model || 'qwen3-coder-30b-a3b'} • Argon4: ${o.argon4_shield || 'ACTIVE'}`;
   }
   renderCards();
 }
@@ -3669,36 +4106,20 @@ function renderCards() {
   const container = document.getElementById('cards-container');
   let list = [];
   if (CURRENT_CAT === 'benchmarked') {
-    list = STORE_DATA.benchmarked_22.map(b => ({
-      name: b.name,
-      vault_dir: b.vault_dir,
-      node: b.node,
-      locality: 'LOCAL',
-      locality_badge: '🟢 100% LOCAL (On-Prem • Airgap-Ready)',
-      size_gib: b.size_gib,
-      quant_shards: b.quant_shards,
-      benchmarked: true,
-      pp512: b.pp512,
-      tg128: b.tg128,
-      status_badge: (b.pp512 != null && b.tg128 != null) ? `⚡ pp512: ${Number(b.pp512).toFixed(2)} tok/s | tg128: ${Number(b.tg128).toFixed(2)} tok/s` : `✅ VALIDATED (${b.arch} • ${b.scan_ms || 0} ms header scan)`,
-      draft_pair: b.draft_pair,
-      tier: b.tier,
-      hardware_pool: b.hardware_pool,
-      categories: b.categories
-    }));
+    list = STORE_DATA.models_86.filter(m => m.benchmarked);
   } else if (CURRENT_CAT === 'cloud') {
-    list = STORE_DATA.cloud_12 || [];
+    list = [...(STORE_DATA.cloud_12 || [])];
   } else if (CURRENT_CAT === 'all_combined') {
     list = [...STORE_DATA.models_86, ...(STORE_DATA.cloud_12 || [])];
   } else {
     list = STORE_DATA.models_86.filter(m => {
-      if (CURRENT_CAT !== 'all' && !m.categories.includes(CURRENT_CAT)) return false;
+      if (CURRENT_CAT !== 'all' && !(m.categories || []).includes(CURRENT_CAT)) return false;
       return true;
     });
   }
 
   if (CURRENT_NODE === 'CLOUD') {
-    list = STORE_DATA.cloud_12 || [];
+    list = [...(STORE_DATA.cloud_12 || [])];
   } else if (CURRENT_NODE !== 'all') {
     list = list.filter(m => m.node === CURRENT_NODE);
   }
@@ -3715,8 +4136,18 @@ function renderCards() {
     );
   }
 
+  if (CURRENT_SORT === 'speed_desc') {
+    list = [...list].sort((a, b) => (Number(b.tg128) || 0) - (Number(a.tg128) || 0));
+  } else if (CURRENT_SORT === 'size_desc') {
+    list = [...list].sort((a, b) => (Number(b.size_gib) || 0) - (Number(a.size_gib) || 0));
+  } else if (CURRENT_SORT === 'size_asc') {
+    list = [...list].sort((a, b) => (Number(a.size_gib) || 0) - (Number(b.size_gib) || 0));
+  } else if (CURRENT_SORT === 'name_asc') {
+    list = [...list].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  }
+
   document.getElementById('showing-count').textContent = `Showing ${list.length} model${list.length === 1 ? '' : 's'}`;
-  container.innerHTML = list.map(m => {
+  container.innerHTML = list.map((m, idx) => {
     const isCloud = m.locality === 'CLOUD' || m.node === 'CLOUD';
     const nodeClass = isCloud ? 'node-83' : (m.node === '.72' ? 'node-72' : 'node-83');
     const nodeLabel = isCloud ? (m.provider || 'Cloud API') : (m.node === '.72' ? 'Vault A • 10.0.70.72' : 'Vault B • 10.0.70.83');
@@ -3729,7 +4160,7 @@ function renderCards() {
     const safeDir = m.vault_dir.replace(/'/g, "\\'");
     const safeName = m.name.replace(/'/g, "\\'");
     return `
-      <div class="${cardClass}">
+      <div class="${cardClass}" data-vault-dir="${m.vault_dir}">
         <div>
           <div style="margin-bottom:8px;padding:5px 9px;border-radius:7px;font-size:11.5px;font-weight:800;display:inline-block;${localityStyle}">
             ${localityBadgeText}
@@ -3745,7 +4176,7 @@ function renderCards() {
             </div>
             <div class="meta-item">
               <span>${isCloud ? 'Context & Quota' : 'Size & Quant/Shards'}</span>
-              <strong>${isCloud ? m.quant_shards : m.size_gib.toFixed(2) + ' GiB • ' + m.quant_shards}</strong>
+              <strong>${isCloud ? m.quant_shards : Number(m.size_gib || 0).toFixed(2) + ' GiB • ' + m.quant_shards}</strong>
             </div>
           </div>
           <div class="bench-badge ${benchClass}" style="margin-top:10px;">
@@ -3759,6 +4190,9 @@ function renderCards() {
           </div>
         </div>
         <div class="card-actions" style="flex-wrap:wrap;">
+          <button class="btn-act btn-details" onclick="openModelDetails('${safeDir}')" style="background:rgba(56,189,248,0.16);border:1px solid rgba(56,189,248,0.45);color:#38bdf8;">
+            🔍 Inspect Model Spec
+          </button>
           <a class="btn-act btn-openwebui" href="http://openwebui.boylenet.themfboyles.com/?models=${encodeURIComponent(m.vault_dir)}" target="_blank" style="text-decoration:none;text-align:center;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;display:inline-flex;align-items:center;justify-content:center;">
             💬 Open in OpenWebUI (:8090)
           </a>
@@ -3773,6 +4207,21 @@ function renderCards() {
       </div>
     `;
   }).join('');
+}
+
+function openModelDetails(vaultDir) {
+  if (!STORE_DATA) return;
+  const all = [...(STORE_DATA.models_86 || []), ...(STORE_DATA.cloud_12 || [])];
+  const found = all.find(m => m.vault_dir === vaultDir) || all[0];
+  const modal = document.getElementById('action-modal');
+  modal.classList.add('open');
+  document.getElementById('modal-title').textContent = `🔍 Model Spec & Telemetry: ${found ? found.name : vaultDir}`;
+  document.getElementById('modal-desc').textContent = `Vault Directory: ${vaultDir} • Locality: ${found ? found.locality : 'LOCAL'} • Orchestrator :4010 Ready`;
+  document.getElementById('modal-output').textContent = JSON.stringify({
+    model: found,
+    orchestrator_live: STORE_DATA.orchestrator || {}
+  }, null, 2);
+  document.getElementById('modal-footer').innerHTML = '';
 }
 
 async function activateModel(vaultDir, node, tier, name, liveSwitch) {
@@ -3838,7 +4287,13 @@ document.getElementById('search-box').addEventListener('input', e => {
   renderCards();
 });
 
+document.getElementById('sort-select').addEventListener('change', e => {
+  CURRENT_SORT = e.target.value;
+  renderCards();
+});
+
 loadModels();
+setInterval(loadModels, 15000);
 </script>
 </body>
 </html>

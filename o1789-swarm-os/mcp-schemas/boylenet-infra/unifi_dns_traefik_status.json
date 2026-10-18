@@ -1,0 +1,1 @@
+{"name":"unifi_dns_traefik_status","description":"Query UniFi static DNS (398+ records) and Traefik *.boylenet.themfboyles.com ingress routes.","parameters":{"properties":{"action":{"default":"status","type":"string"},"filter":{"default":"","description":"Optional hostname or service filter","type":"string"}},"type":"object"}}

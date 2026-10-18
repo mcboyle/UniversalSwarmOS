@@ -1,6 +1,54 @@
 {
   "items": [
     {
+      "id": "qdrant-bd-master-kb-ext",
+      "user_id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "🔬 Boylenet Master BD KB Qdrant Vector Vault (bd_master_kb • 1024-d BGE-M3)",
+      "description": "Live Qdrant 1024-d BGE-M3 external vector collection on .125:6333 indexing all 6 BD KB volumes.",
+      "meta": {
+        "source": "external",
+        "read_only": true,
+        "external": {
+          "connection_id": "qdrant-bd-master-kb",
+          "source": {
+            "type": "collection",
+            "name": "bd_master_kb",
+            "config": {
+              "content_field": "payload.text",
+              "metadata_field": "payload",
+              "document_id_field": "id"
+            }
+          },
+          "provider": "qdrant",
+          "auth_mode": "service_account",
+          "capabilities": {
+            "retrieve": true
+          }
+        }
+      },
+      "access_grants": [
+        {
+          "id": "8cb570e8-22da-46a5-a350-b0d90402acc8",
+          "resource_type": "knowledge",
+          "resource_id": "qdrant-bd-master-kb-ext",
+          "principal_type": "user",
+          "principal_id": "*",
+          "permission": "read",
+          "created_at": 1792366352
+        }
+      ],
+      "created_at": 1792366352,
+      "updated_at": 1792366352,
+      "user": {
+        "id": "a12463df-370f-4948-b488-9437da254b15",
+        "name": "User",
+        "role": "admin",
+        "email": "admin@localhost"
+      },
+      "file_count": 0,
+      "write_access": true
+    },
+    {
       "id": "bd-kb-86-models",
       "user_id": "a12463df-370f-4948-b488-9437da254b15",
       "name": "🧠 [BD KB #03] 86-Model Vault Catalog, SWE-bench / LiveCodeBench & Dual-Speed Airgap",
@@ -456,5 +504,5 @@
       "write_access": true
     }
   ],
-  "total": 11
+  "total": 12
 }

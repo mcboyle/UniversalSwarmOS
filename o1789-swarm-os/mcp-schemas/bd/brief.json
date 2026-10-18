@@ -1,0 +1,1 @@
+{"name":"brief","description":"The newest brief for a row (bd-codex-briefs/ROW\u003cid\u003e-*.md), bounded. Read this instead of the briefs directory.","parameters":{"properties":{"max_bytes":{"default":12000,"title":"Max Bytes","type":"integer"},"row_id":{"title":"Row Id","type":"integer"}},"required":["row_id"],"title":"briefArguments","type":"object"}}

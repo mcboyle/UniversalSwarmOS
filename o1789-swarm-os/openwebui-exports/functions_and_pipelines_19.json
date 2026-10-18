@@ -1,6 +1,6 @@
 {
-  "exported_at": "2026-10-18T20:51:08Z",
-  "native_functions_count": 12,
+  "exported_at": "2026-10-18T23:44:36Z",
+  "native_functions_count": 15,
   "pipelines_count": 8,
   "native_functions": [
     {
@@ -254,6 +254,69 @@
       "is_global": true,
       "updated_at": 1792356272,
       "created_at": 1792354691
+    },
+    {
+      "version_id": "ea404011-a7cd-45e2-bf13-4df0a0c5a6dc",
+      "id": "boylenet_autonomous_context_and_bdkb_mod",
+      "user_id": "a12463df-370f-4948-b488-9437da254b15",
+      "type": "filter",
+      "name": "🧠 Boylenet Autonomous Cluster Telemetry & BD KB Ground-Truth Injector Filter",
+      "meta": {
+        "description": "Autonomously queries :4079/api/tool/bd_kb_search and :4079/api/tool/airgap_and_cluster_status in inlet() whenever prompts mention Boylenet VMs (10.0.70.*), vSAN/ESXi, models, or BulkDownloader.",
+        "manifest": {
+          "title": "Boylenet Autonomous Cluster Telemetry & BD KB Ground-Truth Injector Filter",
+          "author": "boylenet",
+          "version": "2.1.0",
+          "description": "Autonomously queries :4079/api/tool/bd_kb_search and :4079/api/tool/airgap_and_cluster_status in inlet() and injects live cluster + BD KB ground truth into the system context automatically."
+        },
+        "toggle": false
+      },
+      "is_active": true,
+      "is_global": true,
+      "updated_at": 1792366645,
+      "created_at": 1792366598
+    },
+    {
+      "version_id": "b04c507c-aa0c-4f1f-8b15-4a7d262690e7",
+      "id": "action_commit_and_push_gitea_github",
+      "user_id": "a12463df-370f-4948-b488-9437da254b15",
+      "type": "action",
+      "name": "📦 1-Click: Secret-Scrub, Commit & Push to Gitea (:3000) & GitHub (mcboyle/*)",
+      "meta": {
+        "description": "1-Click button under messages in OpenWebUI to stage, secret-scrub, commit, and push generated code/docs to local Gitea (:3000) & GitHub (mcboyle/*).",
+        "manifest": {
+          "title": "1-Click Secret-Scrub, Commit & Push to Gitea (:3000) & GitHub (mcboyle/*)",
+          "author": "boylenet",
+          "version": "2.1.0",
+          "description": "Stage, secret-scrub, commit, and push generated artifacts/code to local Gitea (:3000) and GitHub (mcboyle/*)."
+        },
+        "toggle": false
+      },
+      "is_active": true,
+      "is_global": true,
+      "updated_at": 1792366645,
+      "created_at": 1792366598
+    },
+    {
+      "version_id": "2f747f14-c5b7-4ca3-af07-da9b0a64939a",
+      "id": "action_dispatch_local_coding_agent",
+      "user_id": "a12463df-370f-4948-b488-9437da254b15",
+      "type": "action",
+      "name": "🤖 1-Click: Dispatch to $0 Local Coding Agent + .82 Ramdisk Pytest Gate",
+      "meta": {
+        "description": "1-Click button under messages in OpenWebUI to send the task to /home/mboyle/bin/bd-local-coding-agent for sandboxed edit + .82 ramdisk pytest verification.",
+        "manifest": {
+          "title": "1-Click Dispatch to $0 Local Coding Agent + .82 Ramdisk Pytest Gate",
+          "author": "boylenet",
+          "version": "2.1.0",
+          "description": "Dispatch task to /home/mboyle/bin/bd-local-coding-agent and verify via /home/mboyle/bin/bd-auto-pytest-ramdisk-mod.py on .82 /dev/shm ramdisk."
+        },
+        "toggle": false
+      },
+      "is_active": true,
+      "is_global": true,
+      "updated_at": 1792366645,
+      "created_at": 1792366598
     }
   ],
   "pipelines": [

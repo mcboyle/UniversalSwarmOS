@@ -1,0 +1,305 @@
+#!/usr/bin/env python3
+"""
+Mod 5 — bd-swarm-mod
+Unified Autonomous CLI Mod Manager callable across all 4 agent platforms
+(Claude, Codex, Kimi, AGY) and all 28 Open Terminal VM connections (:4079).
+
+Supported commands:
+  - bd-swarm-mod status [--json]
+  - bd-swarm-mod context [--json] [--hook] [--platform all|claude|codex|kimi|agy]
+  - bd-swarm-mod verify-edit <path> [--test <test_path>] [--json]
+  - bd-swarm-mod sync-lessons [--json]
+  - bd-swarm-mod e2e-quick [--json]
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+import time
+import urllib.request
+from pathlib import Path
+from typing import Any
+
+BIN_DIR = Path("/home/mboyle/bin")
+MOD1_BIN = BIN_DIR / "bd-auto-infra-context-hook.py"
+MOD2_BIN = BIN_DIR / "bd-auto-pytest-ramdisk-mod.py"
+MOD3_BIN = BIN_DIR / "bd-auto-hivemind-lesson-publisher.py"
+MOD4_BIN = BIN_DIR / "bd-openwebui-autonomous-mods-installer.py"
+
+QDRANT_URL = "http://10.0.70.125:6333"
+GATEWAY_URL = "http://10.0.70.164:4079"
+
+
+def _http_get_json(url: str, timeout: float = 4.0) -> dict[str, Any]:
+    req = urllib.request.Request(url, method="GET")
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read().decode("utf-8", errors="replace"))
+
+
+def cmd_status(as_json: bool = False) -> int:
+    t0 = time.perf_counter()
+    p1 = subprocess.run(
+        [sys.executable, str(MOD1_BIN), "--json"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+    mod1_data = json.loads(p1.stdout) if p1.returncode == 0 and p1.stdout.strip() else {"ok": False}
+
+    p2 = subprocess.run(
+        [
+            "ssh",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ConnectTimeout=2",
+            "10.0.70.82",
+            "test -d /dev/shm/bd-ci-ramdisk && echo READY",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    ramdisk_ready = "READY" in (p2.stdout or "")
+
+    hm_pts = 0
+    kb_pts = 0
+    try:
+        hm_info = _http_get_json(f"{QDRANT_URL}/collections/fleet_lessons_hivemind")
+        hm_pts = int(hm_info.get("result", {}).get("points_count", 0))
+        kb_info = _http_get_json(f"{QDRANT_URL}/collections/bd_master_kb")
+        kb_pts = int(kb_info.get("result", {}).get("points_count", 0))
+    except Exception:
+        pass
+
+    p4 = subprocess.run(
+        [sys.executable, str(MOD4_BIN), "--skip-e2e", "--json"],
+        capture_output=True,
+        text=True,
+        timeout=25,
+        check=False,
+    )
+    mod4_data = json.loads(p4.stdout) if p4.returncode == 0 and p4.stdout.strip() else {"ok": False}
+
+    open_term_ok = False
+    try:
+        vm_spec = _http_get_json(f"{GATEWAY_URL}/vm/all/openapi.json")
+        open_term_ok = "/exec_on_any_vm" in (vm_spec.get("paths") or {})
+    except Exception:
+        pass
+
+    elapsed_ms = round((time.perf_counter() - t0) * 1000.0, 2)
+    status_obj = {
+        "ok": bool(
+            mod1_data.get("ok")
+            and ramdisk_ready
+            and hm_pts > 0
+            and kb_pts > 0
+            and mod4_data.get("ok")
+            and open_term_ok
+        ),
+        "status": "OK",
+        "elapsed_ms": elapsed_ms,
+        "mod1_context_hook": {
+            "ok": bool(mod1_data.get("ok")),
+            "token_count": mod1_data.get("token_count"),
+            "under_100_tokens": mod1_data.get("under_100_tokens"),
+            "ok_pools": mod1_data.get("ok_pools"),
+        },
+        "mod2_ramdisk_pytest_gate": {
+            "ok": ramdisk_ready and MOD2_BIN.exists(),
+            "ramdisk_node": "10.0.70.82:/dev/shm/bd-ci-ramdisk",
+            "ramdisk_ready": ramdisk_ready,
+        },
+        "mod3_hivemind_qdrant_publisher": {
+            "ok": hm_pts > 0 and kb_pts > 0,
+            "fleet_lessons_hivemind_points": hm_pts,
+            "bd_master_kb_points": kb_pts,
+        },
+        "mod4_openwebui_autonomous_mods": mod4_data,
+        "mod5_unified_cli_and_28_terminals": {
+            "ok": open_term_ok,
+            "platforms": ["Claude", "Codex", "Kimi", "AGY"],
+            "open_terminal_28_connections_gateway": f"{GATEWAY_URL}/vm/all",
+        },
+    }
+
+    if as_json:
+        print(json.dumps(status_obj, indent=2))
+    else:
+        print(
+            f"[BD-SWARM-MOD STATUS: {'OK' if status_obj['ok'] else 'WARN'}] "
+            f"Mod1={mod1_data.get('token_count')}tok (<100={mod1_data.get('under_100_tokens')}) | "
+            f"Mod2(.82-ramdisk)={'READY' if ramdisk_ready else 'DOWN'} | "
+            f"Mod3(Qdrant)=hivemind:{hm_pts},bdkb:{kb_pts} | "
+            f"Mod4(OpenWebUI .164+.72)={'ACTIVE+GLOBAL' if mod4_data.get('ok') else 'WARN'} | "
+            f"Mod5(28-VM-Term)={'READY' if open_term_ok else 'WARN'} ({elapsed_ms}ms)"
+        )
+    return 0 if status_obj["ok"] else 1
+
+
+def cmd_context(extra_args: list[str]) -> int:
+    proc = subprocess.run([sys.executable, str(MOD1_BIN), *extra_args], check=False)
+    return proc.returncode
+
+
+def cmd_verify_edit(path: str, test_path: str = "", as_json: bool = False) -> int:
+    cmd = [sys.executable, str(MOD2_BIN), path]
+    if test_path:
+        cmd.extend(["--test", test_path])
+    if as_json:
+        cmd.append("--json")
+    proc = subprocess.run(cmd, check=False)
+    return proc.returncode
+
+
+def cmd_sync_lessons(as_json: bool = False) -> int:
+    cmd = [sys.executable, str(MOD3_BIN)]
+    if as_json:
+        cmd.append("--json")
+    proc = subprocess.run(cmd, check=False)
+    return proc.returncode
+
+
+def cmd_e2e_quick(as_json: bool = False) -> int:
+    t0 = time.perf_counter()
+    p1 = subprocess.run(
+        [sys.executable, str(MOD1_BIN), "--json"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+    m1 = json.loads(p1.stdout) if p1.returncode == 0 else {"ok": False}
+
+    p2 = subprocess.run(
+        [
+            sys.executable,
+            str(MOD2_BIN),
+            "/home/mboyle/bd-local-wt/sb-race-codex/bulk_downloader/runner_teach.py",
+            "--json",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+    m2 = json.loads(p2.stdout) if p2.stdout.strip() else {"ok": False}
+
+    p3 = subprocess.run(
+        [sys.executable, str(MOD3_BIN), "--json"],
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+    m3 = json.loads(p3.stdout) if p3.stdout.strip() else {"ok": False}
+
+    p4 = subprocess.run(
+        [sys.executable, str(MOD4_BIN), "--json"],
+        capture_output=True,
+        text=True,
+        timeout=45,
+        check=False,
+    )
+    m4 = json.loads(p4.stdout) if p4.stdout.strip() else {"ok": False}
+
+    vm_exec_ok = False
+    vm_exec_out = ""
+    try:
+        req = urllib.request.Request(
+            f"{GATEWAY_URL}/vm/all/exec_on_any_vm",
+            data=json.dumps(
+                {
+                    "vm": "10.0.70.164",
+                    "command": "/home/mboyle/bin/bd-auto-infra-context-hook.py",
+                    "cwd": "/home/mboyle",
+                }
+            ).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            vm_res = json.loads(resp.read().decode("utf-8", errors="replace"))
+        vm_exec_out = str(vm_res.get("stdout") or "").strip()
+        vm_exec_ok = vm_res.get("exit_code") == 0 and "[BOYLENET-INFRA]" in vm_exec_out
+    except Exception as e:
+        vm_exec_out = str(e)
+
+    total_s = round(time.perf_counter() - t0, 3)
+    all_passed = bool(
+        m1.get("ok")
+        and m1.get("under_100_tokens")
+        and m2.get("ok")
+        and m2.get("under_4s_sla")
+        and m3.get("ok")
+        and m4.get("ok")
+        and vm_exec_ok
+    )
+
+    report = {
+        "ok": all_passed,
+        "total_elapsed_s": total_s,
+        "mod1_context_hook": m1,
+        "mod2_pytest_ramdisk_gate": m2,
+        "mod3_hivemind_lesson_publisher": m3,
+        "mod4_openwebui_autonomous_mods": m4,
+        "mod5_open_terminal_vm_exec": {
+            "ok": vm_exec_ok,
+            "stdout_preview": vm_exec_out[:240],
+        },
+    }
+
+    if as_json:
+        print(json.dumps(report, indent=2))
+    else:
+        print(
+            f"[BD-SWARM-MOD E2E-QUICK: {'PASS' if all_passed else 'FAIL'} in {total_s}s]\n"
+            f"  1. Mod1 Context Hook: ok={m1.get('ok')} tokens={m1.get('token_count')} (<100={m1.get('under_100_tokens')})\n"
+            f"  2. Mod2 Ramdisk Pytest Gate: ok={m2.get('ok')} elapsed={m2.get('wall_elapsed_s')}s (<4s={m2.get('under_4s_sla')}) digest='{m2.get('pytest', {}).get('digest')}'\n"
+            f"  3. Mod3 HiveMind Publisher: ok={m3.get('ok')} hivemind_upserted={m3.get('fleet_lessons_hivemind_upserted')} bdkb_upserted={m3.get('bd_master_kb_upserted')}\n"
+            f"  4. Mod4 OpenWebUI (.164:8090 & .72:8080): ok={m4.get('ok')}\n"
+            f"  5. Mod5 OpenTerminal 28-VM Exec: ok={vm_exec_ok}"
+        )
+    return 0 if all_passed else 1
+
+
+def main() -> int:
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help", "help"):
+        print(__doc__.strip())
+        return 0
+
+    subcmd = sys.argv[1]
+    rest = sys.argv[2:]
+
+    if subcmd in ("status", "enable"):
+        return cmd_status(as_json="--json" in rest)
+    if subcmd == "context":
+        return cmd_context(rest)
+    if subcmd in ("verify-edit", "pytest"):
+        parser = argparse.ArgumentParser(prog="bd-swarm-mod verify-edit")
+        parser.add_argument(
+            "path",
+            nargs="?",
+            default="/home/mboyle/bd-local-wt/sb-race-codex/bulk_downloader/runner_teach.py",
+        )
+        parser.add_argument("--test", default="")
+        parser.add_argument("--json", action="store_true")
+        pargs = parser.parse_args(rest)
+        return cmd_verify_edit(pargs.path, test_path=pargs.test, as_json=pargs.json)
+    if subcmd in ("sync-lessons", "publish"):
+        return cmd_sync_lessons(as_json="--json" in rest)
+    if subcmd in ("e2e-quick", "test"):
+        return cmd_e2e_quick(as_json="--json" in rest)
+
+    print(f"Unknown subcommand: {subcmd}\n\n" + __doc__.strip(), file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

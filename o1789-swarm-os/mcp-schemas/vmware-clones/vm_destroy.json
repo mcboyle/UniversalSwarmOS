@@ -1,0 +1,1 @@
+{"name":"vm_destroy","description":"Destroy an ephemeral instant clone VM.","parameters":{"properties":{"vm_name":{"title":"Vm Name","type":"string"}},"required":["vm_name"],"title":"vm_destroyArguments","type":"object"}}

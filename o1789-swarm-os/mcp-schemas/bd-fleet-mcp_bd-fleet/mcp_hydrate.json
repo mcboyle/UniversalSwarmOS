@@ -1,0 +1,1 @@
+{"name":"mcp_hydrate","description":"Load and return full tool schema dictionary for requested tool(s) from schema catalog.","parameters":{"properties":{"server":{"anyOf":[{"type":"string"},{"type":"null"}],"default":null,"title":"Server"},"tools":{"items":{"type":"string"},"title":"Tools","type":"array"}},"required":["tools"],"title":"mcp_hydrateArguments","type":"object"}}

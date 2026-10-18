@@ -1,0 +1,1 @@
+{"name":"ctx_doctor","description":"Diagnose context-mode installation. Runs all checks server-side and returns a plain-text status report with [OK]/[FAIL]/[WARN] prefixes (renderer-safe across MCP clients). No CLI execution needed.","parameters":{"$schema":"http://json-schema.org/draft-07/schema#","properties":{},"type":"object"}}

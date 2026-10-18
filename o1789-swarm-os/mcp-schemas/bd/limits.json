@@ -1,0 +1,1 @@
+{"name":"limits","description":"Per-pool 5h/weekly headroom as bd-limit-watch.sh last wrote it (POOL_STATE.tsv). UNKNOWN is not permission.","parameters":{"properties":{},"title":"limitsArguments","type":"object"}}

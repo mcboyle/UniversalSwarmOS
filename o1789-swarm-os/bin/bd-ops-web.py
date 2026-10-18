@@ -995,7 +995,13 @@ HTML_PAGE = """<!DOCTYPE html>
   </section>
 
   <section class="panel">
-    <h2><span>Pre-Vetted Playbook Presets Library</span><span style="font-size:0.76rem;color:var(--muted);">1-Click Load & Preview</span></h2>
+    <h2><span>Pre-Vetted Playbook Presets Library (<span id="preset-count">0</span>)</span><span style="font-size:0.76rem;color:var(--muted);">1-Click Load & Preview</span></h2>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;" id="ops-filter-bar">
+      <button class="btn ops-filter-btn" data-filter="ALL" style="padding:6px 12px;font-size:0.76rem;background:rgba(0,229,255,0.18);color:var(--cyan);border:1px solid var(--cyan);" onclick="setOpsFilter('ALL', this)">ALL</button>
+      <button class="btn ops-filter-btn" data-filter="READ-ONLY" style="padding:6px 12px;font-size:0.76rem;background:rgba(15,23,42,0.8);color:var(--text);border:1px solid var(--border);" onclick="setOpsFilter('READ-ONLY', this)">🟢 READ-ONLY</button>
+      <button class="btn ops-filter-btn" data-filter="STATE-CHANGE" style="padding:6px 12px;font-size:0.76rem;background:rgba(15,23,42,0.8);color:var(--text);border:1px solid var(--border);" onclick="setOpsFilter('STATE-CHANGE', this)">🟠 STATE-CHANGE</button>
+    </div>
+    <input id="preset-search" class="nl-input" type="text" placeholder="Search playbooks by tool, safety class, or keyword..." oninput="renderPlaybookGrid()" style="width:100%;padding:9px 12px;font-size:0.84rem;margin-bottom:8px;" />
     <div class="presets-grid" id="presets-grid"></div>
 
     <h2 style="margin-top:24px;"><span>Recent Verified Ops Audit Trail</span><span style="font-size:0.76rem;color:var(--muted);">/var/tmp/bd-ops-history.jsonl</span></h2>
@@ -1005,13 +1011,37 @@ HTML_PAGE = """<!DOCTYPE html>
 
 <script>
 let currentPreview = null;
+let allPlaybooks = [];
+let activeOpsFilter = 'ALL';
 
-async function loadPlaybooks() {
-  const r = await fetch('/api/status');
-  const d = await r.json();
+function setOpsFilter(f, btn) {
+  activeOpsFilter = f;
+  document.querySelectorAll('.ops-filter-btn').forEach(b => {
+    b.style.background = 'rgba(15,23,42,0.8)';
+    b.style.color = 'var(--text)';
+    b.style.borderColor = 'var(--border)';
+  });
+  if (btn) {
+    btn.style.background = 'rgba(0,229,255,0.18)';
+    btn.style.color = 'var(--cyan)';
+    btn.style.borderColor = 'var(--cyan)';
+  }
+  renderPlaybookGrid();
+}
+
+function renderPlaybookGrid() {
   const grid = document.getElementById('presets-grid');
   grid.innerHTML = '';
-  (d.playbooks || []).forEach(pb => {
+  const q = ((document.getElementById('preset-search') && document.getElementById('preset-search').value) || '').toLowerCase().trim();
+  const filtered = allPlaybooks.filter(pb => {
+    if (activeOpsFilter !== 'ALL' && pb.safety_class !== activeOpsFilter) return false;
+    if (!q) return true;
+    const hay = [pb.id, pb.title, pb.tool, pb.sample_query, pb.safety_class, pb.description].join(' ').toLowerCase();
+    return hay.includes(q);
+  });
+  const cnt = document.getElementById('preset-count');
+  if (cnt) cnt.textContent = `${filtered.length}/${allPlaybooks.length}`;
+  filtered.forEach(pb => {
     const div = document.createElement('div');
     div.className = 'preset-chip';
     const badgeCls = pb.safety_class === 'READ-ONLY' ? 'badge-ro' : 'badge-rw';
@@ -1028,6 +1058,13 @@ async function loadPlaybooks() {
     };
     grid.appendChild(div);
   });
+}
+
+async function loadPlaybooks() {
+  const r = await fetch('/api/status');
+  const d = await r.json();
+  allPlaybooks = d.playbooks || [];
+  renderPlaybookGrid();
   renderHistory(d.history || []);
 }
 

@@ -1,95 +1,11 @@
 #!/usr/bin/env bash
 # bd-poll-all-quotas -- Headless, zero-screenshot live quota repoller across all pools:
 #   - Claude Pools A, B, C, D (direct /api/oauth/usage JSON + bd-usage-probe.sh cache refresh)
-#   - OpenAI Codex (bd-codex-usage.sh --windows; triggers 1-turn refresh if rollout > 1800s old)
+#   - OpenAI Codex (bd-codex-usage.sh --windows)
 #   - Antigravity AGY Gemini & AGY Claude/GPT (agy -p /usage --output-format json + bd-agy-usage.sh)
 #   - Kimi Code (bd-kimi-usage-watch.sh)
-#   - Local 4-GPU + Dual-Vault (bd-local-pool-telemetry)
-set -uo pipefail
+#   - Local 4-GPU + BattleStation .137 2080 Ti + Dual-Vault (bd-local-pool-telemetry)
+#   - Grok (GROK_STATE.tsv + probe sync)
+set -euo pipefail
 
-P="/home/mboyle/bd-persist"
-
-# 1. Fast direct OAuth API poll for Claude Pools A, B, C, D (updates .claude.json cachedUsageUtilization in <1s)
-python3 - <<'PY'
-import json, os, time, urllib.request, urllib.error
-
-now_ms = int(time.time() * 1000)
-for p in ['a', 'b', 'c', 'd']:
-    cdir = f"/home/mboyle/.claude-{p}"
-    cred_path = f"{cdir}/.credentials.json"
-    cfg_path = f"{cdir}/.claude.json"
-    try:
-        cred = json.load(open(cred_path))
-        tok = cred.get("claudeAiOauth", {}).get("accessToken", "")
-        if not tok:
-            continue
-        req = urllib.request.Request(
-            "https://api.anthropic.com/api/oauth/usage",
-            headers={
-                "Authorization": f"Bearer {tok}",
-                "anthropic-version": "2023-06-01",
-                "anthropic-beta": "oauth-2025-04-20",
-                "User-Agent": "claude-cli/2.1.302",
-            },
-        )
-        with urllib.request.urlopen(req, timeout=6) as resp:
-            usage_data = json.loads(resp.read().decode())
-        if os.path.exists(cfg_path):
-            cfg = json.load(open(cfg_path))
-            cfg["cachedUsageUtilization"] = {
-                "utilization": usage_data,
-                "fetchedAtMs": now_ms,
-            }
-            tmp = f"{cfg_path}.poll.{os.getpid()}"
-            with open(tmp, "w") as f:
-                json.dump(cfg, f, indent=2)
-            os.replace(tmp, cfg_path)
-    except Exception:
-        pass
-PY
-
-# 2. If newest Codex rollout is > 1800s old, run a lightweight 1-turn ping so OpenAI returns fresh rate_limits headers
-codex_age=$(bash "$P/harness/bd-codex-usage.sh" 2>/dev/null | awk '{print $2}')
-if [[ -z "${codex_age:-}" || "${codex_age}" == "-" || "${codex_age}" -gt 1800 ]]; then
-  /home/mboyle/.local/bin/codex exec --skip-git-repo-check "Reply with exactly: OK" >/dev/null 2>&1 || true
-fi
-
-# 3. Refresh AGY (Gemini + Claude/GPT) 429 window & quota buckets
-rm -f "$P/AGY-QUOTA.tsv"
-bash "$P/harness/bd-agy-usage.sh" >/dev/null 2>&1 || true
-
-# 4. Run bd-usage-probe.sh + bd-limit-watch.sh + Kimi + Local GPU telemetry
-BD_USAGE_CACHE_A=/home/mboyle/.claude-a/.claude.json bash "$P/harness/bd-usage-probe.sh" >/dev/null 2>&1 || true
-BD_LIMIT_CACHE_A=/home/mboyle/.claude-a/.claude.json BD_LIMIT_CADENCE_SECONDS=7200 /home/mboyle/bd-limit-watch.sh >/dev/null 2>&1 || true
-bash "$P/harness/bd-kimi-usage-watch.sh" >/dev/null 2>&1 || true
-/home/mboyle/bin/bd-local-pool-telemetry >/dev/null 2>&1 || true
-
-# 5. Print concise live summary table from POOL_STATE.tsv & AGY-QUOTA.tsv
-python3 - <<'PY'
-import csv
-
-print(f"{'POOL / BUCKET':<24} {'STATE':<8} {'5H USED':<10} {'5H LEFT':<10} {'WK USED':<10} {'WK LEFT':<10} {'RESETS / NOTES'}")
-print("-" * 105)
-with open("/home/mboyle/bd-persist/POOL_STATE.tsv") as f:
-    r = csv.DictReader(f, delimiter="\t")
-    for row in r:
-        p = row["pool"]
-        st = row["state"]
-        p5 = row["pct"]
-        p5_left = row["five_hour_remaining_pct"]
-        pw = row["weekly_pct"]
-        res = row["resets_at"]
-        if p == "AGY":
-            g5_rem = float(row["gemini_five_hour_remaining_pct"])
-            gw_rem = float(row["gemini_weekly_remaining_pct"])
-            c5_rem = float(row["claude_gpt_five_hour_remaining_pct"])
-            cw_rem = float(row["claude_gpt_weekly_remaining_pct"])
-            print(f"{'AGY (Gemini)':<24} {st:<8} {f'{100-g5_rem:.1f}%':<10} {f'{g5_rem:.1f}%':<10} {f'{100-gw_rem:.1f}%':<10} {f'{gw_rem:.1f}%':<10} obs {row['quota_observed_at']}")
-            print(f"{'AGY (Claude/GPT)':<24} {st:<8} {f'{100-c5_rem:.1f}%':<10} {f'{c5_rem:.1f}%':<10} {f'{100-cw_rem:.1f}%':<10} {f'{cw_rem:.1f}%':<10} obs {row['quota_observed_at']}")
-        else:
-            w_left = f"{100 - float(pw):.1f}%" if pw not in ("-", "") else "-"
-            p5_str = f"{p5}%" if p5 not in ("-", "") else "-"
-            p5_l_str = f"{p5_left}%" if p5_left not in ("-", "") else "-"
-            pw_str = f"{pw}%" if pw not in ("-", "") else "-"
-            print(f"{p:<24} {st:<8} {p5_str:<10} {p5_l_str:<10} {pw_str:<10} {w_left:<10} {res}")
-PY
+exec /usr/bin/python3 /home/mboyle/bin/bd-pool-usage-refresher.py "$@"

@@ -1,0 +1,1 @@
+{"name":"ruff_check","description":"Run ruff check on a file or directory. Optionally apply safe auto-fixes.","parameters":{"properties":{"fix":{"default":false,"title":"Fix","type":"boolean"},"path":{"default":".","title":"Path","type":"string"}},"title":"ruff_checkArguments","type":"object"}}

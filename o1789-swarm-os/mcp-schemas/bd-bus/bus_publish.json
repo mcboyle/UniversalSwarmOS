@@ -1,0 +1,1 @@
+{"name":"bus_publish","description":"","parameters":{"properties":{"payload":{"title":"Payload","type":"string"},"topic":{"title":"Topic","type":"string"}},"required":["topic","payload"],"title":"bus_publishArguments","type":"object"}}

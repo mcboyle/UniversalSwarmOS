@@ -6,7 +6,7 @@ After=network.target
 Type=simple
 User=mboyle
 ExecStart=/usr/bin/Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp -ac
-Restart=on-failure
+Restart=always
 RestartSec=3
 
 [Install]

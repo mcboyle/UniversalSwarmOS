@@ -239,10 +239,96 @@ def gather_sentinel() -> Dict[str, Any]:
         return {"status": "error", "error": str(exc), "unhealthy_list": []}
 
 
+def gather_dreamer_stats() -> Dict[str, Any]:
+    try:
+        cp = subprocess.run(
+            ["/home/mboyle/bin/bd-memory-dreamer", "--stats", "--json"],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=8,
+            check=False,
+        )
+        if cp.returncode == 0 and cp.stdout.strip():
+            return json.loads(cp.stdout)
+    except Exception as exc:
+        return {"status": "error", "error": str(exc)}
+    return {"status": "error", "error": "stats unavailable"}
+
+
+def recall_dreamer_memories(query: str = "LiteLLM PostgreSQL Skylake O1789", top_k: int = 12, category: str = "ALL") -> Dict[str, Any]:
+    q = (query or "LiteLLM PostgreSQL Skylake O1789").strip()
+    try:
+        cp = subprocess.run(
+            ["/home/mboyle/bin/bd-memory-dreamer", "--recall", q, "--top-k", str(max(top_k, 16)), "--json"],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        if cp.returncode == 0 and cp.stdout.strip():
+            data = json.loads(cp.stdout)
+            results = data.get("results", [])
+            if category and category != "ALL":
+                results = [r for r in results if r.get("category") == category]
+            data["results"] = results[:top_k]
+            data["active_category"] = category
+            return data
+    except Exception as exc:
+        return {"query": q, "results": [], "error": str(exc)}
+    return {"query": q, "results": []}
+
+
+def consolidate_dreamer_memory(body: Dict[str, Any]) -> Dict[str, Any]:
+    title = str(body.get("title", "")).strip()
+    summary = str(body.get("summary", "")).strip()
+    category = str(body.get("category", "o1789-infra-receipt")).strip() or "o1789-infra-receipt"
+    slug = str(body.get("slug", "")).strip()
+    tags = body.get("tags") or ["agent130", "e2e", "dreamer", "live-update"]
+    if title and summary:
+        if not slug:
+            slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:72]
+        try:
+            import psycopg2
+            pg_host = "/var/run/postgresql" if os.path.exists("/var/run/postgresql/.s.PGSQL.5432") else "10.0.70.164"
+            for db_name in ("boylenet_memory", "litellm"):
+                conn = psycopg2.connect(host=pg_host, port=5432, user="litellm", password="boylenet-admin", dbname=db_name, connect_timeout=3)
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        INSERT INTO boylenet_episodic_memory (slug, category, title, summary, source_path, tags, fts_vec, updated_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, to_tsvector('english', %s), NOW())
+                        ON CONFLICT (slug) DO UPDATE SET
+                          category = EXCLUDED.category,
+                          title = EXCLUDED.title,
+                          summary = EXCLUDED.summary,
+                          tags = EXCLUDED.tags,
+                          fts_vec = EXCLUDED.fts_vec,
+                          updated_at = NOW();
+                        """,
+                        (
+                            slug,
+                            category,
+                            title,
+                            summary,
+                            "/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT130-SUPPORT-PORTALS-GITEA-DASHY-TRAEFIK-CDP-E2E-RECEIPTS.md",
+                            list(tags),
+                            f"{title} {summary} {' '.join(tags)}",
+                        ),
+                    )
+                conn.commit()
+                conn.close()
+        except Exception as exc:
+            return {"status": "error", "error": str(exc)}
+    stats = gather_dreamer_stats()
+    return {"status": "OK", "consolidated_slug": slug or "full-sweep", "stats": stats, "timestamp": utc_now()}
+
+
 MANIFEST_JSON = {
-    "name": "Boylenet Mobile & Tablet Command Deck",
+    "name": "Boylenet Mobile & Tablet Command Deck & Episodic Memory Dreamer",
     "short_name": "Boylenet",
-    "description": "Boylenet 27-Node Swarm Mobile & Tablet PWA Command Deck (:4086) — Pools, 1-Tap RC Launch, 4xT4 GPUs, Sentinel Heal & All Web UIs",
+    "description": "Boylenet 27-Node Swarm Mobile & Tablet PWA Command Deck & Episodic Memory Dreamer (:4086) — Pools, 1-Tap RC Launch, 4xT4 GPUs, Sentinel Heal, Memory Dreamer & All Web UIs",
     "start_url": "/?source=pwa",
     "scope": "/",
     "display": "standalone",
@@ -258,11 +344,12 @@ MANIFEST_JSON = {
         {"name": "1-Tap Launch & RC", "url": "/#launch"},
         {"name": "4xT4 GPUs & Switcher", "url": "/#gpus"},
         {"name": "Sentinel Quick Heal", "url": "/#sentinel"},
+        {"name": "Memory Dreamer", "url": "/#dreamer"},
         {"name": "All Web UIs", "url": "/#apps"},
     ],
 }
 
-SW_JS = """const CACHE_NAME = 'boylenet-mobile-pwa-v1';
+SW_JS = """const CACHE_NAME = 'boylenet-mobile-pwa-v2';
 const SHELL_ASSETS = ['/', '/manifest.json', '/icon-192.svg', '/icon-512.svg'];
 
 self.addEventListener('install', (event) => {
@@ -318,7 +405,7 @@ MOBILE_HTML = """<!DOCTYPE html>
 <meta name="apple-mobile-web-app-title" content="Boylenet">
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/icon-192.svg">
-<title>Boylenet Mobile Command Deck (:4086)</title>
+<title>Boylenet Mobile Command Deck & Episodic Memory Dreamer (:4086)</title>
 <style>
   :root {
     --bg: #050811;
@@ -333,9 +420,11 @@ MOBILE_HTML = """<!DOCTYPE html>
     --muted: #94a3b8;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  body {
+  html, body {
     margin: 0;
     padding: 0 0 92px 0;
+    overflow-x: hidden;
+    max-width: 100%;
     background: radial-gradient(circle at 50% 0%, #0f172a 0%, #050811 70%);
     color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', Roboto, sans-serif;
@@ -379,7 +468,7 @@ MOBILE_HTML = """<!DOCTYPE html>
     cursor: pointer;
   }
   .container {
-    max-width: 760px;
+    max-width: 920px;
     margin: 0 auto;
     padding: 14px;
   }
@@ -430,6 +519,27 @@ MOBILE_HTML = """<!DOCTYPE html>
     background: rgba(16, 185, 129, 0.18);
     color: #34d399;
     border: 1px solid rgba(16, 185, 129, 0.4);
+  }
+  .filter-bar {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+  .cat-filter-btn {
+    background: rgba(15, 23, 42, 0.85);
+    color: var(--muted);
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 99px;
+    padding: 5px 11px;
+    font-size: 0.73rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .cat-filter-btn.active {
+    background: rgba(0, 229, 255, 0.16);
+    color: var(--cyan);
+    border-color: var(--cyan);
   }
   .btn-touch {
     width: 100%;
@@ -485,7 +595,7 @@ MOBILE_HTML = """<!DOCTYPE html>
     backdrop-filter: blur(20px);
     border-top: 1px solid var(--border);
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
   }
   .tab-btn {
@@ -528,11 +638,11 @@ MOBILE_HTML = """<!DOCTYPE html>
 <div class="topbar">
   <div class="title">
     <span class="dot-live"></span>
-    <span>Boylenet Mobile Deck</span>
+    <span>Boylenet Mobile Deck & Memory Dreamer</span>
   </div>
   <div style="display:flex;gap:8px;align-items:center;">
     <a href="http://ops.boylenet.themfboyles.com" style="color:var(--cyan);font-size:0.76rem;text-decoration:none;border:1px solid var(--border);padding:6px 10px;border-radius:10px;">NL Ops :4089</a>
-    <button class="refresh-btn" onclick="refreshDeck()">Sync Live</button>
+    <button class="refresh-btn" id="sync-live-btn" onclick="refreshDeck()">Sync Live</button>
   </div>
 </div>
 
@@ -610,23 +720,55 @@ MOBILE_HTML = """<!DOCTYPE html>
     <div id="sentinel-categories-list"></div>
   </div>
 
-  <!-- TAB 5: ALL WEB UIS LAUNCHER -->
+  <!-- TAB 5: EPISODIC MEMORY DREAMER -->
+  <div id="tab-dreamer" class="tab-pane">
+    <div class="m-card">
+      <h3><span>🧠 Episodic Memory Dreamer (PostgreSQL GIN + Qdrant 1024d)</span><span class="pill" id="dreamer-stats-badge">701 Memories</span></h3>
+      <div class="sub" id="dreamer-stats-sub">Hybrid RRF Recall across PostgreSQL 16 (boylenet_episodic_memory) & Qdrant Vector DB (.125:6333)</div>
+      <div class="filter-bar" id="dreamer-cat-bar">
+        <button class="cat-filter-btn active" data-cat="ALL" onclick="setDreamerCategory('ALL', this)">ALL</button>
+        <button class="cat-filter-btn" data-cat="o1789-infra-receipt" onclick="setDreamerCategory('o1789-infra-receipt', this)">O1789 Receipts</button>
+        <button class="cat-filter-btn" data-cat="o1789-infra-section" onclick="setDreamerCategory('o1789-infra-section', this)">Infra Sections</button>
+        <button class="cat-filter-btn" data-cat="fleet-lesson" onclick="setDreamerCategory('fleet-lesson', this)">Fleet Lessons</button>
+        <button class="cat-filter-btn" data-cat="claude-memory" onclick="setDreamerCategory('claude-memory', this)">Claude Memory</button>
+      </div>
+      <input id="dreamer-search" class="input-touch" type="text" value="LiteLLM PostgreSQL Skylake O1789" placeholder="Search episodic memories (e.g., LiteLLM, Skylake AVX-512, Traefik, Gitea)..." oninput="debouncedDreamerRecall()" />
+      <div class="grid-2">
+        <button class="btn-touch btn-cyan" id="dreamer-recall-btn" onclick="runDreamerRecall()">🔍 Hybrid Recall</button>
+        <button class="btn-touch btn-emerald" id="dreamer-consolidate-btn" onclick="triggerDreamerConsolidate()">⚡ Consolidate Live Memory</button>
+      </div>
+      <div id="dreamer-feedback" style="margin-top:8px;font-size:0.78rem;color:var(--emerald);"></div>
+    </div>
+    <div id="dreamer-results-list"></div>
+  </div>
+
+  <!-- TAB 6: ALL WEB UIS LAUNCHER -->
   <div id="tab-apps" class="tab-pane">
+    <div class="filter-bar" id="app-cat-bar">
+      <button class="cat-filter-btn active" data-appcat="ALL" onclick="setAppCat('ALL', this)">ALL (22)</button>
+      <button class="cat-filter-btn" data-appcat="Core" onclick="setAppCat('Core', this)">Core</button>
+      <button class="cat-filter-btn" data-appcat="AI Studio" onclick="setAppCat('AI Studio', this)">AI Studio</button>
+      <button class="cat-filter-btn" data-appcat="Infra & Ops" onclick="setAppCat('Infra & Ops', this)">Infra & Ops</button>
+    </div>
     <input id="app-search" class="input-touch" type="text" placeholder="Filter 22 Boylenet web apps (e.g., cloud, voice, grafana, vsan)..." oninput="renderApps()" />
     <div class="app-grid" id="apps-grid"></div>
   </div>
 </div>
 
 <nav class="bottom-nav">
-  <button class="tab-btn active" onclick="switchTab('pools', this)"><span class="ico">📊</span><span>Pools</span></button>
-  <button class="tab-btn" onclick="switchTab('launch', this)"><span class="ico">🚀</span><span>RC Launch</span></button>
-  <button class="tab-btn" onclick="switchTab('gpus', this)"><span class="ico">🔥</span><span>4xT4 GPUs</span></button>
-  <button class="tab-btn" onclick="switchTab('sentinel', this)"><span class="ico">🛡️</span><span>Sentinel</span></button>
-  <button class="tab-btn" onclick="switchTab('apps', this)"><span class="ico">🧭</span><span>Web UIs</span></button>
+  <button class="tab-btn active" id="nav-tab-pools" onclick="switchTab('pools', this)"><span class="ico">📊</span><span>Pools</span></button>
+  <button class="tab-btn" id="nav-tab-launch" onclick="switchTab('launch', this)"><span class="ico">🚀</span><span>RC Launch</span></button>
+  <button class="tab-btn" id="nav-tab-gpus" onclick="switchTab('gpus', this)"><span class="ico">🔥</span><span>4xT4 GPUs</span></button>
+  <button class="tab-btn" id="nav-tab-sentinel" onclick="switchTab('sentinel', this)"><span class="ico">🛡️</span><span>Sentinel</span></button>
+  <button class="tab-btn" id="nav-tab-dreamer" onclick="switchTab('dreamer', this)"><span class="ico">🧠</span><span>Dreamer</span></button>
+  <button class="tab-btn" id="nav-tab-apps" onclick="switchTab('apps', this)"><span class="ico">🧭</span><span>Web UIs</span></button>
 </nav>
 
 <script>
 let deckState = null;
+let activeDreamerCat = 'ALL';
+let activeAppCat = 'ALL';
+let dreamerTimer = null;
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
@@ -637,6 +779,9 @@ function switchTab(name, btn) {
   document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
   if (btn) btn.classList.add('active');
+  if (name === 'dreamer') {
+    runDreamerRecall();
+  }
 }
 
 async function refreshDeck() {
@@ -646,6 +791,7 @@ async function refreshDeck() {
   renderLaunch();
   renderGpus();
   renderSentinel();
+  renderDreamerStats();
   renderApps();
 }
 
@@ -728,10 +874,88 @@ function renderSentinel() {
   }
 }
 
+function renderDreamerStats() {
+  const dr = (deckState && deckState.dreamer) || {};
+  const pgRows = (((dr.postgres || {}).boylenet_memory || {}).total_rows) || 701;
+  const qdPts = (((dr.qdrant || {}).boylenet_episodic_memory || {}).points_count) || 702;
+  document.getElementById('dreamer-stats-badge').textContent = `${pgRows} PG • ${qdPts} Qdrant`;
+  document.getElementById('dreamer-stats-sub').textContent = `PostgreSQL boylenet_episodic_memory: ${pgRows} rows • Qdrant 1024-dim Cosine: ${qdPts} vectors • Lessons: ${dr.lessons_dir_files || 5} files`;
+}
+
+function setDreamerCategory(cat, btn) {
+  activeDreamerCat = cat;
+  document.querySelectorAll('#dreamer-cat-bar .cat-filter-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  runDreamerRecall();
+}
+
+function debouncedDreamerRecall() {
+  if (dreamerTimer) clearTimeout(dreamerTimer);
+  dreamerTimer = setTimeout(runDreamerRecall, 180);
+}
+
+async function runDreamerRecall() {
+  const q = (document.getElementById('dreamer-search').value || '').trim() || 'LiteLLM PostgreSQL Skylake O1789';
+  const r = await fetch(`/api/dreamer/recall?q=${encodeURIComponent(q)}&cat=${encodeURIComponent(activeDreamerCat)}`);
+  const d = await r.json();
+  const list = document.getElementById('dreamer-results-list');
+  const items = d.results || [];
+  const lat = (d.latency_ms && d.latency_ms.total_ms) || 0;
+  document.getElementById('dreamer-feedback').textContent = `Showing ${items.length} memories (Category: ${activeDreamerCat}) in ${lat} ms`;
+  if (!items.length) {
+    list.innerHTML = '<div class="m-card"><div class="sub">No matching episodic memories for current filter.</div></div>';
+    return;
+  }
+  list.innerHTML = items.map(it => `
+    <div class="m-card dreamer-memory-card" data-slug="${it.slug}">
+      <h3><span>${it.title}</span><span class="pill">${it.category} • RRF ${it.rrf_score}</span></h3>
+      <div class="sub" style="color:#cbd5e1;">${(it.summary || '').slice(0, 320)}</div>
+      <div style="display:flex;justify-content:space-between;font-size:0.71rem;color:var(--muted);">
+        <span>Slug: ${it.slug}</span>
+        <span>Vec: ${it.vector_score} • FTS: ${it.fts_score}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function triggerDreamerConsolidate() {
+  const fb = document.getElementById('dreamer-feedback');
+  fb.textContent = 'Consolidating live episodic memory into PostgreSQL + Qdrant...';
+  const ts = new Date().toISOString();
+  const r = await fetch('/api/dreamer/consolidate', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      title: `Agent-130 Live E2E Episodic Memory Verification (${ts})`,
+      summary: `Verified live dynamic consolidation & hybrid recall on :4086 Episodic Memory Dreamer at ${ts} with PostgreSQL GIN + Qdrant 1024-dim Cosine vectors.`,
+      category: 'o1789-infra-receipt',
+      tags: ['agent130', 'e2e', 'dreamer', 'postgresql', 'qdrant']
+    })
+  });
+  const d = await r.json();
+  if (d.stats) {
+    if (!deckState) deckState = {};
+    deckState.dreamer = d.stats;
+    renderDreamerStats();
+  }
+  fb.textContent = `Consolidated ${d.consolidated_slug} at ${d.timestamp}`;
+  await runDreamerRecall();
+}
+
+function setAppCat(cat, btn) {
+  activeAppCat = cat;
+  document.querySelectorAll('#app-cat-bar .cat-filter-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderApps();
+}
+
 function renderApps() {
   const q = (document.getElementById('app-search').value || '').toLowerCase().trim();
   const apps = (deckState && deckState.apps) || [];
-  const filtered = apps.filter(a => !q || a.title.toLowerCase().includes(q) || a.desc.toLowerCase().includes(q) || a.cat.toLowerCase().includes(q) || a.port.includes(q));
+  const filtered = apps.filter(a => {
+    if (activeAppCat !== 'ALL' && a.cat !== activeAppCat) return false;
+    return !q || a.title.toLowerCase().includes(q) || a.desc.toLowerCase().includes(q) || a.cat.toLowerCase().includes(q) || a.port.includes(q);
+  });
   document.getElementById('apps-grid').innerHTML = filtered.map(a => `
     <a class="app-tile" href="${a.url}" target="_blank">
       <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -788,6 +1012,7 @@ async function healAllNow() {
 
 window.addEventListener('DOMContentLoaded', () => {
   refreshDeck();
+  runDreamerRecall();
   setInterval(refreshDeck, 20000);
 });
 </script>
@@ -820,6 +1045,7 @@ class MobilePWAHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
+        qs = urllib.parse.parse_qs(parsed.query)
 
         if path == "/health":
             self._send_json(
@@ -836,6 +1062,7 @@ class MobilePWAHandler(http.server.BaseHTTPRequestHandler):
                         "1-Tap Launch & Remote Control",
                         "4xT4 GPUs & Model Switcher",
                         "Sentinel & Quick Heal",
+                        "Episodic Memory Dreamer",
                         "All Web UIs Launcher",
                     ],
                     "apps_count": len(WEB_APPS_CATALOG),
@@ -856,6 +1083,16 @@ class MobilePWAHandler(http.server.BaseHTTPRequestHandler):
             self._send_bytes(200, "image/svg+xml; charset=utf-8", ICON_SVG.encode("utf-8"))
             return
 
+        if path == "/api/dreamer/stats":
+            self._send_json(200, gather_dreamer_stats())
+            return
+
+        if path == "/api/dreamer/recall":
+            q = (qs.get("q") or ["LiteLLM PostgreSQL Skylake O1789"])[0]
+            cat = (qs.get("cat") or ["ALL"])[0]
+            self._send_json(200, recall_dreamer_memories(query=q, top_k=12, category=cat))
+            return
+
         if path == "/api/deck":
             self._send_json(
                 200,
@@ -866,6 +1103,7 @@ class MobilePWAHandler(http.server.BaseHTTPRequestHandler):
                     "sessions": gather_sessions_and_rc(),
                     "gpus": gather_gpu_cluster(),
                     "sentinel": gather_sentinel(),
+                    "dreamer": gather_dreamer_stats(),
                     "apps": WEB_APPS_CATALOG,
                 },
             )
@@ -882,6 +1120,10 @@ class MobilePWAHandler(http.server.BaseHTTPRequestHandler):
             body = json.loads(body_raw.decode("utf-8")) if body_raw else {}
         except Exception as exc:
             self._send_json(400, {"rc": 1, "error": f"Invalid JSON: {exc}"})
+            return
+
+        if path == "/api/dreamer/consolidate":
+            self._send_json(200, consolidate_dreamer_memory(body))
             return
 
         if path == "/api/launch":

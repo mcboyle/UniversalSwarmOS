@@ -1,0 +1,1 @@
+{"name":"caveman_toon_decode","description":"Decode TOON back into JSON. Fails loudly on input that is not valid TOON — it never emits the raw input as if it were JSON.","parameters":{"properties":{"input":{"description":"The TOON to decode back into JSON.","type":"string"}},"required":["input"],"type":"object"}}

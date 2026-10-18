@@ -64,3 +64,36 @@
 | `4091` | **12U Rack & iLO 4 Thermal HUD** | `http://10.0.70.164:4091` | Live HPE DL380 Gen10 iLO 4 inlet temps (`79.5°F`), fan speeds, and PSU wattage |
 | `4095` | **4-Model Consensus Arena** | `http://10.0.70.164:4095` | Parallel side-by-side LLM battleground & automated judge |
 | `4099` | **Sentinel Auto-Healer Daemon** | `http://10.0.70.164:4099` | Continuous background watchdog for all Boylenet ports |
+
+---
+
+## 4. Certified Post-Drain `esxi01..04` vSAN Disk Group, HBA Queue-Depth, 25GbE RoCE & 12U Rack E2E Scorecard (`Agent-109`, `2026-10-18T23:22:48Z`)
+
+### 4.1 Cluster-Wide vSAN Health, Resync & Disk Group Homogeneity Summary (`vsanDatastore`: `328.45 TiB` Raw / `194.75 TiB` Free)
+- **ClusterUUID / SubClusterUUID**: `5221e29f-8740-f516-7273-0ae338b3eb48` (`4/4` hosts `HEALTHY`, `MaintenanceModeState: OFF`, `UnicastModeEnabled: true`, `Ondiskformatversion: 20`).
+- **Global vSAN Resync Status (`esxcli vsan debug resync summary get`)**: `TotalBytesLeftToResync: 0` (`0.00 GB`), `TotalNumberOfResyncingObjects: 0` across all 4 hosts (`esxi01..04`).
+- **Global vSAN Disk & Congestion Health (`esxcli vsan debug disk summary get`)**: `OverallHealth: green`, `ComponentMetadataHealth: green`, `MemoryPoolsheaps: green`, `MemoryPoolsslabs: green` (`0` congestion / `0` operational issues across all `75` vSAN disks in `11` Disk Groups).
+- **`esxi01` (`10.0.20.41`) Surgical Per-Disk Re-Grouping Certified (`5/5` moves complete)**:
+  - **DG 1 (`52e69070-da86-8f9f-27b2-679f255787a8`)**: Cache = `mpx.vmhba0:C2:T0:L0` (`1TB Samsung SSD 870`, `Wear=50/raw=899`, `Health=OK`) + **Pure `4×24TB Seagate Exos` Capacity Tier** (`mpx.vmhba0:C2:T3:L0`, `T4:L0`, `T5:L0`, `T13:L0` — `22,889,472 MB` each).
+  - **DG 2 (`520e7405-7951-d36b-972f-44fa76ee518e`)**: Cache = `mpx.vmhba0:C2:T1:L0` (`1TB Samsung SSD 870`, `Wear=33/raw=1210`, `Health=OK`) + **Consolidated `7×3TB SAS` Capacity Tier** (`naa.5000cca01aa9a96c` `T6`, `naa.5000cca01ab112cc` `T7`, `naa.5000cca01aa7e5ec` `T8`, `naa.5000cca01ad7dc48` `T9`, `naa.5000cca01aa800e0` `T10`, `naa.50000c0f012d3630` `T11`, `naa.50000c0f01e0c290` `T12` — `2,861,588 MB` each).
+- **`esxi02` (`10.0.20.42`)**: `2` Disk Groups (`13` vSAN disks total):
+  - **DG 1 (`5240e70d-e734-a316-5a99-987272e3bd8a`)**: Cache = `mpx.vmhba0:C2:T8:L0` (`1TB Samsung SSD 870`, `Wear=24/raw=1375`, `Health=OK`) + `5` Capacity Disks (`T1`, `T3`, `T5`, `T7`, `T12`).
+  - **DG 2 (`522f2b56-0852-910b-878c-d54289f87c32`)**: Cache = `mpx.vmhba0:C2:T9:L0` (`1TB Samsung SSD 860`, `Wear=9/raw=1641`, `Health=OK`) + `6` Capacity Disks (`T0`, `T2`, `T4`, `T6`, `T10`, `T11`).
+- **`esxi03` (`10.0.20.43`)**: `4` Disk Groups (`25` vSAN disks total; all SSDs including `t10.ATA_____LITEON_CV32D8D5122D41_SATA_512GB_SED______TW0MN0K7LOH0075G01ZI` verified untouched in `DG 528858fc-593c-7675-862f-0da87d31e53c`).
+- **`esxi04` (`10.0.20.44`)**: `3` Disk Groups (`24` vSAN disks total: `3` Cache SSDs + `21` Capacity Disks, `7` per DG).
+
+### 4.2 25GbE SFP28 RoCE Fabric (`VLAN 75`, `10.0.75.11..14`) & UniFi Switch Port Matrix
+| Node | Mgmt IP | RoCE IP (`VLAN 75`) | ESXi Host & Physical NIC | UniFi USW-Pro-Aggregation Port | Guest NIC / MTU | Link Speed (Host / Guest) | Full-Mesh Ping Loss | Inter-Node RTT (avg) |
+|---|---|---|---|---|---|---|---|---|
+| **`aidev` (`ai-srv02`)** | `10.0.70.83` | `10.0.75.11/24` | `esxi03` (`vmnic10` ConnectX-4 Lx) | **Port 30 (`25GbE SFP28`)** | `ens33` (`vmxnet3`, `MTU 9000`) | `25000Mb/s` Full / `10000Mb/s` | `0%` (`20/20` pkts) | `0.173ms`–`0.244ms` (`0.017ms` self) |
+| **`ai-srv01`** | `10.0.70.72` | `10.0.75.12/24` | `esxi01` (`vmnic7` ConnectX-4 Lx) | **Port 29 (`25GbE SFP28`)** | `ens33` (`vmxnet3`, `MTU 9000`) | `25000Mb/s` Full / `10000Mb/s` | `0%` (`20/20` pkts) | `0.190ms`–`0.237ms` (`0.027ms` self) |
+| **`ai-ollama01`** | `10.0.70.228` | `10.0.75.13/24` | `esxi02` (`vmnic6` ConnectX-4 Lx) | **Port 31 (`25GbE SFP28`)** | `ens33` (`vmxnet3`, `MTU 9000`) | `25000Mb/s` Full / `10000Mb/s` | `0%` (`20/20` pkts) | `0.141ms`–`0.217ms` (`0.020ms` self) |
+| **`ai-infer01`** | `10.0.70.125` | `10.0.75.14/24` | `esxi04` (`vmnic6` ConnectX-5) | **Port 32 (`25GbE SFP28`)** | `ens33` (`vmxnet3`, `MTU 9000`) | `25000Mb/s` Full / `10000Mb/s` | `0%` (`20/20` pkts) | `0.145ms`–`0.235ms` (`0.019ms` self) |
+
+### 4.3 12U Physical Rack iLO 4 / iLO 5 Thermal, Fan & PSU Telemetry (`:4091/api/hardware`)
+| Host | Rack Position | ESXi IP | iLO IP & Generation | Inlet Temp | CPU1 / CPU2 Temp | Power Draw (Now / Avg / Max) | PSUs | Fans (Count / Health / Avg %) |
+|---|---|---|---|---|---|---|---|---|
+| **`esxi01`** (`DL380 Gen9`) | `U11–U12` | `10.0.20.41` | `10.0.10.10` (`iLO 4 v2.82`) | `44.0°C` (Sensor) / `26.4°C` (`79.5°F` Rack Ambient) | `40.0°C` / `40.0°C` | `480W` / `483W` / `609W` | `2/2 OK` | `6` / `OK` / `55.7%` |
+| **`esxi02`** (`DL380 Gen9`) | `U09–U10` | `10.0.20.42` | `10.0.10.20` (`iLO 4 v2.82`) | `23.0°C` (`73.4°F`) | `40.0°C` / `48.0°C` | `459W` / `462W` / `514W` | `2/2 OK` | `6` / `OK` / `49.2%` |
+| **`esxi03`** (`DL380 Gen10`) | `U07–U08` | `10.0.20.43` | `10.0.10.30` / `.252` (`iLO 5`) | `25.0°C` (`77.0°F`) | `40.0°C` / `41.0°C` | `574W` / `573W` / `680W` | `2/2 OK` | `6` / `OK` / `73.3%` |
+| **`esxi04`** (`DL380 Gen10`) | `U05–U06` | `10.0.20.44` | `10.0.10.40` (`iLO 5`) | `26.0°C` (`78.8°F`) | `40.0°C` / `40.0°C` | `584W` / `591W` / `792W` | `2/2 OK` | `6` / `OK` / `47.2%` |

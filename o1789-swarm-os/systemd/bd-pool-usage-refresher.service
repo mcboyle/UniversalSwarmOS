@@ -1,0 +1,14 @@
+[Unit]
+Description=Boylenet Multi-Platform Pool Usage & Quota Refresher (Claude A-D, Codex, AGY, Kimi, Local, Grok)
+After=network.target
+
+[Service]
+Type=oneshot
+User=mboyle
+Group=mboyle
+Environment="HOME=/home/mboyle"
+Environment="PATH=/home/mboyle/bin:/home/mboyle/.local/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/usr/bin/python3 /home/mboyle/bin/bd-pool-usage-refresher.py
+TimeoutStartSec=120
+StandardOutput=append:/home/mboyle/bd-persist/logs/pool-usage-refresher.log
+StandardError=append:/home/mboyle/bd-persist/logs/pool-usage-refresher.log

@@ -1,0 +1,1 @@
+{"name":"fleet_hosts","description":"~/.config/bd/hosts with a 3s TCP:22 reachability probe per host.","parameters":{"properties":{"probe":{"default":true,"title":"Probe","type":"boolean"}},"title":"fleet_hostsArguments","type":"object"}}

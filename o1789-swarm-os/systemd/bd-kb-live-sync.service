@@ -1,0 +1,16 @@
+[Unit]
+Description=Boylenet Live BD KB Auto-Indexer (AGENT*.md, PM-HANDOFF.md, WATCHDOG-STATUS.md -> BD KB & Qdrant bd_master_kb)
+After=network-online.target bd-openwebui-tool-gateway.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=mboyle
+Group=mboyle
+WorkingDirectory=/home/mboyle
+ExecStart=/usr/bin/python3 /home/mboyle/bin/bd-kb-live-sync.py
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

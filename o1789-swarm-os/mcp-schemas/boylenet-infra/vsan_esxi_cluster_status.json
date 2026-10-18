@@ -1,0 +1,1 @@
+{"name":"vsan_esxi_cluster_status","description":"Check esxi01..04 vSAN Disk Groups, resync (0 GB), SMART health, and 25GbE VLAN 75 status.","parameters":{"properties":{"action":{"default":"status","type":"string"},"host":{"default":"all","description":"Target ESXi host (esxi01..04 or 'all')","type":"string"}},"type":"object"}}

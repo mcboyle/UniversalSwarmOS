@@ -2272,6 +2272,16 @@ def _normalize_view_id(raw_id: Any) -> str:
     s = str(raw_id or "V01").strip().upper()
     if s in VALID_VIEW_IDS:
         return s
+    if s.isdigit():
+        num = int(s)
+        if 1 <= num <= 100:
+            cand = f"V{num:02d}" if num < 100 else f"V{num}"
+            if cand in VALID_VIEW_IDS:
+                return cand
+        elif 101 <= num <= 165:
+            cand = f"T{num - 100:02d}"
+            if cand in VALID_VIEW_IDS:
+                return cand
     if s.startswith("V") and s[1:].isdigit():
         num = int(s[1:])
         cand = f"V{num:02d}" if num < 100 else f"V{num}"
@@ -2298,6 +2308,7 @@ def _normalize_view_id(raw_id: Any) -> str:
 def _load_preferred_view() -> dict[str, Any]:
     default_pref: dict[str, Any] = {
         "preferred_view": "V01",
+        "view_id": "V01",
         "wallboard": "single",
         "quad_views": ["V01", "V02", "T11", "V28"],
         "six_views": ["V01", "V02", "V03", "V04", "T11", "V28"],
@@ -2309,9 +2320,11 @@ def _load_preferred_view() -> dict[str, Any]:
             with open(PREFERRED_VIEW_PATH, "r", encoding="utf-8") as f:
                 loaded = json.load(f)
             if isinstance(loaded, dict):
-                default_pref["preferred_view"] = _normalize_view_id(
-                    loaded.get("preferred_view", "V01")
+                pv = _normalize_view_id(
+                    loaded.get("preferred_view") or loaded.get("view_id") or "V01"
                 )
+                default_pref["preferred_view"] = pv
+                default_pref["view_id"] = pv
                 wb = str(loaded.get("wallboard", "single")).lower()
                 if wb in ("single", "quad", "six", "eight"):
                     default_pref["wallboard"] = wb
@@ -2328,10 +2341,17 @@ def _load_preferred_view() -> dict[str, Any]:
 
 def _save_preferred_view(payload: dict[str, Any]) -> dict[str, Any]:
     cur = _load_preferred_view()
-    if "preferred_view" in payload or "view" in payload:
-        cur["preferred_view"] = _normalize_view_id(
-            payload.get("preferred_view") or payload.get("view")
+    if "preferred_view" in payload or "view" in payload or "view_id" in payload:
+        raw_v = (
+            payload.get("preferred_view")
+            if payload.get("preferred_view") is not None
+            else payload.get("view")
+            if payload.get("view") is not None
+            else payload.get("view_id")
         )
+        pv = _normalize_view_id(raw_v)
+        cur["preferred_view"] = pv
+        cur["view_id"] = pv
     if "wallboard" in payload:
         wb = str(payload.get("wallboard", "single")).lower()
         if wb in ("single", "quad", "six", "eight", "1x1", "2x2", "3x2", "4x2"):
@@ -3871,6 +3891,17 @@ def _build_topology_snapshot() -> dict[str, Any]:
         },
     ]
 
+    hm_live = _extract_live_hivemind_cot(tmux_sessions, gpu_by_ip, active_model)
+    live_stream_msgs = [
+        f"[STREAM:{ev['source']}] {ev['snippet']}"
+        for ev in hm_live.get("stream_events", [])[:4]
+    ]
+    if hm_live.get("stream_events") and hm_live.get("agents_cot"):
+        ev0 = hm_live["stream_events"][0]
+        hm_live["agents_cot"][0]["thought"] = (
+            f"<think> [{ev0['source']}] {ev0['snippet']}"
+        )
+
     return {
         "status": "ok",
         "service": "bd-topology-visualizer",
@@ -3902,10 +3933,9 @@ def _build_topology_snapshot() -> dict[str, Any]:
         "autobalancer_seat_telemetry": autobalancer.get("seat_telemetry", {}),
         "nodes": nodes,
         "flows": flows,
-        "hivemind_live": _extract_live_hivemind_cot(
-            tmux_sessions, gpu_by_ip, active_model
-        ),
-        "flight_recorder": [
+        "hivemind_live": hm_live,
+        "flight_recorder": live_stream_msgs
+        + [
             f"[{_now_iso()[11:19]}] 165-VIEW ENGINE (V01–V100 + T01–T65): 60fps Canvas2D + 1x1/2x2/3x2/4x2 Wallboards + Preferred Persister Active",
             f"[{_now_iso()[11:19]}] RACK THERMOSTAT: 79.5°F Nominal • Rear Top UPS 100% Online • Rear USW-Pro-Max Etherlighting Active",
             f"[{_now_iso()[11:19]}] VLAN 75 25GbE RoCE: AI Vault A (.72) <-> AI DEV (.83:50052) streaming {active_model} @ 77.62 tok/s",
@@ -3918,7 +3948,7 @@ def _build_topology_snapshot() -> dict[str, Any]:
 def get_cached_topology() -> dict[str, Any]:
     global _CACHED_TOPOLOGY, _CACHED_TOPOLOGY_BYTES, _LAST_REFRESH_TS
     with _CACHE_LOCK:
-        if _CACHED_TOPOLOGY and (time.time() - _LAST_REFRESH_TS) < 15.0:
+        if _CACHED_TOPOLOGY and (time.time() - _LAST_REFRESH_TS) < 2.0:
             return _CACHED_TOPOLOGY
     snap = _build_topology_snapshot()
     raw = json.dumps(snap).encode("utf-8")
@@ -5451,12 +5481,16 @@ function jumpCategory(cat) {
   }
 }
 
+let WB_DIRTY = 8;
+let WB_TICK = 0;
+
 function selectView(rawViewId) {
   const viewId = normalizeViewId(rawViewId);
   if (!VIEWS_MAP[viewId]) return;
   ACTIVE_VIEW = viewId;
-  MODE = 'hivemind';
   const v = VIEWS_MAP[viewId];
+  MODE = (v.arch === 'iso_floor' || viewId === 'V36') ? '3d' : (v.arch === 'unifi_os' ? 'graph' : 'hivemind');
+  WB_DIRTY = 8;
   const topSel = document.getElementById('top-view-select');
   if (topSel) topSel.value = viewId;
   const kAct = document.getElementById('k-active-view');
@@ -5498,6 +5532,7 @@ function stepView(delta) {
 }
 
 function syncWallboardHeaders() {
+  WB_DIRTY = 8;
   const arr = getActiveWallboardArray();
   const count = getActiveWallboardCount();
   const prefix = (WALLBOARD === 'eight') ? 'E' : (WALLBOARD === 'six' ? 'S' : 'Q');
@@ -5521,6 +5556,7 @@ function syncWallboardHeaders() {
 
 function setWallboard(wb) {
   WALLBOARD = wb;
+  WB_DIRTY = 8;
   ['single', 'quad', 'six', 'eight'].forEach(k => {
     const b = document.getElementById('wb-' + k);
     if (b) b.classList.toggle('active', k === wb);
@@ -5635,8 +5671,17 @@ async function fetchInitialPreferred(applyIfNoQuery) {
 
 async function loadTopology() {
   try {
-    const r = await fetch('/api/topology');
+    const [r, rp] = await Promise.all([
+      fetch('/api/topology'),
+      fetch('/api/preferred-view')
+    ]);
     DATA = await r.json();
+    if (rp && rp.ok) {
+      const pref = await rp.json();
+      if (!PREFERRED_STATE || pref.preferred_view !== PREFERRED_STATE.preferred_view || pref.wallboard !== PREFERRED_STATE.wallboard) {
+        updatePreferredBadgeUI(pref);
+      }
+    }
     if (DATA.summary) {
       document.getElementById('k-sess').textContent = `${DATA.summary.active_tmux_sessions} Active`;
       document.getElementById('k-model').textContent = `${DATA.summary.active_model} (77.6 tok/s)`;
@@ -6242,46 +6287,42 @@ async function pingTarget(ip) {
    ============================================================================ */
 function drawBezierComets(ctx, links, now, isPulse) {
   if (!links || !links.length) return;
-  // First draw glowing conduit paths
+  ctx.save();
+  ctx.lineWidth = isPulse ? 2.1 : 1.35;
+  ctx.globalAlpha = isPulse ? 0.42 : 0.22;
   links.forEach(lk => {
-    ctx.save();
     ctx.beginPath();
     ctx.moveTo(lk.x1, lk.y1);
     ctx.bezierCurveTo(lk.cx1, lk.cy1, lk.cx2, lk.cy2, lk.x2, lk.y2);
     ctx.strokeStyle = lk.color;
-    ctx.globalAlpha = isPulse ? 0.42 : 0.22;
-    ctx.lineWidth = isPulse ? 2.1 : 1.35;
     ctx.stroke();
-    ctx.restore();
   });
+  ctx.restore();
 
-  // Animate 210 multi-segment glowing comet particles at 60fps
-  HM_PARTICLES.forEach((pt, idx) => {
+  // Animate comet particles at 60fps without expensive Gaussian shadowBlur per segment
+  const pStride = (WALLBOARD === 'single') ? 2 : 4;
+  ctx.save();
+  for (let idx = 0; idx < HM_PARTICLES.length; idx += pStride) {
+    const pt = HM_PARTICLES[idx];
     const lk = links[idx % links.length];
-    if (!lk) return;
+    if (!lk) continue;
     pt.t = (pt.t + pt.speed * (isPulse ? 1.9 : 1.0)) % 1.0;
 
-    // Draw 5-segment comet tail
-    for (let s = 4; s >= 0; s--) {
-      let ts = pt.t - s * 0.016;
+    for (let s = 2; s >= 0; s--) {
+      let ts = pt.t - s * 0.022;
       if (ts < 0) ts += 1.0;
       const u = 1 - ts;
       const bx = u*u*u*lk.x1 + 3*u*u*ts*lk.cx1 + 3*u*ts*ts*lk.cx2 + ts*ts*ts*lk.x2;
       const by = u*u*u*lk.y1 + 3*u*u*ts*lk.cy1 + 3*u*ts*ts*lk.cy2 + ts*ts*ts*lk.y2;
-      ctx.save();
       ctx.beginPath();
-      const rad = (s === 0) ? pt.size : Math.max(1.0, pt.size * (1 - s * 0.2));
+      const rad = (s === 0) ? pt.size : Math.max(1.1, pt.size * (1 - s * 0.28));
       ctx.arc(bx, by, rad, 0, Math.PI * 2);
       ctx.fillStyle = (s === 0) ? '#ffffff' : lk.color;
-      ctx.globalAlpha = (s === 0) ? 0.96 : (0.62 - s * 0.12);
-      if (s === 0) {
-        ctx.shadowColor = lk.color;
-        ctx.shadowBlur = 11;
-      }
+      ctx.globalAlpha = (s === 0) ? 0.96 : (0.55 - s * 0.18);
       ctx.fill();
-      ctx.restore();
     }
-  });
+  }
+  ctx.restore();
 }
 
 function drawHiveMindScene(ctx, w, h) {
@@ -6292,16 +6333,6 @@ function drawHiveMindScene(ctx, w, h) {
   const agents = hm.agents_cot || [];
   const clouds = hm.cloud_search_nodes || [];
   HIT_BOXES = [];
-
-  // Background grid + ambient radial glow
-  ctx.save();
-  ctx.fillStyle = (HM_SUB === 'crt') ? '#020905' : '#030712';
-  ctx.fillRect(0, 0, w, h);
-  ctx.strokeStyle = (HM_SUB === 'crt') ? 'rgba(16, 185, 129, 0.09)' : 'rgba(56, 189, 248, 0.07)';
-  ctx.lineWidth = 1;
-  for (let x = 0; x < w; x += 36) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
-  for (let y = 0; y < h; y += 36) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
-  ctx.restore();
 
   if (HM_SUB === 'n8n') {
     drawHmN8nView(ctx, w, h, now, isPulse, rackList, agents, clouds);
@@ -6401,10 +6432,7 @@ function drawHiveMindScene(ctx, w, h) {
     ctx.beginPath();
     ctx.arc(z1X + z1W - 10, ry + 11, 3.5, 0, Math.PI * 2);
     ctx.fillStyle = blink ? '#22c55e' : '#06b6d4';
-    ctx.shadowColor = ctx.fillStyle;
-    ctx.shadowBlur = 8;
     ctx.fill();
-    ctx.shadowBlur = 0;
 
     // Name & IP
     ctx.fillStyle = '#f8fafc';
@@ -6440,13 +6468,10 @@ function drawHiveMindScene(ctx, w, h) {
     ctx.fillStyle = 'rgba(13, 21, 42, 0.95)';
     ctx.strokeStyle = col;
     ctx.lineWidth = 1.4;
-    ctx.shadowColor = col;
-    ctx.shadowBlur = 7;
     ctx.beginPath();
     ctx.roundRect(z2X, ay, z2W, cardH, 7);
     ctx.fill();
     ctx.stroke();
-    ctx.shadowBlur = 0;
 
     // Agent Title & State Pill
     ctx.fillStyle = '#ffffff';
@@ -7938,13 +7963,15 @@ function renderViewOnCanvas(ctx, realW, realH, rawViewId, tick, telemetry) {
   ctx.save();
   ctx.scale(realW / w, realH / h);
 
-  // Background Grid per View Palette
+  // Background Grid per View Palette (batched single path)
   ctx.fillStyle = vMeta.bg || ((viewId === 'V03' || vMeta.arch === 'hivemind_crt') ? '#020905' : '#030712');
   ctx.fillRect(0, 0, w, h);
   ctx.strokeStyle = (viewId === 'V03' || vMeta.arch === 'hivemind_crt') ? 'rgba(16, 185, 129, 0.09)' : 'rgba(56, 189, 248, 0.07)';
   ctx.lineWidth = 1;
-  for (let x = 0; x < w; x += 38) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
-  for (let y = 0; y < h; y += 38) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+  ctx.beginPath();
+  for (let x = 0; x < w; x += 38) { ctx.moveTo(x, 0); ctx.lineTo(x, h); }
+  for (let y = 0; y < h; y += 38) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
+  ctx.stroke();
 
   // Dispatch to specialized 60fps geometry renderer
   const prevSub = HM_SUB;
@@ -7996,7 +8023,22 @@ function loop() {
     } else {
       const count = getActiveWallboardCount();
       const arr = getActiveWallboardArray();
-      for (let i = 0; i < count; i++) {
+      if (WB_DIRTY > 0) {
+        for (let i = 0; i < count; i++) {
+          const wc = document.getElementById('wb-canvas-' + i);
+          if (wc && wc.parentElement && wc.parentElement.clientWidth > 0) {
+            if (wc.width !== wc.parentElement.clientWidth || wc.height !== wc.parentElement.clientHeight) {
+              wc.width = wc.parentElement.clientWidth;
+              wc.height = wc.parentElement.clientHeight;
+            }
+            const wctx = wc.getContext('2d');
+            wctx.clearRect(0, 0, wc.width, wc.height);
+            renderViewOnCanvas(wctx, wc.width, wc.height, arr[i] || 'V01', now, DATA);
+          }
+        }
+        WB_DIRTY--;
+      } else {
+        const i = (WB_TICK++) % Math.max(1, count);
         const wc = document.getElementById('wb-canvas-' + i);
         if (wc && wc.parentElement && wc.parentElement.clientWidth > 0) {
           if (wc.width !== wc.parentElement.clientWidth || wc.height !== wc.parentElement.clientHeight) {
@@ -8022,7 +8064,7 @@ resetView();
   const d = params.get('detail');
   const s = params.get('subview');
   const v = params.get('view');
-  const wb = params.get('layout') || params.get('wallboard');
+  const wb = params.get('layout') || params.get('wallboard') || params.get('wb') || (m && ['eightpack','4x2','eight','quad','six'].includes(m) ? m : null);
   const cat = params.get('catalog');
   const cin = params.get('cinema');
   const hasExplicitViewOrWb = Boolean(v || wb);
@@ -8030,7 +8072,7 @@ resetView();
   if (s && ['hybrid','n8n','crt','kimi','pipeline'].includes(s)) setHmSub(s);
   if (v) selectView(normalizeViewId(v));
   if (wb) {
-    const wbNorm = wb === '2x2' ? 'quad' : (wb === '3x2' ? 'six' : ((wb === '4x2' || wb === '8') ? 'eight' : wb));
+    const wbNorm = wb === '2x2' ? 'quad' : (wb === '3x2' ? 'six' : ((wb === '4x2' || wb === '8' || wb === 'eightpack') ? 'eight' : wb));
     if (['single','quad','six','eight'].includes(wbNorm)) setWallboard(wbNorm);
   }
   if (cat === 'open' || cat === '1') toggleCatalog(true);
@@ -8039,7 +8081,7 @@ resetView();
   fetchInitialPreferred(!hasExplicitViewOrWb);
 })();
 loadTopology();
-setInterval(loadTopology, 5000);
+setInterval(loadTopology, 1500);
 requestAnimationFrame(loop);
 </script>
 </body>
@@ -8222,6 +8264,20 @@ function syncPrefHeader() {{
   if (el) el.textContent = pv;
 }}
 
+async function pollPreferredFromGallery() {{
+  try {{
+    const r = await fetch('/api/preferred-view');
+    if (r.ok) {{
+      const d = await r.json();
+      if (!PREF_STATE || d.preferred_view !== PREF_STATE.preferred_view) {{
+        PREF_STATE = d;
+        syncPrefHeader();
+        render();
+      }}
+    }}
+  }} catch (e) {{}}
+}}
+
 async function setPreferredFromGallery(viewId) {{
   try {{
     const r = await fetch('/api/preferred-view', {{
@@ -8266,8 +8322,8 @@ function render(){{
         <span class="badge">${{it.badge}}</span>
       </div>
       <div class="card-actions" onclick="event.stopPropagation()">
-        <a class="act-btn launch-btn" href="${{it.liveHref || ('/?view=' + it.viewId)}}">🚀 Launch Live 60fps (${{it.viewId}})</a>
-        <button class="act-btn pref-card-btn ${{isPref ? 'active' : ''}}" onclick="setPreferredFromGallery('${{it.viewId}}')">${{isPref ? '⭐ Preferred Default' : '⭐ Set Preferred'}}</button>
+        <a class="act-btn launch-btn" data-action="launch-fullscreen" href="${{it.liveHref || ('/?view=' + it.viewId)}}">🚀 Launch Fullscreen (${{it.viewId}})</a>
+        <button class="act-btn pref-card-btn ${{isPref ? 'active' : ''}}" data-action="pin-default" onclick="setPreferredFromGallery('${{it.viewId}}')">${{isPref ? '⭐ Pinned Default' : '⭐ Pin as Default'}}</button>
       </div>
     </div>
   `;
@@ -8284,11 +8340,11 @@ function openLb(idx){{
   const lBtn = document.getElementById('lb-launch');
   if (lBtn) {{
     lBtn.href = it.liveHref || ('/?view=' + it.viewId);
-    lBtn.textContent = `🚀 Launch Live 60fps (${{it.viewId}})`;
+    lBtn.textContent = `🚀 Launch Fullscreen (${{it.viewId}})`;
   }}
   const pBtn = document.getElementById('lb-pref');
   if (pBtn) {{
-    pBtn.textContent = (it.viewId === pv) ? `⭐ Preferred (${{it.viewId}})` : `⭐ Set Preferred (${{it.viewId}})`;
+    pBtn.textContent = (it.viewId === pv) ? `⭐ Pinned Default (${{it.viewId}})` : `⭐ Pin as Default (${{it.viewId}})`;
   }}
   document.getElementById('lb').classList.add('open');
 }}
@@ -8304,6 +8360,7 @@ window.addEventListener('keydown', e => {{
   if(e.key==='Escape') closeLb();
 }});
 render();
+setInterval(pollPreferredFromGallery, 1500);
 </script>
 </body>
 </html>"""

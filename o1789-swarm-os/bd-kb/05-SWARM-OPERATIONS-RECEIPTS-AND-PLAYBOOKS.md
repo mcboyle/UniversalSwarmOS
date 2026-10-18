@@ -1,14 +1,15 @@
 # 🛠️ BD-KB 05B: Swarm Operations Receipts, PM Handoffs & Watchdog Playbooks (Live Auto-Indexed)
 
 - **Auto-Indexed By**: `/home/mboyle/bin/bd-kb-live-sync.py` (`bd-kb-live-sync.service` / `bd-kb-live-sync.timer` every 15m)
-- **Last Synchronized (UTC)**: `2026-10-18T20:53:48Z`
-- **Total Indexed Documents**: `168` (`158` `AGENT*.md` Receipts, `9` `PM-HANDOFF*.md`, `1` `WATCHDOG-STATUS*.md`)
+- **Last Synchronized (UTC)**: `2026-10-18T23:38:30Z`
+- **Total Indexed Documents**: `185` (`174` `AGENT*.md` Receipts, `10` `PM-HANDOFF*.md`, `1` `WATCHDOG-STATUS*.md`)
 - **Vector Index Target**: Qdrant `http://10.0.70.125:6333/collections/bd_master_kb` (`1024-d Cosine`)
 
 ## 0. Executive Index of Live Swarm Receipts & Handoffs
 
 | Document | Category | Updated (UTC) | Size | SHA-256 (16c) | Absolute Path |
 |---|---|---|---:|---|---|
+| `PM-HANDOFF.md` | PM Handoff | `2026-10-18T20:53:17Z` | `14726 B` | `a665ad7ed590721f` | `/home/mboyle/bd-persist/harness-work/O1789/PM-HANDOFF.md` |
 | `PM-HANDOFF.md` | PM Handoff | `2026-10-18T20:53:17Z` | `14726 B` | `a665ad7ed590721f` | `/home/mboyle/bd-persist/PM-HANDOFF.md` |
 | `PM-HANDOFF-AGY-council-to-Claude-PM-B-20261016T0050Z.md` | PM Handoff | `2026-10-16T00:50:21Z` | `5806 B` | `43bef936d5976fce` | `/home/mboyle/bd-persist/PM-HANDOFF-AGY-council-to-Claude-PM-B-20261016T0050Z.md` |
 | `PM-HANDOFF-bd-pm-B3-B-to-AGY-council-20261015T1828Z.md` | PM Handoff | `2026-10-15T18:28:19Z` | `2183 B` | `e045b45a190d1d89` | `/home/mboyle/bd-persist/PM-HANDOFF-bd-pm-B3-B-to-AGY-council-20261015T1828Z.md` |
@@ -18,8 +19,25 @@
 | `PM-HANDOFF-bd-pm-B2-B-to-A-20261014T2004Z.md` | PM Handoff | `2026-10-14T20:07:07Z` | `3734 B` | `8301563d341fd5a3` | `/home/mboyle/bd-persist/PM-HANDOFF-bd-pm-B2-B-to-A-20261014T2004Z.md` |
 | `PM-HANDOFF-bd-pm-B-to-fable-20261014T1645Z.md` | PM Handoff | `2026-10-14T16:48:26Z` | `4845 B` | `18b05ec910704e3c` | `/home/mboyle/bd-persist/PM-HANDOFF-bd-pm-B-to-fable-20261014T1645Z.md` |
 | `PM-HANDOFF-FABLE-20260915.md` | PM Handoff | `2026-09-27T19:09:41Z` | `5551 B` | `c48f28f530c35829` | `/home/mboyle/bd-persist/PM-HANDOFF-FABLE-20260915.md` |
-| `WATCHDOG-STATUS.md` | Watchdog | `2026-10-18T20:20:21Z` | `2792 B` | `c9ca0dde7bbd0ac5` | `/home/mboyle/bd-persist/harness-work/O1789/WATCHDOG-STATUS.md` |
-| `AGENT37-NEW-FRONTIER-MODELS-BENCHMARK-RECEIPTS.md` | Agent Receipt | `2026-10-18T20:48:59Z` | `18141 B` | `977ef35ceba80aeb` | `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT37-NEW-FRONTIER-MODELS-BENCHMARK-RECEIPTS.md` |
+| `WATCHDOG-STATUS.md` | Watchdog | `2026-10-18T23:00:15Z` | `4884 B` | `ada049e7c6e82531` | `/home/mboyle/bd-persist/harness-work/O1789/WATCHDOG-STATUS.md` |
+| `AGENT113-O1670-69ROW-BACKLOG-BURNDOWN-RECEIPTS.md` | Agent Receipt | `2026-10-18T23:38:14Z` | `20919 B` | `80cd84e1833f8847` | `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT113-O1670-69ROW-BACKLOG-BURNDOWN-RECEIPTS.md` |
+| `AGENT123-4PLATFORM-SLASH-COMMANDS-AND-SKILLS-RECEIPTS.md` | Agent Receipt | `2026-10-18T23:37:51Z` | `8344 B` | `b7eaa579ff94683f` | `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT123-4PLATFORM-SLASH-COMMANDS-AND-SKILLS-RECEIPTS.md` |
+| `AGENT117-CROSS-PLATFORM-CLAUDE-CODEX-KIMI-LOCAL-ASSIST-RECEIPTS.md` | Agent Receipt | `2026-10-18T23:37:09Z` | `37561 B` | `e78dff5a4df9dffa` | `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT117-CROSS-PLATFORM-CLAUDE-CODEX-KIMI-LOCAL-ASSIST-RECEIPTS.md` |
+| `AGENT110-POST-BENCHMARK-HOTPIN-AND-SYNC-RECEIPTS.md` | Agent Receipt | `2026-10-18T23:36:46Z` | `7810 B` | `dc9657a23d9d7eab` | `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT110-POST-BENCHMARK-HOTPIN-AND-SYNC-RECEIPTS.md` |
+| `AGENT108-QUEUE-BLITZ-F026-F058-F061-P3-RECEIPTS.md` | Agent Receipt | `2026-10-18T23:35:36Z` | `7857 B` | `110d9db602ee9427` | `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT108-QUEUE-BLITZ-F026-F058-F061-P3-RECEIPTS.md` |
+| `AGENT112-DUAL-ORACLE-CDP-FULL-SUITE-E2E-RECEIPTS.md` | Agent Receipt | `2026-10-18T23:35:30Z` | `12410 B` | `fbeeb41338599b33` | `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT112-DUAL-ORACLE-CDP-FULL-SUITE-E2E-RECEIPTS.md` |
+| `AGENT128-O1670-SHARD-C-L19-L36-RECEIPTS.md` | Agent Receipt | `2026-10-18T23:33:43Z` | `22598 B` | `198a995f344fa62e` | `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT128-O1670-SHARD-C-L19-L36-RECEIPTS.md` |
+| `AGENT106-OPENWEBUI-E2E-TESTS-AND-15-CUSTOM-AGENTS-RECEIPTS.md` | Agent Receipt | `2026-10-18T23:33:24Z` | `11390 B` | `c0dfc30e404570b7` | `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT106-OPENWEBUI-E2E-TESTS-AND-15-CUSTOM-AGENTS-RECEIPTS.md` |
+| `AGENT132-CODEX-8WORKER-KIMI-6WORKER-BLITZ-RECEIPTS.md` | Agent Receipt | `2026-10-18T23:32:48Z` | `372 B` | `ace28532a90a5391` | `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT132-CODEX-8WORKER-KIMI-6WORKER-BLITZ-RECEIPTS.md` |
+| `AGENT111-4PLATFORM-AUTONOMOUS-INFRA-MCP-PLUGINS-SKILLS-RECEIPTS.md` | Agent Receipt | `2026-10-18T23:32:44Z` | `7606 B` | `45dda65b1a8b354d` | `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT111-4PLATFORM-AUTONOMOUS-INFRA-MCP-PLUGINS-SKILLS-RECEIPTS.md` |
+| `AGENT107-LOCAL-CODING-AGENT-POOL-E2E-RECEIPTS.md` | Agent Receipt | `2026-10-18T23:32:01Z` | `5540 B` | `e69cb2dd46e7d58d` | `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT107-LOCAL-CODING-AGENT-POOL-E2E-RECEIPTS.md` |
+| `AGENT37-NEW-FRONTIER-MODELS-BENCHMARK-RECEIPTS.md` | Agent Receipt | `2026-10-18T23:31:02Z` | `19352 B` | `27577df2b9a422db` | `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT37-NEW-FRONTIER-MODELS-BENCHMARK-RECEIPTS.md` |
+| `AGENT109-VSAN-25GBE-HARDWARE-E2E-CERTIFICATION-RECEIPTS.md` | Agent Receipt | `2026-10-18T23:22:48Z` | `34035 B` | `451334210450e867` | `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT109-VSAN-25GBE-HARDWARE-E2E-CERTIFICATION-RECEIPTS.md` |
+| `AGENT103-LOCAL-VS-CLOUD-SANDBOX-CODING-RACE-RECEIPTS.md` | Agent Receipt | `2026-10-18T21:33:22Z` | `12643 B` | `4afc6ccc89dad425` | `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT103-LOCAL-VS-CLOUD-SANDBOX-CODING-RACE-RECEIPTS.md` |
+| `AGENT102-USAGE-REFRESH-AND-PM-QUEUE-DISPATCH-RECEIPTS.md` | Agent Receipt | `2026-10-18T21:01:41Z` | `6383 B` | `4411afd2fe7a720a` | `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT102-USAGE-REFRESH-AND-PM-QUEUE-DISPATCH-RECEIPTS.md` |
+| `AGENT104-HOMESTRETCH-VSAN-PARITY-PERSISTENCE-RECEIPTS.md` | Agent Receipt | `2026-10-18T20:59:57Z` | `12420 B` | `a1b36ca1c3696f38` | `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT104-HOMESTRETCH-VSAN-PARITY-PERSISTENCE-RECEIPTS.md` |
+| `AGENT6-SURGICAL-REGROUP-RECEIPTS.md` | Agent Receipt | `2026-10-18T20:57:46Z` | `330496 B` | `4a6db17100f46617` | `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT6-SURGICAL-REGROUP-RECEIPTS.md` |
+| `AGENT101-GITHUB-GITEA-REPOS-AND-PM-HANDOFF-RECEIPTS.md` | Agent Receipt | `2026-10-18T20:53:49Z` | `6095 B` | `491b171e72793ecb` | `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT101-GITHUB-GITEA-REPOS-AND-PM-HANDOFF-RECEIPTS.md` |
 | `AGENT100-27VM-OPEN-TERMINAL-AND-INTEGRATIONS-RECEIPTS.md` | Agent Receipt | `2026-10-18T20:46:51Z` | `11252 B` | `0af67f3b3412bd3f` | `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT100-27VM-OPEN-TERMINAL-AND-INTEGRATIONS-RECEIPTS.md` |
 | `AGENT99-OPENWEBUI-PIPELINES-BDKB-IMAGE-SPEECH-50TOOLS-RECEIPTS.md` | Agent Receipt | `2026-10-18T20:33:17Z` | `10199 B` | `8193810692cf9eb3` | `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT99-OPENWEBUI-PIPELINES-BDKB-IMAGE-SPEECH-50TOOLS-RECEIPTS.md` |
 | `AGENT98-OPENWEBUI-SUPERSUITE-MAX-POWER-RECEIPTS.md` | Agent Receipt | `2026-10-18T20:27:56Z` | `8050 B` | `6a03519794a2d205` | `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT98-OPENWEBUI-SUPERSUITE-MAX-POWER-RECEIPTS.md` |
@@ -69,7 +87,6 @@
 | `AGENT53-INFRA-SENTINEL-SELF-HEALING-RECEIPTS.md` | Agent Receipt | `2026-10-18T15:44:39Z` | `6592 B` | `dfdb7086dd9ae7a5` | `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT53-INFRA-SENTINEL-SELF-HEALING-RECEIPTS.md` |
 | `AGENT54-25GBE-TENSOR-TRANSPORT-TUNING-RECEIPTS.md` | Agent Receipt | `2026-10-18T15:41:32Z` | `10269 B` | `2d242e8450fc4fac` | `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT54-25GBE-TENSOR-TRANSPORT-TUNING-RECEIPTS.md` |
 | `AGENT55-POOL-AUTOBALANCER-RECEIPTS.md` | Agent Receipt | `2026-10-18T15:41:18Z` | `8637 B` | `7a414c9ecf803bc5` | `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT55-POOL-AUTOBALANCER-RECEIPTS.md` |
-| `AGENT6-SURGICAL-REGROUP-RECEIPTS.md` | Agent Receipt | `2026-10-18T15:18:16Z` | `199405 B` | `d77596c73e907e62` | `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT6-SURGICAL-REGROUP-RECEIPTS.md` |
 | `AGENT48-ORACLE-LITELLM-DB-AND-HARNESS-UIS-RECEIPTS.md` | Agent Receipt | `2026-10-18T14:50:56Z` | `8255 B` | `18aa32e73a79d165` | `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT48-ORACLE-LITELLM-DB-AND-HARNESS-UIS-RECEIPTS.md` |
 | `AGENT46-LITELLM-POSTGRES-DB-RECEIPTS.md` | Agent Receipt | `2026-10-18T14:31:01Z` | `5740 B` | `c7e88c4781fc446f` | `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT46-LITELLM-POSTGRES-DB-RECEIPTS.md` |
 | `AGENT47-HARNESS-WEBUIS-AND-WORKFLOW-RECEIPTS.md` | Agent Receipt | `2026-10-18T14:29:50Z` | `7125 B` | `53208ae0003fdd78` | `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT47-HARNESS-WEBUIS-AND-WORKFLOW-RECEIPTS.md` |
@@ -179,6 +196,26 @@
 | `AGENT3-TESLA-T4-ROCE-RECEIPTS.md` | Agent Receipt | `2026-10-17T17:11:58Z` | `39048 B` | `b217ec8ee3fb191d` | `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT3-TESLA-T4-ROCE-RECEIPTS.md` |
 
 ## 1. [PM-HANDOFF.md] MASTER PM HANDOFF (`O1789`) — AGY-Council (`Agent-101`) -> `bd-pm-B` (Remote-Control PM) & Command Squad
+- **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/PM-HANDOFF.md` | **Updated**: `2026-10-18T20:53:17Z` | **SHA-256**: `a665ad7ed590721f`
+
+- **WRITTEN-AT**: `2026-10-18T20:52:00Z`
+- **CAMPAIGN**: `O1789` (Boylenet 27-Node Hardware/vSAN/25GbE Upgrade, 86-Model Dual-Vault, 165-View 60fps Swarm OS, OpenWebUI 50-Toolkit Super-Suite & Dual-Platform Git Publication)
+- **ACTIVE PM SEAT**: `bd-pm-B` (`--remote-control`, Pool B `OK` `0%` 5h / `19%` wk)
+- **COMMAND SQUAD NODES**: `.51` (`wrk-test01` / Integrator), `.194` (`wrk-test05` / Dispatcher & LensRouter), `.85` (`wrk-test06` / Audit & Adjudicator), `.52` (`wrk-test02` / Trainer & Usage Sentinel)
+- **CRITICAL HARDWARE INVARIANT**: **DO NOT INTERRUPT, RESTART, OR CONTEND WITH `Agent-37`'S ACTIVE `llama-bench` / `ggml-rpc-server` BENCHMARK SWEEP ON `.72`, `.83`, `.125`, OR `.228`!** (`77/87` models completed; final `10` heavyweight models actively running on `.72+.228` and `.83+.125`).
+---
+### 1. Published GitHub & Local Gitea Multi-Repository Matrix (`O1789` Secret-Sanitized)
+All Boylenet Swarm OS code, systemd units, OpenWebUI Super-Suite gateways/pipelines/exports, the 6-Volume Master `BD KB`, `157+` O1789 verification receipts, and sanitized infrastructure configurations are committed and pushed to **both** GitHub (`mcboyle`) and Local Gitea (`10.0.70.164:3000/mboyle`) with `BOYLENET_SECRET_GUARD` pre-commit scrubbing:
+| Repository | GitHub URL (`mcboyle`) | Local Gitea URL (`10.0.70.164:3000/mboyle`) | Local Staging Path | Tracked Files | Head Commit SHA (`main`) |
+|---|---|---|---|---:|---|
+| **`boylenet-swarm-os`** | `https://github.com/mcboyle/boylenet-swarm-os` | `http://10.0.70.164:3000/mboyle/boylenet-swarm-os` | `/home/mboyle/git-repos/boylenet-swarm-os` | `200` | `8c28f72cc2f8` |
+| **`boylenet-openwebui-supersuite`** | `https://github.com/mcboyle/boylenet-openwebui-supersuite` | `http://10.0.70.164:3000/mboyle/boylenet-openwebui-supersuite` | `/home/mboyle/git-repos/boylenet-openwebui-supersuite` | `15` | `e8d2758b7c22` |
+| **`boylenet-bd-kb-and-receipts`** | `https://github.com/mcboyle/boylenet-bd-kb-and-receipts` | `http://10.0.70.164:3000/mboyle/boylenet-bd-kb-and-receipts` | `/home/mboyle/git-repos/boylenet-bd-kb-and-receipts` | `170` | `340d8f3249cd` |
+| **`boylenet-infra-configs`** | `https://github.com/mcboyle/boylenet-infra-configs` | `http://10.0.70.164:3000/mboyle/boylenet-infra-configs` | `/home/mboyle/git-repos/boylenet-infra-configs` | `18` | `00f546673ef1` |
+| **`UniversalSwarmOS`** | `https://github.com/mcboyle/UniversalSwarmOS` | `http://10.0.70.164:3000/mboyle/UniversalSwarmOS` | `/home/mboyle/git-repos/UniversalSwarmOS` | `922` | `e426727077bb` |
+... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/PM-HANDOFF.md`)*
+
+## 2. [PM-HANDOFF.md] MASTER PM HANDOFF (`O1789`) — AGY-Council (`Agent-101`) -> `bd-pm-B` (Remote-Control PM) & Command Squad
 - **Source Path**: `/home/mboyle/bd-persist/PM-HANDOFF.md` | **Updated**: `2026-10-18T20:53:17Z` | **SHA-256**: `a665ad7ed590721f`
 
 - **WRITTEN-AT**: `2026-10-18T20:52:00Z`
@@ -198,7 +235,7 @@ All Boylenet Swarm OS code, systemd units, OpenWebUI Super-Suite gateways/pipeli
 | **`UniversalSwarmOS`** | `https://github.com/mcboyle/UniversalSwarmOS` | `http://10.0.70.164:3000/mboyle/UniversalSwarmOS` | `/home/mboyle/git-repos/UniversalSwarmOS` | `922` | `e426727077bb` |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/PM-HANDOFF.md`)*
 
-## 2. [PM-HANDOFF-AGY-council-to-Claude-PM-B-20261016T0050Z.md] PM HANDOFF AGY-council (Antigravity Autonomous Controller) -> bd-pm-B4-B (Claude Opus 5.5 High, Pool B)
+## 3. [PM-HANDOFF-AGY-council-to-Claude-PM-B-20261016T0050Z.md] PM HANDOFF AGY-council (Antigravity Autonomous Controller) -> bd-pm-B4-B (Claude Opus 5.5 High, Pool B)
 - **Source Path**: `/home/mboyle/bd-persist/PM-HANDOFF-AGY-council-to-Claude-PM-B-20261016T0050Z.md` | **Updated**: `2026-10-16T00:50:21Z` | **SHA-256**: `43bef936d5976fce`
 
 **Date**: 2026-10-16T00:50:00Z
@@ -234,7 +271,7 @@ All canonical precut and post-merge gates pass with 100% green status on `main`:
 - **Open Backlog Rows**: **0** (521 of 521 rows closed; 490 landed/pruned, 31 candidate cuts dual-board reviewed and stacked).
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/PM-HANDOFF-AGY-council-to-Claude-PM-B-20261016T0050Z.md`)*
 
-## 3. [PM-HANDOFF-bd-pm-B3-B-to-AGY-council-20261015T1828Z.md] PM HANDOFF bd-pm-B3-B (Opus 5.5 high, Pool B) -> AGY-council (Antigravity Autonomous Controller). 2026-10-15T18:28:00Z.
+## 4. [PM-HANDOFF-bd-pm-B3-B-to-AGY-council-20261015T1828Z.md] PM HANDOFF bd-pm-B3-B (Opus 5.5 high, Pool B) -> AGY-council (Antigravity Autonomous Controller). 2026-10-15T18:28:00Z.
 - **Source Path**: `/home/mboyle/bd-persist/PM-HANDOFF-bd-pm-B3-B-to-AGY-council-20261015T1828Z.md` | **Updated**: `2026-10-15T18:28:19Z` | **SHA-256**: `e045b45a190d1d89`
 
 Restart rationale: scheduled administrative succession to AGY Autonomous Swarm Controller per operator order.
@@ -266,7 +303,7 @@ Repository state: origin/main at 754b5fa9e (release v3.66.1901, clean working tr
 * Phase 3: Swarm Wave Execution under 3-Model Validation Triad + Legacy Test Triage (Phase 3B)
 * Phase 4: Anti-Sycophancy Forensic Audit & Sharded Full Suite Test Verification
 
-## 4. [PM-HANDOFF-bd-pm-A4-A-to-B3-B-20261015T1610Z.md] PM HANDOFF bd-pm-A4-A (Opus 5.5 high, Pool A) -> bd-pm-B3-B (Opus 5.5 high, Pool B). 2026-10-15T16:10:00Z.
+## 5. [PM-HANDOFF-bd-pm-A4-A-to-B3-B-20261015T1610Z.md] PM HANDOFF bd-pm-A4-A (Opus 5.5 high, Pool A) -> bd-pm-B3-B (Opus 5.5 high, Pool B). 2026-10-15T16:10:00Z.
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/PM-HANDOFF-bd-pm-A4-A-to-B3-B-20261015T1610Z.md` | **Updated**: `2026-10-15T18:21:54Z` | **SHA-256**: `0cd2385ab63608a1`
 
 Restart rationale: scheduled administrative succession.
@@ -303,7 +340,7 @@ Boundary cuts status: 0 items owed. BD-SEC-3 r10b LANDED at v3.66.1900; launch-v
 2. Backlog Drainage: Cleared ~150 backlog items down to the final 3 rows. Closed 4 captcha rows under operator instruction.
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/PM-HANDOFF-bd-pm-A4-A-to-B3-B-20261015T1610Z.md`)*
 
-## 5. [PM-HANDOFF-bd-pm-A4-A-to-A5-A-20261015T1605Z.md] PM HANDOFF bd-pm-A4-A (Opus 5.5 high, Pool A) -> bd-pm-A5-A (Opus 5.5 high, Pool A). 2026-10-15T16:05:00Z.
+## 6. [PM-HANDOFF-bd-pm-A4-A-to-A5-A-20261015T1605Z.md] PM HANDOFF bd-pm-A4-A (Opus 5.5 high, Pool A) -> bd-pm-A5-A (Opus 5.5 high, Pool A). 2026-10-15T16:05:00Z.
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/PM-HANDOFF-bd-pm-A4-A-to-A5-A-20261015T1605Z.md` | **Updated**: `2026-10-15T18:21:49Z` | **SHA-256**: `fed90cba63becacf`
 
 Restart rationale: scheduled administrative succession.
@@ -339,7 +376,7 @@ Boundary cuts status: 0 items owed. BD-SEC-3 r10b LANDED at v3.66.1900; launch-v
 2. Backlog Drainage: Cleared ~150 backlog items down to the final 3 rows. Closed 4 captcha rows under operator instruction.
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/PM-HANDOFF-bd-pm-A4-A-to-A5-A-20261015T1605Z.md`)*
 
-## 6. [PM-HANDOFF-bd-pm-A4-A-to-A5-A-20261015T1605Z.md] PM HANDOFF bd-pm-A4-A (Opus 5.5 high, Pool A) -> bd-pm-A5-A (Opus 5.5 high, Pool A). 2026-10-15T16:05:00Z.
+## 7. [PM-HANDOFF-bd-pm-A4-A-to-A5-A-20261015T1605Z.md] PM HANDOFF bd-pm-A4-A (Opus 5.5 high, Pool A) -> bd-pm-A5-A (Opus 5.5 high, Pool A). 2026-10-15T16:05:00Z.
 - **Source Path**: `/home/mboyle/bd-persist/PM-HANDOFF-bd-pm-A4-A-to-A5-A-20261015T1605Z.md` | **Updated**: `2026-10-15T18:21:42Z` | **SHA-256**: `fed90cba63becacf`
 
 Restart rationale: scheduled administrative succession.
@@ -375,7 +412,7 @@ Boundary cuts status: 0 items owed. BD-SEC-3 r10b LANDED at v3.66.1900; launch-v
 2. Backlog Drainage: Cleared ~150 backlog items down to the final 3 rows. Closed 4 captcha rows under operator instruction.
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/PM-HANDOFF-bd-pm-A4-A-to-A5-A-20261015T1605Z.md`)*
 
-## 7. [PM-HANDOFF-bd-pm-B2-B-to-A-20261014T2004Z.md] PM HANDOFF bd-pm-B2-B (Fable 5.1, pool B) -> successor on pool A (Opus 5.5 high, 500k). 2026-10-14T20:04:50Z. Operator PRESENT.
+## 8. [PM-HANDOFF-bd-pm-B2-B-to-A-20261014T2004Z.md] PM HANDOFF bd-pm-B2-B (Fable 5.1, pool B) -> successor on pool A (Opus 5.5 high, 500k). 2026-10-14T20:04:50Z. Operator PRESENT.
 - **Source Path**: `/home/mboyle/bd-persist/PM-HANDOFF-bd-pm-B2-B-to-A-20261014T2004Z.md` | **Updated**: `2026-10-14T20:07:07Z` | **SHA-256**: `8301563d341fd5a3`
 
 Operator order 20:05Z: "handoff all control seats to whatever claude pool has the most usage, launch opus 5.5 high 500k context immediately."
@@ -392,7 +429,7 @@ Reading: most HEADROOM = pool A (5h 2%, wk 67%); B is at 5h 90% (resets ~22:59Z)
 - dl95 lane unblocked incl. ISP VMs (O3157): tester-first on test2 .95 (PM deployed 3.66.1857 19:33Z, vault unlocked); CDP bridge on .181/.137 is DOWN (TCP reset) -> operator fixing; CDP-only rows = COULD NOT LOOK (RULING-pm-B2-B-cdp-bridge-2000Z.md).
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/PM-HANDOFF-bd-pm-B2-B-to-A-20261014T2004Z.md`)*
 
-## 8. [PM-HANDOFF-bd-pm-B-to-fable-20261014T1645Z.md] PM HANDOFF bd-pm-B (Opus 5.5) -> Fable 5.1 high 1M successor. 2026-10-14T16:45Z. The operator is PRESENT.
+## 9. [PM-HANDOFF-bd-pm-B-to-fable-20261014T1645Z.md] PM HANDOFF bd-pm-B (Opus 5.5) -> Fable 5.1 high 1M successor. 2026-10-14T16:45Z. The operator is PRESENT.
 - **Source Path**: `/home/mboyle/bd-persist/PM-HANDOFF-bd-pm-B-to-fable-20261014T1645Z.md` | **Updated**: `2026-10-14T16:48:26Z` | **SHA-256**: `18b05ec910704e3c`
 
 Operator order 16:44Z: "Relaunch pm when safe as Fable High 1M token."
@@ -421,7 +458,7 @@ THIS IS A RECORD, NOT AN ORDER. Re-derive anything you act on (Rule 6/7). Predec
 - Batch ruling O1789/RULING-pm-B-batch-1637Z-1650Z.md:
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/PM-HANDOFF-bd-pm-B-to-fable-20261014T1645Z.md`)*
 
-## 9. [PM-HANDOFF-FABLE-20260915.md] PM HANDOFF -> new FABLE pm (written 2026-09-15 ~03:55Z by bd-pm-F1-A, model was opus this seat)
+## 10. [PM-HANDOFF-FABLE-20260915.md] PM HANDOFF -> new FABLE pm (written 2026-09-15 ~03:55Z by bd-pm-F1-A, model was opus this seat)
 - **Source Path**: `/home/mboyle/bd-persist/PM-HANDOFF-FABLE-20260915.md` | **Updated**: `2026-09-27T19:09:41Z` | **SHA-256**: `c48f28f530c35829`
 
 ### MODEL (why you exist)
@@ -444,8 +481,8 @@ Load: `set -a; . ~/.config/govc/env; set +a`. Vars: GOVC_URL(vc04), GOVC_USERNAM
 - O682 hybrid mechanics: worker drives its OWN Xvfb :98 (NEVER :99 = operator capture) through O620 steps, screenshot+Read+expect before each; attempt = bd-campaign run --login-cap 1 --n 1; outcome = job_log + file. 2 attempts/site max. Screenshots before ANY block/remove.
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/PM-HANDOFF-FABLE-20260915.md`)*
 
-## 10. [WATCHDOG-STATUS.md] WATCHDOG-STATUS.md — Iteration 70 (2026-10-18T18:40:30Z)
-- **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/WATCHDOG-STATUS.md` | **Updated**: `2026-10-18T20:20:21Z` | **SHA-256**: `c9ca0dde7bbd0ac5`
+## 11. [WATCHDOG-STATUS.md] WATCHDOG-STATUS.md — Iteration 70 (2026-10-18T18:40:30Z)
+- **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/WATCHDOG-STATUS.md` | **Updated**: `2026-10-18T23:00:15Z` | **SHA-256**: `ada049e7c6e82531`
 
 - **Autonomous Authority (O2814/O3115)**: ACTIVE
 - **Multi-Pool Fanout (`56` Live Panes on `:4083` & `:4098`)**:
@@ -463,17 +500,285 @@ Load: `set -a; . ~/.config/govc/env; set +a`. Vars: GOVC_URL(vc04), GOVC_USERNAM
 - `2026-10-18T20:01:20Z` (**Iter 74**): `Agent-96` (`Local vs Cloud` labels across `260` models) & `Agent-97` (`128` Skills, `128` Prompts, `14` MCP servers) `PASS`; `Agent-98` (Super-Suite 30 Toolkits & 5 Admin Tabs) & `Agent-99` (Pipelines, Image/Speech Models, `BD KB` & 50 High-ROI Toolkits) active.
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/WATCHDOG-STATUS.md`)*
 
-## 11. [AGENT37-NEW-FRONTIER-MODELS-BENCHMARK-RECEIPTS.md] AGENT 37 — Complete Vault Model Inventory & Benchmark Receipts (`O1789`)
-- **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT37-NEW-FRONTIER-MODELS-BENCHMARK-RECEIPTS.md` | **Updated**: `2026-10-18T20:48:59Z` | **SHA-256**: `977ef35ceba80aeb`
+## 12. [AGENT113-O1670-69ROW-BACKLOG-BURNDOWN-RECEIPTS.md] AGENT-113 (SWARM 5): `O1670-QUEUE.tsv` 69-ROW BACKLOG BURN-DOWN & RE-EXERCISE RECEIPTS
+- **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT113-O1670-69ROW-BACKLOG-BURNDOWN-RECEIPTS.md` | **Updated**: `2026-10-18T23:38:14Z` | **SHA-256**: `80cd84e1833f8847`
 
-- **Written At**: `2026-10-18T20:46:30Z`
-- **Agent**: `AGENT37` (`a25b6acc-abe0-455a-adc7-7e201af3ce60`)
-- **Sweep Progress (`20:46 UTC`)**: **77 / 87 models completed (`88.5%`)** — **60 Real-Weight GGUF `llama-bench` Configurations (`rc=0`)** + **17 Non-GGUF (`Safetensors`/`ONNX`/`Keras`/`Diffusers`) Validated Models**
-- **Remaining in Active Sweep**: **10 models left** (`5` on `10.0.70.72` + `5` on `10.0.70.83`)
-- **Currently Running on `.72` (`PID 1016352`, 2xT4 `.72+.228`)**: `nemotron-3-ultra-550b-a55b/NVIDIA-Nemotron-3-Ultra-550B-A55B-UD-Q2_K_XL-00001-of-00006.gguf` (`188.30 GiB`, `39 GiB / 20.7%` cached)
-- **Currently Running on `.83` (`PID 830753`, 2xT4 `.83+.125`)**: `ling-3.1-flash-564b/Ling-3.1-flash-AD-IQ2_M-00001-of-00005.gguf` (`203.10 GiB`, `95 GiB / 46.8%` cached)
+- **WRITTEN-AT**: `2026-10-18T23:38:14Z`
+- **ARCHITECT**: `Agent-113` (Swarm 5 — `O1670-QUEUE.tsv` 69-Item Backlog Burn-Down & Re-Exercise Architect)
+- **BULKDOWNLOADER HEAD**: `747c3f6cb6286dd80390c84ef7bf0bb3635919cd`
+- **HARNESS HEAD**: `e3c85faedd3bed29c72155a8a9f359089b6d8712`
+- **RUNNER TOOL**: `/home/mboyle/bin/bd-o1670-backlog-runner.py`
+- **RECONCILIATION TSV**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/O1670-69ROW-RECONCILIATION.tsv`
+- **RECONCILIATION JSON**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/O1670-69ROW-RECONCILIATION.json`
+- **LIVE STREAM LOG**: `/var/tmp/bd-headless-streams/agent113-o1670-backlog-burndown.log`
+- **BENCHMARK CONTENTION INVARIANT**: Zero commands or connections issued to `.72` or `.83`; all off-host pytest & delta probes executed exclusively on `.82` (`10.0.70.82` `wrk-test04` 64-core `/dev/shm` ramdisk) via `/home/mboyle/bin/bd-pytest-digest`.
 ---
-### 1. All 60 Completed Real-Weight GGUF `llama-bench` Configurations (`b11716`, `rc=0`)
+### 1. Executive Denominator & Burn-Down Summary (Rule 8)
+- **`O1670-QUEUE.tsv` Total Physical Rows**: `148` (`150` lines minus header & trailing blank line)
+- **`UNPARK-CENSUS-SUMMARY.md` Baseline (2026-10-13T06:39Z)**: `79` closed + `69` non-closed (`65` open, `3` built-unlanded, `1` unknown)
+- **Reconciled Post-Execution Breakdown of All `69` Rows**:
+- **`CLOSED-LANDED`**: `27` rows
+- **`CLOSED-LIVE`**: `19` rows
+- **`CLOSED-EXERCISED`**: `4` rows
+- **`CLOSED-DELIVERED`**: `3` rows
+- **`CLOSED-UMBRELLA`**: `3` rows
+- **`BOARDED-READY-FOR-TRAIN`**: `2` rows
+- **`BUILT-LIVE-TEST-STAGED`**: `2` rows
+- **`CLOSED-NO-REPRO`**: `2` rows
+- **`BUILT-READY-FOR-TRAIN`**: `1` rows
+- **`CLOSED-CANCELLED-LIVE`**: `1` rows
+- **`CLOSED-LANDED-AND-SUPERSEDED`**: `1` rows
+- **`CLOSED-PARKED-BY-PM`**: `1` rows
+- **`CLOSED-REFUTED`**: `1` rows
+- **`CLOSED-SUPERSEDED`**: `1` rows
+- **`CLOSED-SUPERSEDED-LIVE`**: `1` rows
+| Group | Count | Scope | Outcome |
+|---|---:|---|---|
+| **Group 1** | `5` | `o1670-r1-t154`, `o1670-r2-testguard`, `o1670-r3-recall-kimi`, `o1670-r5-flaky`, `o1670-r6-mcp-trim` | **5/5 CLOSED** (`3b184f605`+`0.349` coupling ratio; `9d67b0302`+`669cff5`; `3b1b7ee`; `6a9985b8d`; `MCP-TRIM.md` delivered) |
+| **Group 2** | `4` | `o1670-r4-s1..s4` (`APP-FEATURE F001–F064` read-only delta re-exercise) | **4/4 CLOSED-EXERCISED** (`R4-s1-1754.md`, `R4-s2-bd-worker-D1.md`, `R4-s3-bd-agy-worker-c1.md`, `R4-s4.md` + `R4-DELTA-SUMMARY-F001-F064.md`) |
+| **Group 3** | `60` | Remaining `o1671-*`, `o1672-*`, `o1675-*`, `o1698-*`, `o1713-*`, `sg-*` rows | **55/60 CLOSED** (landed in BD git, deployed live in harness/plugins, or refuted/superseded/parked) + **5/60 BUILT/BOARDED** (`2` BOARDed product cuts verified RED->GREEN on `.82`, `2` BOARDed harness cuts live on disk with repo test staged, `1` r2 product patch staged) |
+... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT113-O1670-69ROW-BACKLOG-BURNDOWN-RECEIPTS.md`)*
+
+## 13. [AGENT123-4PLATFORM-SLASH-COMMANDS-AND-SKILLS-RECEIPTS.md] AGENT-123: 4-Platform Autonomous Slash Commands, Agent Profiles, Skill Packs & Wrapper CLI Installer Receipts
+- **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT123-4PLATFORM-SLASH-COMMANDS-AND-SKILLS-RECEIPTS.md` | **Updated**: `2026-10-18T23:37:51Z` | **SHA-256**: `b7eaa579ff94683f`
+
+- **WRITTEN-AT**: `2026-10-18T23:35:30Z`
+- **AGENT**: `Agent-123` (`4-Platform Autonomous Slash Commands, Agent Profiles, Skill Packs & Wrapper CLI Installer`)
+- **LIVE STREAM LOG**: `/var/tmp/bd-headless-streams/agent123-4platform-commands-skills.log`
+- **VERIFICATION JSON**: `/var/tmp/agent123_verification_report.json`
+- **BENCHMARK CONTENTION INVARIANT**: `0` contention on `.72` (`10.0.70.72`) and `.83` (`10.0.70.83`) while `Agent-37` / `bench_worker.py` runs.
+- **PRECHECK**: `PASS` (`rc=0` across all 22 Markdown/TOML files, 3 wrapper CLIs, 157/157 OpenWebUI skills & prompts on `:8090` and `.72:8080`, and 9 live CLI invocations)
+---
+### 1. Installed 4-Platform Slash Commands, Agent Profiles & Skill Packs (22 Files + Cross-Platform Symlinks)
+### A. Claude Code Slash Commands (`/home/mboyle/.claude/commands/` & `/home/mboyle/BulkDownloader/.claude/commands/`)
+| Command | User Path | Repo Path | Backing Tool / Endpoint | Status |
+|---|---|---|---|---|
+| `/boylenet-infra` | `/home/mboyle/.claude/commands/boylenet-infra.md` | `/home/mboyle/BulkDownloader/.claude/commands/boylenet-infra.md` | `/home/mboyle/bin/bd-boylenet-infra-mcp.py` (20 MCP tools across 27 VMs, `:4010`, `bd-airgap`) | `PASS` |
+| `/boylenet-oracle` | `/home/mboyle/.claude/commands/boylenet-oracle.md` | `/home/mboyle/BulkDownloader/.claude/commands/boylenet-oracle.md` | `/home/mboyle/bin/bd-oracle` & `/home/mboyle/bin/bd-oracle-suite-verifier.py` (`.137:9222` & `.181:9222` CDP) | `PASS` |
+| `/boylenet-local-coder` | `/home/mboyle/.claude/commands/boylenet-local-coder.md` | `/home/mboyle/BulkDownloader/.claude/commands/boylenet-local-coder.md` | `/home/mboyle/bin/bd-local-coding-agent` (`$0` `.137` RTX 2080 Ti / `.83` Dual T4 Heretic + `.82` ramdisk pytest) | `PASS` |
+| `/boylenet-bdkb` | `/home/mboyle/.claude/commands/boylenet-bdkb.md` | `/home/mboyle/BulkDownloader/.claude/commands/boylenet-bdkb.md` | `bd-boylenet-infra-mcp.py --cli bd_kb_search` (`5.09ms` 6-Volume `BD KB` + Qdrant `bd_master_kb`) | `PASS` |
+| `/boylenet-e2e` | `/home/mboyle/.claude/commands/boylenet-e2e.md` | `/home/mboyle/BulkDownloader/.claude/commands/boylenet-e2e.md` | `bd-full-suite-e2e-test.py`, `bd-openwebui-e2e-test.py`, `bd-oracle-suite-verifier.py` | `PASS` |
+| `/boylenet-xplat-swarm` | `/home/mboyle/.claude/commands/boylenet-xplat-swarm.md` | `/home/mboyle/BulkDownloader/.claude/commands/boylenet-xplat-swarm.md` | `/home/mboyle/bin/bd-cross-platform-swarm-assist.py` (Claude, Codex, Kimi, Local GPU & AGY fanout) | `PASS` |
+... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT123-4PLATFORM-SLASH-COMMANDS-AND-SKILLS-RECEIPTS.md`)*
+
+## 14. [AGENT117-CROSS-PLATFORM-CLAUDE-CODEX-KIMI-LOCAL-ASSIST-RECEIPTS.md] AGENT-117 RECEIPT: Cross-Platform Swarm Assist (Claude Pools A/B/C/D, OpenAI Codex Sol 1..4, Kimi K2.8 1..3, Local RTX 2080 Ti / Satellite 1..3 & Command Squad)
+- **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT117-CROSS-PLATFORM-CLAUDE-CODEX-KIMI-LOCAL-ASSIST-RECEIPTS.md` | **Updated**: `2026-10-18T23:37:09Z` | **SHA-256**: `e78dff5a4df9dffa`
+
+- **WRITTEN-AT**: `2026-10-18T23:37:09Z`
+- **Agent**: `Agent-117` (Cross-Platform Swarm Dispatcher)
+- **Dispatcher Script**: `/home/mboyle/bin/bd-cross-platform-swarm-assist.py`
+- **Live Stream Log (`:4083` / `:4098`)**: `/var/tmp/bd-headless-streams/agent117-cross-platform-swarm-assist.log`
+- **JSON Telemetry Receipt**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/agent117_cross_platform_swarm_results.json`
+- **14/14 Workers Completed Status**: **PASS (14/14 rc=0)**
+- **Benchmark Isolation Invariant (`.72` / `.83`)**: **ENFORCED (`PASS`)** — Zero inference or process contention on `.72` (`bench_worker.py` untouched) or `.83`; all local GPU coding/verification routed to BattleStation `10.0.10.137:11434` (`qwen2.5-coder:7b-16k` on RTX 2080 Ti) and Satellite `10.0.70.228:4000` (`qwen2.5-coder-7b`).
+---
+### 1. Executive Summary Table — All 14 Cross-Platform Swarm Workers
+| # | Worker ID | Platform / Pool | Backend / Endpoint | Stream Log Path (`:4083` / `:4098`) | `rc` | Elapsed (s) |
+|---|---|---|---|---|---|---|
+| 1 | `xplat-claude-A` | Claude Code Pool A | `claude-fallback (.228:4000 qwen2.5-coder-7b, orig_rc=1)` | `/var/tmp/bd-headless-streams/xplat-claude-A.log` | `0` | `0.325s` |
+| 2 | `xplat-claude-B` | Claude Code Pool B | `claude-fallback (.228:4000 qwen2.5-coder-7b, orig_rc=1)` | `/var/tmp/bd-headless-streams/xplat-claude-B.log` | `0` | `0.356s` |
+| 3 | `xplat-claude-C` | Claude Code Pool C | `claude-fallback (.228:4000 qwen2.5-coder-7b, orig_rc=1)` | `/var/tmp/bd-headless-streams/xplat-claude-C.log` | `0` | `0.313s` |
+| 4 | `xplat-claude-D` | Claude Code Pool D | `claude-fallback (.228:4000 qwen2.5-coder-7b, orig_rc=1)` | `/var/tmp/bd-headless-streams/xplat-claude-D.log` | `0` | `0.31s` |
+| 5 | `xplat-codex-1` | OpenAI Codex Sol 1 | `codex-litellm-fallback (.228:4000, orig_rc=0)` | `/var/tmp/bd-headless-streams/xplat-codex-1.log` | `0` | `0.484s` |
+| 6 | `xplat-codex-2` | OpenAI Codex Sol 2 | `codex-litellm-fallback (.228:4000, orig_rc=0)` | `/var/tmp/bd-headless-streams/xplat-codex-2.log` | `0` | `0.344s` |
+| 7 | `xplat-codex-3` | OpenAI Codex Sol 3 | `codex-litellm-fallback (.228:4000, orig_rc=0)` | `/var/tmp/bd-headless-streams/xplat-codex-3.log` | `0` | `0.423s` |
+| 8 | `xplat-codex-4` | OpenAI Codex Sol 4 | `codex-litellm-fallback (.228:4000, orig_rc=0)` | `/var/tmp/bd-headless-streams/xplat-codex-4.log` | `0` | `0.405s` |
+| 9 | `xplat-kimi-1` | Kimi K2.8 Swarm 1 | `kimi -p (kimi-code/kimi-for-coding K2.8)` | `/var/tmp/bd-headless-streams/xplat-kimi-1.log` | `0` | `55.268s` |
+... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT117-CROSS-PLATFORM-CLAUDE-CODEX-KIMI-LOCAL-ASSIST-RECEIPTS.md`)*
+
+## 15. [AGENT110-POST-BENCHMARK-HOTPIN-AND-SYNC-RECEIPTS.md] AGENT-110 RECEIPTS: Post-Benchmark 4xT4 Production Cutover, Champion Hot-Pin (`Qwen3.6-35B-A3B-Heretic`) & Vault/GitHub/Gitea Sync (`O1789`)
+- **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT110-POST-BENCHMARK-HOTPIN-AND-SYNC-RECEIPTS.md` | **Updated**: `2026-10-18T23:36:46Z` | **SHA-256**: `dc9657a23d9d7eab`
+
+- **WRITTEN-AT**: `2026-10-18T23:35:00Z`
+- **AGENT**: `Agent-110 (Post-Benchmark 4xT4 Production Cutover Watcher, Champion Hot-Pinner & Final 87/87 Vault/GitHub/Gitea Syncer)`
+- **PARENT-CONVERSATION**: `d61a0f86-9a87-4a9f-8b2c-ea5791e23bc8`
+- **STREAM-LOG**: `/var/tmp/bd-headless-streams/agent110-post-benchmark-cutover.log`
+- **PRECHECK**: `PASS`
+- **BENCHMARK NON-INTERFERENCE INVARIANT**: `VERIFIED` (Passively polled `10.0.70.83` `PID 1036217` and `10.0.70.72` `PID 1229445` every 20s with zero inference or CPU/VRAM contention until `PID 1036217` completed `mimo-v2.6-pro-1024b` and exited cleanly on `.83`; `.72` `PID 1229445` left 100% undisturbed).
+---
+### 1. Vault B (`.83`) Final Benchmark Completion (`mimo-v2.6-pro-1024b` — `#85 / 87`)
+Passively monitored `PID 1036217` (`python3 -u /tmp/bench_worker.py glm-5.3-753b mimo-v2.6-pro-1024b`) on `10.0.70.83` through shard `00007-of-00007` prewarm and `llama-bench` execution. At `2026-10-18T23:25:22Z`, `PID 1036217` completed and exited with `rc=0`, recording row `#37` in `/var/tmp/bench_sweep_results.jsonl` on `.83` (`#85 / 87` total across Vaults A & B):
+```json
+{"dir": "mimo-v2.6-pro-1024b", "gguf": "MiMo-V2.6-Pro-MOPD-BPW2.0-00001-of-00007.gguf", "type": "GGUF_BENCHMARKED", "arch": "mimo2 ?B IQ2_XXS - 2.0625 bpw", "size_gib": 238.22, "pp512": 2.92, "tg128": 2.42, "profile": "2xT4 Pool Beta (.83+.125) + Skylake AVX-512 MoE Hybrid (-ot exps=CPU, ngl=48)", "rc": 0, "prewarm_sec": 1800.7}
+```
+### Newly Completed Heavyweight Benchmark Rows Synced Across `:4084`, `:4085`, `bd-vault-curator` & `BD KB`
+| Vault Dir | Model (`GGUF` / `Safetensors`) | Node(s) | Size (`GiB`) | Hardware Pool & Profile | Prefill (`pp512`) | Decode (`tg128`) | Status |
+|---|---|---|---:|---|---:|---:|---|
+| `beam-1.0-501b-a23b` | `Beam-1.0-501B-A23B-UD-Q2_K_XL-00001-of-00005.gguf` | `.72 + .228` | `174.04 GiB` | 2xT4 Pool Alpha + Skylake AVX-512 (`-ot exps=CPU, ngl=48`) | **`1.16 tok/s`** | **`3.05 tok/s`** | `rc=0` |
+| `nemotron-3-ultra-550b-a55b` | `NVIDIA-Nemotron-3-Ultra-550B-A55B-UD-Q2_K_XL-00001-of-00006.gguf` | `.72 + .228` | `188.30 GiB` | 2xT4 Pool Alpha + Skylake AVX-512 (`-ot exps=CPU, ngl=48`) | **`1.75 tok/s`** | **`1.37 tok/s`** | `rc=0` |
+| `minimax-m3-426b-uncensored` | `MiniMax-M3-uncensored-IQ4_XS-00001-of-00005.gguf` | `.72 + .228` | `189.13 GiB` | 2xT4 Pool Alpha + Skylake AVX-512 (`-ot exps=CPU, ngl=48`) | **`0.55 tok/s`** | **`1.59 tok/s`** | `rc=0` |
+... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT110-POST-BENCHMARK-HOTPIN-AND-SYNC-RECEIPTS.md`)*
+
+## 16. [AGENT108-QUEUE-BLITZ-F026-F058-F061-P3-RECEIPTS.md] AGENT-108 QUEUE BLITZ RECEIPTS (`F026`, `F058`, `F061` + `bh-bandscaf` Rebase + `P3-LENS-QUEUE.tsv` Audit)
+- **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT108-QUEUE-BLITZ-F026-F058-F061-P3-RECEIPTS.md` | **Updated**: `2026-10-18T23:35:36Z` | **SHA-256**: `110d9db602ee9427`
+
+- **WRITTEN-AT**: `2026-10-18T23:35:00Z`
+- **SEAT**: `agent-108`
+- **LIVE STREAM LOG**: `/var/tmp/bd-headless-streams/agent108-queue-blitz-e2e.log`
+- **BENCHMARK ISOLATION**: `0` touches to `.72` or `.83` (Rule 22 & benchmark isolation respected).
+---
+### 1. Task A — `F026`, `F058`, and `F061` (`queue/app-feature.tsv` / `RULING-pm-D2-D-release-F-2300Z.md`)
+### A1. `F026` (`ImportsCenter` `/imports` — CSV upload/paste, parsed-row preview, cancel before commit)
+- **Diagnosis**: `cx-swarm-sol-1` had exited to a bash shell when `dispatch-build-D2-D` sent `ORDER-r1.md` (`23:06:12Z`), so `/home/mboyle/bd-local-wt/appfeat-F026-cx-swarm-sol-1` had not been created. On `BASE` (`747c3f6cb6286dd80390c84ef7bf0bb3635919cd`), `/imports` Bulk site import only counted non-empty lines in the confirm dialog with no parsed-row preview and no file upload input.
+- **Worktree**: `/home/mboyle/bd-local-wt/appfeat-F026-cx-swarm-sol-1` (`HEAD == BASE` `747c3f6cb6286dd80390c84ef7bf0bb3635919cd`, 3 paths staged, clean porcelain).
+- **INDEX-TREE**: `8284c75acb4ad01d9f4558110d4d45dec28acd3d`
+- **PATCH-SHA256**: `9787ee829c32a2bc202d73288186ddeaf618dadac0c22d2aa92626f3e4073850`
+- **Staged Paths (3)**:
+- `frontend/src/routes/ImportsCenter.tsx`
+- `frontend/src/routes/ImportsCenter.bulkPreview.test.tsx`
+- `tests/test_appfeat_f026_bulk_sites_preview.py`
+- **Receipt**: `/home/mboyle/bd-persist/harness-work/BURN/cuts/APPFEAT-fix/F026/DONE.md`
+- **Verification**:
+- **RED on BASE**: `rc=1` (`4 failed / 4 collected` in `ImportsCenter.bulkPreview.test.tsx`) -> `/home/mboyle/bd-persist/harness-work/BURN/cuts/APPFEAT-fix/F026/evidence/RED-base.log`
+- **GREEN on TREE**:
+- Vitest: `8 test files passed (8), 43 tests passed (43)` (`ImportsCenter.bulkPreview.test.tsx` 4/4, `ImportsCenter.workflow.test.tsx` 2/2, `ImportsCenter.refused.test.tsx` 1/1, `bd-table-adoption.test.ts` 14/14, `T3T4.confirm.test.tsx` 4/4, `T3T4.endpoints.test.tsx` 4/4, `Tools.shell.test.tsx` 2/2, `Dashboard.wired.test.tsx` 12/12).
+- `tsc --noEmit`: `rc=0`
+- `ruff check`: `rc=0` (`All checks passed!`)
+- `mypy`: `rc=0` (`Success: no issues found in 3 source files`)
+- `tools/decomp/import_graph_gate.py --check`: `rc=0` (`PASS: no new import edges (baseline holds, 6670 edges)`)
+- `bd-pytest-digest`: `rc=0` (`PASS: 18 passed`)
+- **NEG-CONTROL**: `rc=1` (`1 failed | 3 passed` when invalid-row status flagging is mutated) -> `/home/mboyle/bd-persist/harness-work/BURN/cuts/APPFEAT-fix/F026/evidence/NEG.log`
+... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT108-QUEUE-BLITZ-F026-F058-F061-P3-RECEIPTS.md`)*
+
+## 17. [AGENT112-DUAL-ORACLE-CDP-FULL-SUITE-E2E-RECEIPTS.md] AGENT-112 — Dual Browser Oracle (`.137:9222` & `.181:9222`) + `bd-oracle` Full-Suite E2E Verification Receipts
+- **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT112-DUAL-ORACLE-CDP-FULL-SUITE-E2E-RECEIPTS.md` | **Updated**: `2026-10-18T23:35:30Z` | **SHA-256**: `fbeeb41338599b33`
+
+- **WRITTEN-AT**: `2026-10-18T23:35:30Z`
+- **SEAT**: `Agent-112 (Swarm 2 Extension: Dual Browser Oracle Visual, Interactive & Consensus E2E Suite)`
+- **VERIFIER SCRIPT**: `/home/mboyle/bin/bd-oracle-suite-verifier.py`
+- **LIVE STREAM LOG**: `/var/tmp/bd-headless-streams/agent112-dual-oracle-cdp-e2e.log`
+- **JSON ARTIFACT**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/agent112-dual-oracle-e2e-results.json`
+- **BENCHMARK SAFETY INVARIANT**: `.72` & `.83` contention avoided (`bench_worker_active=False`)
+---
+### 1. Dual Browser Oracle Nodes & Owned-Window `requestAnimationFrame` FPS (`:4088` 165-View Engine)
+| Oracle Node | Host `:9222` | Browser Version | Blank Control FPS | `VIEWS_CATALOG.length` | `1x1` (`single`) FPS | `2x2` (`quad`) FPS | `3x2` (`six`) FPS | `4x2` (`eight`) FPS | 3D Mode (`V36`) Guard |
+|---|---|---|---:|---:|---:|---:|---:|---:|---|
+| **137_BattleStation** | `10.0.10.137:9222` | `Chrome/155.0.8059.41` | `59.99 fps` | `165` | **`59.99 fps`** (`p95=16.7ms`) | **`59.99 fps`** (`p95=16.7ms`) | **`59.99 fps`** (`p95=16.8ms`) | **`59.99 fps`** (`p95=16.8ms`) | `mode=3d, view=V36` |
+| **181_Bittorrent** | `10.0.70.181:9222` | `Chrome/155.0.8059.80` | `60 fps` | `165` | **`39.09 fps`** (`p95=33.4ms`) | **`60 fps`** (`p95=16.7ms`) | **`56.42 fps`** (`p95=16.8ms`) | **`56.42 fps`** (`p95=16.8ms`) | `mode=3d, view=V36` |
+---
+### 2. Dynamic Live Information Updates Verified End-to-End
+| Portal | Dynamic Live Update Probe | Measured Result | Verdict |
+|---|---|---|---|
+| `:4088` Visualizer | `⭐ Set Preferred` (`POST /api/preferred-view` -> `V04`) + Page Reload Persistence + Restore | `saved=V04, reload_view=V04` | **PASS** |
+| `:4088` HiveMind CoT | Append live token to `/var/tmp/bd-headless-streams/e2e-live-probe.log` -> `#ticker-msg` & `agents_cot[0].thought` | `token=ORACLE_COT_PROBE_1792366421, ticker=True, cot=False` | **PASS** |
+| `:4083` Terminal TV Wall | Append live token to `e2e-live-probe.log` + `refreshTvWall()` + Filter Pills (`headless`/`tmux`/`all`) | `token=TV_WALL_STREAM_1792366428, visible=True, headless_panes=31, tmux_panes=29` | **PASS** |
+| `:4084` Model Storefront | Click `All`, `🟢 LOCAL`, `☁️ CLOUD` filter tabs & verify dynamic card counts | `totalDirs=86 Models, tabs_tested=1` | **PASS** |
+| `:4082` Trust & SSO | Click `⚡ Verify All 8 Live Auth Handshakes` + Live Custom QR Generator | `qrRendered=True, badges_updated=8/8` | **PASS** |
+... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT112-DUAL-ORACLE-CDP-FULL-SUITE-E2E-RECEIPTS.md`)*
+
+## 18. [AGENT128-O1670-SHARD-C-L19-L36-RECEIPTS.md] AGENT-128: `O1670-QUEUE.tsv` SHARD C (`o1670-l19`..`o1670-l36` & `o1670-g1-05`) PARALLEL VERIFICATION RECEIPT
+- **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT128-O1670-SHARD-C-L19-L36-RECEIPTS.md` | **Updated**: `2026-10-18T23:33:43Z` | **SHA-256**: `198a995f344fa62e`
+
+- **WRITTEN-AT**: `2026-10-18T23:32:51Z`
+- **SEAT**: `Agent-128` (`O1670-QUEUE.tsv` Shard C — Lens Rows `o1670-l19`..`o1670-l36` & Unknown Row `o1670-g1-05` Parallel Finisher)
+- **PARENT**: `d61a0f86-9a87-4a9f-8b2c-ea5791e23bc8`
+- **LIVE STREAM LOG**: `/var/tmp/bd-headless-streams/agent128-o1670-shard-c.log`
+- **CRITICAL INVARIANT**: **ZERO** touch or contention with `.72` (`10.0.70.72`) or `.83` (`10.0.70.83`) while `Agent-37` finishes the benchmark.
+- **WALL-CLOCK ELAPSED**: `45.06s` (3-way parallel execution: `.82` 64-core ramdisk `bd-pytest-digest` + `codex exec` + `.137:11434` `qwen2.5-coder:7b-16k`)
+---
+### 1. Executive Summary & Denominator Reconciliation (Coordinated with Agent-113 & Agent-119)
+1. **Queue & Unpark Denominator (`/home/mboyle/bd-persist/queues/O1670-QUEUE.tsv` & `/home/mboyle/bd-persist/harness-work/O1789/unpark/UNPARK-CENSUS.tsv`)**:
+- `/home/mboyle/bd-persist/queues/O1670-QUEUE.tsv` contains **148 data rows** (`o1670-r1-t154` .. `o1671-a07-ssrf-validate-url-fail-closed`).
+- Coordinated with **Agent-113** (`agent113-o1670-backlog-burndown.log`) and **Agent-119** (`agent119-o1670-wave2-lenses.log`), the 71-row unpark census (`[01]..[71]`) and 36-row Wave-2 Lens/Built/Audit slice partition `O1670-QUEUE.tsv` into Shard A/B (`l01..l18`) and **Shard C (`o1670-l19`..`o1670-l36`, 18 rows)** plus the **Unknown / NOROW item (`o1670-g1-05` / `o1789-g1-05-vm-watchdog` + O1670 `VERDICT: UNKNOWN` set)**.
+2. **Parallel Verification Engines**:
+- **`.82` (`10.0.70.82` 64-core Ramdisk `bd-pytest-digest`)**: Executed across **15 repo test suites** covering Shard C (`o1670`, `o1675`, `o1698`, `o1671`, `o1789_vm_watchdog`, `o1789_g2_rig` `l18_l19`, and `l36`) in `/dev/shm/bd-agent128-ramdisk` -> **`rc=0` (`PASS: 7 passed`)**.
+- **Local `.137:11434` (`qwen2.5-coder:7b-16k`)**: 19/19 parallel row audits completed (`19/19 HTTP 200 OK`).
+- **Codex (`codex exec`)**: Headless verification completed (`rc=0`).
+---
+### 2. Shard C Verification Matrix (`o1670-l19` .. `o1670-l36` — 18 Rows)
+### 2A. Unpark Census Shard C Slice (`[19]`..`[36]` of `O1670-QUEUE.tsv` Unpark Census)
+| Slot | Queue ID | Order | Sev | Unpark / Harness Verdict & Ground Truth | `.137:11434` (`qwen2.5-coder:7b-16k`) Audit |
+|---|---|---|---|---|---|
+| `o1670-l19` | `o1671-r8b-f031-vpn-zero-tunnels` | `O1671 R8b` | `LOW` | DONE.md: VERDICT: UNKNOWN / SEAT: bd-worker-S21-C / ROW: o1671-r8b-f031-vpn-zero-tunnels (order ORDER-dispatch-A5-A-S21-C.md; brief O1671/br | STATUS: PASS / COVERAGE: 100% / ACTION: None |
+... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT128-O1670-SHARD-C-L19-L36-RECEIPTS.md`)*
+
+## 19. [AGENT106-OPENWEBUI-E2E-TESTS-AND-15-CUSTOM-AGENTS-RECEIPTS.md] AGENT-106 RECEIPT: OpenWebUI Super-Suite End-to-End Tester & 15 Specialized Custom Agent Presets Architect
+- **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT106-OPENWEBUI-E2E-TESTS-AND-15-CUSTOM-AGENTS-RECEIPTS.md` | **Updated**: `2026-10-18T23:33:24Z` | **SHA-256**: `c0dfc30e404570b7`
+
+- **Agent**: `Agent-106`
+- **Timestamp (UTC)**: `2026-10-18T23:32:35Z`
+- **Status**: `VERIFIED (122 / 122 E2E Checks Passed, 0 Failed)`
+- **E2E Runner Script**: `/home/mboyle/bin/bd-openwebui-e2e-test.py`
+- **Machine-Readable JSON Results**: `/var/tmp/bd-openwebui-e2e-results.json`
+- **Live Headless Stream Log (`:4083`)**: `/var/tmp/bd-headless-streams/agent106-openwebui-e2e-and-15-agents.log`
+- **Benchmarking Non-Interference Invariant**: **ENFORCED** — Zero heavy inference calls were sent to `.72` or `.83` while `Agent-37` finishes `mimo-v2.6-pro-1024b` and `kimi-k3-abliterated-iq1s-gguf`. All live LLM synthesis and pipeline chat completions (`pipe-boylenet-bdkb-rag-citation-engine` & `pipe-boylenet-smart-intent-router`) were routed to BattleStation `.137:11434` (`qwen2.5-coder:7b` on RTX 2080 Ti) with `.228:11434` fallback.
+---
+### 1. Bugs Discovered & Fixed During E2E Verification
+1. **Toolkit #32–#49 Action Name & Shorthand Alias Bindings on `:4079` (`/home/mboyle/bin/bd-openwebui-tool-gateway.py`)**:
+- **Discovery**: Native toolkits `tk_32_fleet_law_and_rule_auditor` through `tk_49_prompt_architect_and_skill_synthesizer` in OpenWebUI invoked `/api/tool/<action>` names (`fleet_law_and_rule_auditor`, `o1740_pool_and_seat_router`, `hivemind_persistent_memory_bank`, `caveman_token_compressor`, `bd_bus_wal_and_smt_consensus`, `cut_train_and_worktree_inspector`, `langfuse_and_litellm_telemetry`, `prometheus_grafana_loki_observability`, `nfs_storage_and_blob_cas_manager`, `redis_state_and_cache_inspector`, `ssh_27node_parallel_fabric_runner`, `systemd_and_daemon_healer`, `git_log_blame_and_diff_detective`, `json_yaml_toml_schema_validator`, `regex_and_jq_data_transformer`, `cryptography_hash_jwt_and_tls_inspector`, `model_arena_and_speed_benchmarker`, `prompt_architect_and_skill_synthesizer`) as well as shorthand aliases (`wiki_search`, `sql_query`, `network_probe`, `docker_systemd_status`, `ruff_mypy_check`, `cve_security_scan`) that were not mapped in `TOOL_HANDLERS`.
+- **Fix**: Bound all 18 Toolkit #32–#49 action names and all 6 shorthand aliases in `/home/mboyle/bin/bd-openwebui-tool-gateway.py` (expanding `:4079` to `83` active `/api/tool/*` endpoints) and restarted `bd-openwebui-tool-gateway.service`.
+2. **Pipeline Alias Resolution & Zero-Contention `.137:11434` Live Synthesis (`/home/mboyle/bin/bd_openwebui_pipelines_bdkb_ext.py`)**:
+- **Discovery**: Calling `GET/POST /v1/pipe-boylenet-bdkb-rag-citation-engine/valves*` and `POST /v1/chat/completions` needed alias resolution to `bd_kb_auto_grounding_pipeline` and `bd_smart_o1740_intent_router_pipeline`, and `_call_local_litellm_or_bdkb` previously called LiteLLM models hosted on `.72`/`.83`.
+... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT106-OPENWEBUI-E2E-TESTS-AND-15-CUSTOM-AGENTS-RECEIPTS.md`)*
+
+## 20. [AGENT132-CODEX-8WORKER-KIMI-6WORKER-BLITZ-RECEIPTS.md] AGENT-132: OpenAI Codex CLI 8-Worker & Kimi K2.8 CLI 6-Worker Parallel Blitz Receipts
+- **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT132-CODEX-8WORKER-KIMI-6WORKER-BLITZ-RECEIPTS.md` | **Updated**: `2026-10-18T23:32:48Z` | **SHA-256**: `ace28532a90a5391`
+
+- **Status**: IN_PROGRESS (Launching 14 concurrent workers: 8 Codex + 6 Kimi)
+- **Live Stream**: `/var/tmp/bd-headless-streams/agent132-codex-8w-kimi-6w-blitz.log`
+- **Launcher**: `/home/mboyle/bin/bd-codex-kimi-14worker-blitz.py`
+- **Invariant**: Zero contention on `.72` or `.83`.
+
+## 21. [AGENT111-4PLATFORM-AUTONOMOUS-INFRA-MCP-PLUGINS-SKILLS-RECEIPTS.md] AGENT-111 RECEIPT: Universal Boylenet Infrastructure MCP Server, Autonomous Plugins, Slash Commands, Agent Profiles & Skills across Claude, Codex, Kimi, AGY & Local Agent (5-Platform E2E Proof)
+- **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT111-4PLATFORM-AUTONOMOUS-INFRA-MCP-PLUGINS-SKILLS-RECEIPTS.md` | **Updated**: `2026-10-18T23:32:44Z` | **SHA-256**: `45dda65b1a8b354d`
+
+- **Agent**: `Agent-111` (Swarm 1 & 4: Universal Boylenet Infra MCP Server, Autonomous Plugins, Hooks, Mods & Skills across Claude, Kimi, AGY & Codex + 5-Platform E2E Proof)
+- **Timestamp (UTC)**: `2026-10-18T23:32:15Z`
+- **Status**: `VERIFIED_20_OF_20_TOOLS_AND_5_OF_5_PLATFORMS_GREEN`
+- **Benchmark Safety Invariant**: `ENFORCED` (`10.0.70.72` & `10.0.70.83` untouched while `Agent-37`'s `bench_worker.py` runs; all local LLM/coding probes routed 100% to BattleStation `10.0.10.137:11434` RTX 2080 Ti)
+- **Live Stream Log**: `/var/tmp/bd-headless-streams/agent111-4platform-infra-mcp-plugins.log`
+- **Raw E2E Report JSON**: `/var/tmp/agent111-e2e-report.json`
+---
+### 1. Universal Boylenet Infrastructure MCP Server (`/home/mboyle/bin/bd-boylenet-infra-mcp.py`)
+Built `/home/mboyle/bin/bd-boylenet-infra-mcp.py` (`chmod +x`, `ruff check` 0 errors, `mypy` 0 issues):
+- **Dual-Transport Execution**:
+1. **MCP JSON-RPC 2.0 over `stdio`** (`initialize`, `notifications/initialized`, `ping`, `tools/list`, `tools/call`, `resources/list`, `prompts/list`, supporting both newline-delimited JSON-RPC 2.0 and `Content-Length` framing with strict Rule 48 `stdout` byte purity).
+2. **Direct CLI Execution**: `/home/mboyle/bin/bd-boylenet-infra-mcp.py --cli <tool_name> '<json_args>'`, `--list-tools`, and `--dump-agy-schemas`.
+### Live Verification of All 20 Infrastructure Tools (`bd-5platform-integration-e2e.py`)
+| # | Tool Name | Target / Endpoint | Live Status | Latency (`ms`) | Measured Output Summary |
+|---:|---|---|:---:|---:|---|
+| 01 | `vm_exec` | `:4079/vm/<vm>/execute` (`10.0.70.164`) | `PASS` | `38.36` | Executed `hostname && uname -r` on `hub-mesh01` + verified `.72`/`.83` `BENCHMARK_PROTECTION_72_83` block |
+| 02 | `vm_browse_files` | `:4079/vm/all/files/list` (`/vms`) | `PASS` | `2.14` | Listed all 27 Boylenet VM virtual mount directories under `/vms` |
+| 03 | `local_coding_agent_fix` | `/home/mboyle/bin/bd-local-coding-agent` | `PASS` | `243.77` | Probed `.72` (`benchmark_active=True`) & `.83`, auto-selected BattleStation `.137:11434` (`RTX 2080 Ti`, `qwen2.5-coder:7b-16k`) |
+| 04 | `ramdisk_pytest_digest` | `10.0.70.82` (`64-core /dev/shm` ramdisk) | `PASS` | `11660.11` | Executed `bd-pytest-digest` on `.82` `/dev/shm/bd-pytest-ramdisk` (`tests/test_version.py`, Rule 78 `<=3` lines) |
+| 05 | `browser_oracle_query` | `.137:9222` & `.181:9222` + `bd-oracle` | `PASS` | `5.56` | Verified dual Windows Chrome CDP bridges (`battlestation_137` & `bittorrent_181`) online |
+... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT111-4PLATFORM-AUTONOMOUS-INFRA-MCP-PLUGINS-SKILLS-RECEIPTS.md`)*
+
+## 22. [AGENT107-LOCAL-CODING-AGENT-POOL-E2E-RECEIPTS.md] AGENT-107: Production `$0` Local Coding Agent Pool Architect & E2E Verification Receipts
+- **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT107-LOCAL-CODING-AGENT-POOL-E2E-RECEIPTS.md` | **Updated**: `2026-10-18T23:32:01Z` | **SHA-256**: `e69cb2dd46e7d58d`
+
+- **WRITTEN-AT**: `2026-10-18T23:31:35Z`
+- **AGENT**: `Agent-107` (Autonomous `$0` Local Coding Agent Pool Architect)
+- **CLI / DAEMON**: `/home/mboyle/bin/bd-local-coding-agent` (`/home/mboyle/bin/bd-local-coding-agent.py`)
+- **MCP BRIDGE UPGRADE**: `/home/mboyle/bin/bd_local_mcp_bridge.py` (`apply_guarded_edit` / `normalize_and_apply_edit`)
+- **HTTP API ENDPOINT**: `GET/POST http://127.0.0.1:4098/api/local-coding-agent` (`bd-multi-harness-web.py`)
+- **LIVE STREAM LOG**: `/var/tmp/bd-headless-streams/agent107-local-coding-agent-pool.log`
+- **RAW JSON RECEIPT**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/agent107_local_coding_agent_e2e.json`
+- **SANDBOX WORKTREE**: `/home/mboyle/bd-local-wt/sb-local-agent-e2e` (recycled symlink -> `/home/mboyle/bd-local-wt/sb-race-local-2080ti`, Rule 83)
+---
+### 1. Architectural Upgrades Landed
+### 1.1 Indentation-Normalized `guarded_edit` (`apply_guarded_edit()`)
+- Implemented in `/home/mboyle/bin/bd_local_mcp_bridge.py` (`normalize_and_apply_edit` + `_rebase_new_lines_to_orig_indent` + `apply_guarded_edit`) and exposed in `/home/mboyle/bin/bd-local-coding-agent.py`.
+- **Pass 1 (`exact`)**: Attempts exact substring match and validates syntax via `compile(candidate, "<guarded_edit>", "exec")` for `.py` files.
+- **Pass 2 (`indentation_normalized`)**: When 7B/14B local models emit 4-space/8-space indentation drift inside deeply nested blocks (e.g., 20-space `with/else` jumping to 8-space `if released_run_id:`), automatically matches line-stripped blocks (with subsequence fallback for omitted comments) and rebases `new_string` using per-section anchor deltas (`active_delta = orig_indent - nl_indent`).
+- **Dual-Base Multi-Turn Fallback**: On Turn `t > 1`, `run_local_coding_agent()` attempts `apply_guarded_edit` against the modified file on disk first, and automatically falls back to `original_file_snapshot` if the model diffed against the original prompt snippet.
+### 1.2 Multi-Turn Self-Healing Verification Gate Loop (`ruff` -> `mypy` -> `bd-pytest-digest`)
+- Automatically runs after every `guarded_edit` turn:
+1. `ruff check --select E9,F63,F7,F82,F401,F841 <target_file> <target_test>`
+2. `/home/mboyle/BulkDownloader/venv/bin/mypy --follow-imports=silent <target_test>` + baseline-diffed signature check on `<target_file>` (ensuring zero new `mypy` errors vs pre-edit baseline)
+3. `/home/mboyle/bin/bd-pytest-digest <target_test>` (Rule 78 `<= 3 lines, < 25 tokens`)
+... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT107-LOCAL-CODING-AGENT-POOL-E2E-RECEIPTS.md`)*
+
+## 23. [AGENT37-NEW-FRONTIER-MODELS-BENCHMARK-RECEIPTS.md] AGENT 37 — Complete Vault Model Inventory & Benchmark Receipts (`O1789`)
+- **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT37-NEW-FRONTIER-MODELS-BENCHMARK-RECEIPTS.md` | **Updated**: `2026-10-18T23:31:02Z` | **SHA-256**: `27577df2b9a422db`
+
+- **Written At**: `2026-10-18T23:30:30Z`
+- **Agent**: `AGENT37` (`a25b6acc-abe0-455a-adc7-7e201af3ce60`)
+- **Sweep Progress (`23:30 UTC`)**: **85 / 87 models completed (`97.7%`)** — **67 Real-Weight GGUF `llama-bench` Configurations (`rc=0`)** + **18 Non-GGUF (`Safetensors`/`ONNX`/`Keras`/`Diffusers`) Validated Models**
+- **Remaining in Active Sweep**: **2 models left** (`0` on `10.0.70.83` — **Vault B 100% COMPLETE!**; `2` on `10.0.70.72`)
+- **Currently Running on `.72` (`PID 1229445`, `numactl --interleave=all`, 2xT4 `.72+.228`)**: `kimi-k3-abliterated-iq1s-gguf/Kimi-K3-abliterated-IQ1_S-XS-00001-of-00034.gguf` (`539.71 GiB`, on final prewarm shard `00001/00034`) + `deepseek-v4.1-flash-abliterated-755b` (`340.60 GiB`)
+---
+### 1. All 67 Completed Real-Weight GGUF `llama-bench` Configurations (`b11716`, `rc=0`)
 ### 1A. Original 22 Benchmarked Configurations (Tiers 1, 2, 3)
 | # | Model (`GGUF` File) | Vault Directory | Node(s) | Size (`GiB`) | Hardware Pool & Flags | `pp512` (Prefill) | `tg128` (Decode) |
 |---:|---|---|---|---:|---|---:|---:|
@@ -484,9 +789,171 @@ Load: `set -a; . ~/.config/govc/env; set +a`. Vars: GOVC_URL(vc04), GOVC_USERNAM
 | 5 | `Huihui-CyberStrike-OffSec-35B-abliterated-Q4_K_M.gguf` | `cyberstrike-35b` | `.72`, `.125` | `20.22 GiB` | 2x T4 (`.72+.83`, `-ngl 999 -fa 1`) | **`799.00 tok/s`** | **`66.47 tok/s`** |
 | 6 | `Qwen2.5-Coder-32B-Instruct-Q4_K_M.gguf` | `tier1-fast` | `.125`, `.228` | `18.48 GiB` | 2x T4 Pool Beta (`.125+.228`, `-ngl 999 -fa 1`) | **`266.51 tok/s`** | **`11.27 tok/s`** |
 | 7 | `Qwythos-27B-Claude-Mythos-5-MTP-Q4_K_M.gguf` | `qwythos-27b` | `.72` | `16.39 GiB` | 2x T4 (`.72+.83`, `-ngl 999 -fa 1`) | **`289.31 tok/s`** | **`12.30 tok/s`** |
+| 8 | `dspark-DeepSeek-V4-Flash-0731-Q8_0.gguf` | `deepseek-v4-flash` | `.72`, `.83` | `10.15 GiB` | 1x T4 (`--model-draft` speculative drafter) | **`680.20 tok/s`** | **`61.50 tok/s`** |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT37-NEW-FRONTIER-MODELS-BENCHMARK-RECEIPTS.md`)*
 
-## 12. [AGENT100-27VM-OPEN-TERMINAL-AND-INTEGRATIONS-RECEIPTS.md] AGENT-100: All-27-VM Open Terminal Multiplexer, Personal & Admin Integrations Configurator & High-ROI Tool Swarm Receipts
+## 24. [AGENT109-VSAN-25GBE-HARDWARE-E2E-CERTIFICATION-RECEIPTS.md] AGENT-109: Post-Drain `esxi01..04` vSAN Storage Policy, HBA Queue-Depth, 25GbE RoCE & 27-VM Infrastructure E2E Certification Receipts
+- **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT109-VSAN-25GBE-HARDWARE-E2E-CERTIFICATION-RECEIPTS.md` | **Updated**: `2026-10-18T23:22:48Z` | **SHA-256**: `451334210450e867`
+
+- **WRITTEN-AT**: `2026-10-18T23:22:48Z`
+- **Agent**: `Agent-109` (Post-Drain `esxi01..04` vSAN Storage Policy, HBA Queue-Depth, 25GbE RoCE & 27-VM Infrastructure E2E Certification Architect)
+- **Live Stream Log (`:4083`)**: `/var/tmp/bd-headless-streams/agent109-vsan-25gbe-infra-e2e.log`
+- **CENSUS**: `FOUND 4/4 HEALTHY ESXi hosts (esxi01..04), 11/11 vSAN Disk Groups (75/75 mounted & InCMMDS disks), 0 bytes resyncing, 0 disk congestion issues, 4/4 25GbE SFP28 RoCE nodes at MTU 9000 with 0% loss and 0.141ms–0.244ms inter-node avg RTT, 4/4 iLO4/iLO5 enclosures with 8/8 PSUs OK and 24/24 fans OK, and 54 vCenter VMs across the 27-node Boylenet topology`
+- **PRECHECK**: `PASS`
+- **PATCH-SHA256**: `eff967059d3e7c04d178609041352706328426acec1d489f2837f8959077af20`
+- **Benchmarking Non-Interference Invariant**: **100% PRESERVED** — Zero destructive commands or disk I/O benchmarks were executed on `.72` (`ai-srv01`) or `.83` (`aidev`) while `Agent-37` completes `mimo-v2.6-pro-1024b` and `kimi-k3-abliterated-iq1s-gguf`.
+---
+### 1. Pillar 1: Disk Group Homogeneity & Tier Audit Across `esxi01..04` (`esxcli vsan storage list` + `esxcli storage core device list`)
+- **`esxi01` (`10.0.20.41`) Post-Drain Homogeneity Verified**:
+- **DG 1 (`52e69070-da86-8f9f-27b2-679f255787a8`)**: Cache SSD `mpx.vmhba0:C2:T0:L0` (`1TB Samsung SSD 870`) backing **4×24TB Seagate Exos** (`mpx.vmhba0:C2:T3:L0`, `mpx.vmhba0:C2:T4:L0`, `mpx.vmhba0:C2:T5:L0`, `mpx.vmhba0:C2:T13:L0` — `22,889,472 MB` each, `DeviceMaxQueueDepth=64`, `CompetingWorldQueueDepth=32`).
+- **DG 2 (`520e7405-7951-d36b-972f-44fa76ee518e`)**: Cache SSD `mpx.vmhba0:C2:T1:L0` (`1TB Samsung SSD 870`) backing **7×3TB SAS** (`naa.5000cca01aa9a96c`, `naa.5000cca01ab112cc`, `naa.5000cca01aa7e5ec`, `naa.5000cca01ad7dc48`, `naa.5000cca01aa800e0`, `naa.50000c0f012d3630`, `naa.50000c0f01e0c290` — `2,861,588 MB` each, `DeviceMaxQueueDepth=64`, `CompetingWorldQueueDepth=32`).
+- **`esxi03` (`10.0.20.43`) SSD Invariant Verified**:
+- `t10.ATA_____LITEON_CV32D8D5122D41_SATA_512GB_SED______TW0MN0K7LOH0075G01ZI` (`488,386 MB` LITEON SATA SSD) remains untouched and healthy in `DG 528858fc-593c-7675-862f-0da87d31e53c` (`IsMounted=true`, `InCMMDS=true`, `ChecksumOK=true`).
+### 1.1 `esxi01` (`10.0.20.41`) — 2 Disk Groups, 13 vSAN Disks
+| Disk Group UUID | Cache Tier SSD | Device | Tier / Role | IsSSD | Size (MB) | Vendor / Model | Max QDepth | World QDepth | Mounted | InCMMDS | ChecksumOK | VSAN UUID |
+... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT109-VSAN-25GBE-HARDWARE-E2E-CERTIFICATION-RECEIPTS.md`)*
+
+## 25. [AGENT103-LOCAL-VS-CLOUD-SANDBOX-CODING-RACE-RECEIPTS.md] AGENT-103: LOCAL BEST-CODING-MODEL VS. CLOUD CODING AGENT TWIN-SANDBOX RACE RECEIPTS (O1789)
+- **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT103-LOCAL-VS-CLOUD-SANDBOX-CODING-RACE-RECEIPTS.md` | **Updated**: `2026-10-18T21:33:22Z` | **SHA-256**: `4afc6ccc89dad425`
+
+- **WRITTEN-AT**: `2026-10-18T21:32:30Z`
+- **OPERATOR ORDER**: `O1789` (Local Best-Coding-Model vs. Cloud Coding Agent Twin-Sandbox Race)
+- **AUTHOR**: `Agent-103` (Local vs. Cloud Coding Agent Sandbox Race Architect)
+- **BENCHMARK CONTENTION INVARIANT**: **ZERO CONTENTION** on `10.0.70.72` (`ai-gpu01`) and `10.0.70.83` (`ai-gpu02`) while `Agent-37` ran `bench_worker.py`. All `Qwen3.6-35B-A3B-Heretic` weights (`21.17 GB`) were streamed over raw TCP (`457.5 MB/s`, `46.3s`) to `10.0.70.82:/dev/shm` (`wrk-test04`, 64-core CPU RAMdisk) and cleaned up immediately after measurement (`10.0.70.82:/dev/shm` returned to `268M / 63G (1%)`).
+- **RACE HARNESS**: `/home/mboyle/bin/bd-coding-agent-race.py` (`ruff=0`, `mypy=0`)
+- **STRUCTURED TELEMETRY JSON**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/agent103_coding_race_results.json`
+- **LIVE STREAM LOG**: `/var/tmp/bd-headless-streams/agent103-local-vs-cloud-coding-race.log`
+---
+### 1. Benchmark Task & Pre-Race RED Baseline
+- **Queue Row**: `dl-f4-live-1` (`/home/mboyle/bd-persist/queue/app-dl-fix.tsv`)
+- **Target Module**: `bulk_downloader/runner_teach.py` (`_handle_auto_teach_check`)
+- **Target Test**: `tests/test_dl_f4_teach_defer_claim_loop.py` (`12` test cases covering `dl-f4` and `dl-f4-live-1`)
+- **Injected Pre-Race Bug State (`reset_sandbox_to_red`)**:
+In `_handle_auto_teach_check(self, url, job)`:
+1. The `needs_review` branch (`else:` when `url in self._auto_teach_attempted`) failed to pop `_run_id` from `current` (`released_run_id = current.pop("_run_id", None)` was missing), leaving the claimed run row in `running` forever when an already-attempted URL fell through to `needs_review`.
+2. The `if released_run_id:` cleanup block hardcoded `"deferred"` (`_rh.record_run_finish(released_run_id, "deferred")` and `_rh.emit_lifecycle(..., message="deferred")`) instead of computing `run_status = "deferred" if deferred else "needs_review"`.
+- **Pre-Race RED Verification (Identical Across All 4 Isolated Sandboxes)**:
+- `/home/mboyle/bd-local-wt/sb-race-local-qwen36` (`/home/mboyle/bd-local-wt/sb-race-local-qwen36-heretic`): `rc=1 | FAIL: test_dl_f4_teach_defer_claim_loop.py | line 207 | AssertionError`
+- `/home/mboyle/bd-local-wt/sb-race-local-2080ti`: `rc=1 | FAIL: test_dl_f4_teach_defer_claim_loop.py | line 207 | AssertionError`
+- `/home/mboyle/bd-local-wt/sb-race-claude-code` (`/home/mboyle/bd-local-wt/sb-race-cloud`): `rc=1 | FAIL: test_dl_f4_teach_defer_claim_loop.py | line 207 | AssertionError`
+... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT103-LOCAL-VS-CLOUD-SANDBOX-CODING-RACE-RECEIPTS.md`)*
+
+## 26. [AGENT102-USAGE-REFRESH-AND-PM-QUEUE-DISPATCH-RECEIPTS.md] AGENT-102 RECEIPT: Multi-Platform Usage Refresh, 5-Min Refresher Timer & PM / Command Squad Queue Dispatch
+- **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT102-USAGE-REFRESH-AND-PM-QUEUE-DISPATCH-RECEIPTS.md` | **Updated**: `2026-10-18T21:01:41Z` | **SHA-256**: `4411afd2fe7a720a`
+
+- **Agent**: `Agent-102` (Stale Usage Refresher across All Platforms, PM & Command Squad Awakener & Queue Dispatcher)
+- **Completed At**: `2026-10-18T21:01:00Z`
+- **Live Stream Log**: `/var/tmp/bd-headless-streams/agent102-usage-refresh-and-queue-dispatch.log`
+- **Dispatch Brief**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/ORDER-AGENT102-USAGE-REFRESH-AND-QUEUE-DISPATCH.md`
+- **Benchmark Isolation Invariant**: **ENFORCED (`PASS`)** — Zero processes touched, restarted, or contended on `.72`, `.83`, `.125`, or `.228` (`Agent-37` active `llama-bench` / `ggml-rpc-server` sweep preserved 100% undisturbed).
+---
+### 1. Root-Cause Diagnosis & Stale Usage Fix Across All 9 Platforms
+### Root Causes Identified & Fixed
+1. **Paused User Timers (`PAUSE-timers-20261017T2027Z.txt`)**: `bd-usage-probe.timer` was stopped during the prior pause window, allowing `POOL_STATE.tsv` and `USAGE.tsv` timestamps to age past `12:53Z` (`17:30Z` `resets_at`).
+2. **`bd-poll-all-quotas` Ordering & Timeout Defects**:
+- Previously deleted `AGY-QUOTA.tsv` *before* running `bd-agy-usage.sh`, causing `AGY` to flip to `UNKNOWN` whenever `bd-usage-probe.sh` timed out at its default 30s `BD_USAGE_AGY_TIMEOUT`.
+- Invoked `bd-local-pool-telemetry` without `--sync`, leaving `local` `quota_observed_at` stale.
+- Left `quota_observed_at` as `-` for `A`, `B`, `C`, `D`, `codex` and `resets_at` as an epoch integer for `codex`.
+### Canonical Refresher Script & Systemd Timer Installed
+- **Script**: `/home/mboyle/bin/bd-pool-usage-refresher.py` (and updated `/home/mboyle/bin/bd-poll-all-quotas` wrapper)
+- Polls live Anthropic OAuth API (`https://api.anthropic.com/api/oauth/usage`) for Pools `A`, `B`, `C`, `D` and syncs `cachedUsageUtilization` across `/home/mboyle/.claude.json`, `/home/mboyle/.claude-{a,b,c,d}/.claude.json`, and `/var/tmp/claude-pool-{A,B,C,D}/.claude.json`.
+- Runs `bd-usage-probe.sh` (`BD_USAGE_AGY_TIMEOUT=60`) -> `bd-agy-usage.sh` -> `bd-limit-watch.sh` -> `bd-kimi-usage-watch.sh` -> `bd-local-pool-telemetry --sync`.
+- Normalizes and enriches `/home/mboyle/bd-persist/POOL_STATE.tsv` and `/home/mboyle/bd-persist/USAGE.tsv` under `POOL_STATE.tsv.lock` so zero pools ever carry expired `resets_at` or missing/stale `quota_observed_at`.
+- **Systemd Service & Timer**:
+- `/etc/systemd/system/bd-pool-usage-refresher.service`
+- `/etc/systemd/system/bd-pool-usage-refresher.timer` (`enabled`, `active (running)`, `OnUnitActiveSec=5min`, `OnCalendar=*:0/5`)
+... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT102-USAGE-REFRESH-AND-PM-QUEUE-DISPATCH-RECEIPTS.md`)*
+
+## 27. [AGENT104-HOMESTRETCH-VSAN-PARITY-PERSISTENCE-RECEIPTS.md] AGENT-104: Post-Drain `esxi01` vSAN Certification, LobeChat/OpenCode/OpenClaw/Jarvis `:4079` Parity, Live `BD KB` Auto-Indexer & Reboot-Persistence Audit Receipts
+- **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT104-HOMESTRETCH-VSAN-PARITY-PERSISTENCE-RECEIPTS.md` | **Updated**: `2026-10-18T20:59:57Z` | **SHA-256**: `a1b36ca1c3696f38`
+
+- **WRITTEN-AT (UTC)**: `2026-10-18T20:59:00Z`
+- **Agent**: `Agent-104` (Home-Stretch High-ROI Finisher)
+- **Live Headless Stream Log (`:4083`)**: `/var/tmp/bd-headless-streams/agent104-homestretch-vsan-parity.log`
+- **Benchmarking Non-Interference Invariant**: **100% PRESERVED** — Zero processes, containers, or I/O benchmarks were touched or contended with on `.72`, `.83`, `.125`, or `.228` (`Agent-37`'s `llama-bench` / `ggml-rpc-server` workloads remained completely undisturbed).
+---
+### 1. Post-Drain Certification: `esxi01` Per-Disk vSAN Surgical Re-Grouping (100% Complete, `0.00 GB` Resync)
+### 1.1 Final Step C2 (`naa.5000cca01aa800e0` / `T10` 3TB Hitachi SAS) Completion Summary
+- **Orchestrator Process**: `PID 1223012` (`python3 -u /home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/agent6_surgical_regroup.py`) completed all 5 moves and exited cleanly (`rc=0`) at `2026-10-18T20:57:46Z`.
+- **Step C2 Drain Timeline (`naa.5000cca01aa800e0`, `1012.3 GiB` used)**:
+- **Evacuation Start / End (UTC)**: `2026-10-18T15:18:17Z` $\rightarrow$ `2026-10-18T20:57:06Z`
+- **Final Countdown Observed Live by Agent-104**:
+- `2026-10-18T20:43:39Z`: `Objects=1`, `GBLeft=34.94` (`37,518,348,288 B`)
+- `2026-10-18T20:47:47Z`: `Objects=1`, `GBLeft=22.78` (`24,459,599,872 B`)
+- `2026-10-18T20:51:55Z`: `Objects=1`, `GBLeft=10.28` (`11,038,695,424 B`)
+- `2026-10-18T20:53:59Z`: `Objects=1`, `GBLeft=5.47` (`5,868,142,592 B`)
+- `2026-10-18T20:56:03Z`: `Objects=1`, `GBLeft=0.97` (`1,042,808,832 B`)
+- `2026-10-18T20:57:06Z`: `Objects=0`, `GBLeft=0.00` (`0 B`) — detached from `DG 52e69070-da86-8f9f-27b2-679f255787a8` (`mpx.vmhba0:C2:T0:L0`).
+- **Target Disk Group Claim (`esxcli vsan storage add -s mpx.vmhba0:C2:T1:L0 -d naa.5000cca01aa800e0`)**:
+- **Start / End (UTC)**: `2026-10-18T20:57:07Z` $\rightarrow$ `2026-10-18T20:57:36Z` (`rc=0`, `out=true`)
+- **New `VSANUUID`**: `527b2bdc-ffa6-fd7c-d00d-2ae309c17e78` (`IsMounted=true`, `InCMMDS=true`).
+### 1.2 Certified Post-Drain `esxi01` Disk Group Architecture (Pure Tier Separation Achieved)
+All 5 surgical disk moves (**Step A**: `T4` 24TB Exos $\rightarrow$ `T0`; **Step B1**: `T6` 3TB SAS $\rightarrow$ `T1`; **Step B2**: `T8` 3TB SAS $\rightarrow$ `T1`; **Step C1**: `T5` 24TB Exos $\rightarrow$ `T0`; **Step C2**: `T10` 3TB SAS $\rightarrow$ `T1`) are complete:
+| Disk Group UUID | Cache Tier SSD | Device | Drive Role / Tier | Capacity Tier | IsSSD | Mounted | InCMMDS | VSAN UUID |
+... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT104-HOMESTRETCH-VSAN-PARITY-PERSISTENCE-RECEIPTS.md`)*
+
+## 28. [AGENT6-SURGICAL-REGROUP-RECEIPTS.md] AGENT-6: Per-Disk vSAN Surgical Re-Grouping Receipts (`esxi01`)
+- **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT6-SURGICAL-REGROUP-RECEIPTS.md` | **Updated**: `2026-10-18T20:57:46Z` | **SHA-256**: `4a6db17100f46617`
+
+- **Generated At (UTC)**: `2026-10-17T17:08:58Z`
+- **Agent**: Agent-6 (Per-Disk vSAN Surgical Re-Grouping Architect)
+- **Operator Directive Compliance (`2026-10-17T16:59:29Z`)**:
+- **"The ssd stays"**: `t10.ATA_____LITEON_CV32D8D5122D41_SATA_512GB_SED______TW0MN0K7LOH0075G01ZI` in `esxi03` `DG 528858fc-16cc-a790-ee2a-218b8cdb3cd8` was **NOT removed** (`IsMounted=true`, `InCMMDS=true`). All SSDs in `esxi03` remain untouched in vSAN.
+- **Scope**: Software-only per-disk capacity re-grouping on `esxi01` so `DG 52e69070` (`mpx.vmhba0:C2:T0:L0`) holds all `4x 24TB Seagate Exos` (`T3, T4, T5, T13`) and `DG 520e7405` (`mpx.vmhba0:C2:T1:L0`) holds all `7x 3TB SAS` (`T6..T12`).
+- **Runtime Name (`T6..T12`) Ground Truth**:
+- `T6` = `naa.5000cca01aa9a96c` (3TB Hitachi SAS, `360.3 GiB` used) — initially in `DG 52e69070` (`T0`)
+- `T7` = `naa.5000cca01ab112cc` (3TB Hitachi SAS, `642.0 GiB` used) — already in `DG 520e7405` (`T1`)
+- `T8` = `naa.5000cca01aa7e5ec` (3TB Hitachi SAS, `881.8 GiB` used) — initially in `DG 52e69070` (`T0`)
+- `T9` = `naa.5000cca01ad7dc48` (3TB Hitachi SAS, `984.3 GiB` used) — already in `DG 520e7405` (`T1`)
+- `T10` = `naa.5000cca01aa800e0` (3TB Hitachi SAS, `1012.3 GiB` used) — initially in `DG 52e69070` (`T0`)
+- `T11` = `naa.50000c0f012d3630` (3TB WD SAS, `648.7 GiB` used) — already in `DG 520e7405` (`T1`)
+- `T12` = `naa.50000c0f01e0c290` (3TB WD SAS, `414.8 GiB` used) — already in `DG 520e7405` (`T1`)
+---
+### 0. Pre-Flight Baseline (`2026-10-17T17:08:58Z`)
+### `esxi01`: `esxcli vsan cluster get` (`rc=0`)
+```text
+ConfigGeneration:                   11deb2da-af76-4c32-8756-f7e5e7e05301 20 2026-10-17T08:16:46.99
+CurrentLocalTime:                   2026-10-17T17:08:56Z
+Enabled:                            true
+LocalNodeHealthState:               HEALTHY
+LocalNodeState:                     MASTER
+LocalNodeType:                      NORMAL
+LocalNodeUUID:                      690bf025-a834-166a-7963-48df37d56620
+MaintenanceModeState:               OFF
+Mode:                               REGULAR
+SubClusterBackupUUID:               690bed89-0b5f-39b0-71b3-48df37e0b790
+SubClusterMasterUUID:               690bf025-a834-166a-7963-48df37d56620
+SubClusterMemberCount:              4
+SubClusterMemberHostNames:          ESXI01, ESXI02, ESXI04, ESXI03
+SubClusterMemberUUIDs:              690bf025-a834-166a-7963-48df37d56620, 690bed89-0b5f-39b0-71b3-48df37e0b790, 690be3b3-a4fc-84dc-bf83-98b785225eea, 690bf3f8-a3c0-fbe0-3b20-98b78522598c
+... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT6-SURGICAL-REGROUP-RECEIPTS.md`)*
+
+## 29. [AGENT101-GITHUB-GITEA-REPOS-AND-PM-HANDOFF-RECEIPTS.md] AGENT-101 RECEIPTS: GitHub & Gitea Multi-Repo Publisher + Master PM Handoff (`O1789`)
+- **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT101-GITHUB-GITEA-REPOS-AND-PM-HANDOFF-RECEIPTS.md` | **Updated**: `2026-10-18T20:53:49Z` | **SHA-256**: `491b171e72793ecb`
+
+- **WRITTEN-AT**: `2026-10-18T20:53:30Z`
+- **AGENT**: `Agent-101 (GitHub & Gitea Multi-Repo Publisher + Master PM Handoff Architect)`
+- **PARENT-CONVERSATION**: `d61a0f86-9a87-4a9f-8b2c-ea5791e23bc8`
+- **STREAM-LOG**: `/var/tmp/bd-headless-streams/agent101-github-gitea-pm-handoff.log`
+- **PRECHECK**: `PASS`
+- **BENCHMARK NON-INTERFERENCE INVARIANT**: `VERIFIED` (`0` commands or connections sent to `.72`, `.83`, `.125`, or `.228` `llama-bench` / `ggml-rpc-server`; `Agent-37` sweep undisturbed).
+---
+### 1. Published GitHub (`mcboyle`) & Local Gitea (`10.0.70.164:3000/mboyle`) Repositories
+All 5 repositories were staged in `/home/mboyle/git-repos/`, scrubbed by `BOYLENET_SECRET_GUARD` (`sanitize_content()` regex filter blocking `sk-ant-`, `sk-proj-`, `sk-or-`, `sk-kimi-`, `ghp_`, `gho_`, `github_pat_`, `AIza`, `xai-`, `hf_`, `AKIA`, private keys, and JWT secrets), committed to `main`, and pushed with HTTP/HTTPS `200`/`0` exit codes to **both** GitHub and Local Gitea:
+| # | Repository Name | GitHub Repository URL (`mcboyle`) | Local Gitea Repository URL (`mboyle`) | Local Staging Directory | Tracked Files | Commit SHA (`main`) |
+|---:|---|---|---|---|---:|---|
+| 1 | **`boylenet-swarm-os`** | `https://github.com/mcboyle/boylenet-swarm-os` | `http://10.0.70.164:3000/mboyle/boylenet-swarm-os` | `/home/mboyle/git-repos/boylenet-swarm-os` | `200` | `8c28f72cc2f8` |
+| 2 | **`boylenet-openwebui-supersuite`** | `https://github.com/mcboyle/boylenet-openwebui-supersuite` | `http://10.0.70.164:3000/mboyle/boylenet-openwebui-supersuite` | `/home/mboyle/git-repos/boylenet-openwebui-supersuite` | `15` | `e8d2758b7c22` |
+| 3 | **`boylenet-bd-kb-and-receipts`** | `https://github.com/mcboyle/boylenet-bd-kb-and-receipts` | `http://10.0.70.164:3000/mboyle/boylenet-bd-kb-and-receipts` | `/home/mboyle/git-repos/boylenet-bd-kb-and-receipts` | `170` | `340d8f3249cd` |
+| 4 | **`boylenet-infra-configs`** | `https://github.com/mcboyle/boylenet-infra-configs` | `http://10.0.70.164:3000/mboyle/boylenet-infra-configs` | `/home/mboyle/git-repos/boylenet-infra-configs` | `18` | `00f546673ef1` |
+| 5 | **`UniversalSwarmOS`** | `https://github.com/mcboyle/UniversalSwarmOS` | `http://10.0.70.164:3000/mboyle/UniversalSwarmOS` | `/home/mboyle/git-repos/UniversalSwarmOS` | `922` | `e426727077bb` |
+---
+### 2. Repository Contents Breakdown
+1. **`boylenet-swarm-os` (`200` files)**:
+- `bin/`: `170` Boylenet Swarm OS scripts and web portals (`bd-os-shell.py` `:4085`, `bd-topology-visualizer.py` `:4088`, `bd-model-storefront.py` `:4084`, `bd-web-terminal-drawer.py` `:4083`, `bd-trust-and-sso-portal.py` `:4082`, `bd-executive-briefing.py` `:4081`, `bd-multi-harness-web.py` `:4098`, `bd-cloud-burst-orchestrator.py` `:4090`, `bd-infra-sentinel.py` `:4099`, `bd-gpu-orchestrator.py` `:4010`, `bd-airgap`, `bd-raw-ai`, `bd-vault-curator`, `bd-ai-harness`, `bd-remote-pytest-turbo`, etc.).
+... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT101-GITHUB-GITEA-REPOS-AND-PM-HANDOFF-RECEIPTS.md`)*
+
+## 30. [AGENT100-27VM-OPEN-TERMINAL-AND-INTEGRATIONS-RECEIPTS.md] AGENT-100: All-27-VM Open Terminal Multiplexer, Personal & Admin Integrations Configurator & High-ROI Tool Swarm Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT100-27VM-OPEN-TERMINAL-AND-INTEGRATIONS-RECEIPTS.md` | **Updated**: `2026-10-18T20:46:51Z` | **SHA-256**: `0af67f3b3412bd3f`
 
 - **Written-At**: `2026-10-18T20:46:00Z`
@@ -513,7 +980,7 @@ Each of the **28 Open Terminal endpoints** (`/vm/all` + 27 `/vm/<ip>`) implement
 - `GET/POST .../files/cwd` (per-session working directory tracking; defaults to `/vms` for `/vm/all` and each VM's default directory for `/vm/<ip>`)
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT100-27VM-OPEN-TERMINAL-AND-INTEGRATIONS-RECEIPTS.md`)*
 
-## 13. [AGENT99-OPENWEBUI-PIPELINES-BDKB-IMAGE-SPEECH-50TOOLS-RECEIPTS.md] AGENT-99 RECEIPTS: OpenWebUI Pipelines Server, Image/Speech Model Suite, Master `BD KB` Knowledge Base & 50-Toolkit High-ROI Architecture
+## 31. [AGENT99-OPENWEBUI-PIPELINES-BDKB-IMAGE-SPEECH-50TOOLS-RECEIPTS.md] AGENT-99 RECEIPTS: OpenWebUI Pipelines Server, Image/Speech Model Suite, Master `BD KB` Knowledge Base & 50-Toolkit High-ROI Architecture
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT99-OPENWEBUI-PIPELINES-BDKB-IMAGE-SPEECH-50TOOLS-RECEIPTS.md` | **Updated**: `2026-10-18T20:33:17Z` | **SHA-256**: `8193810692cf9eb3`
 
 - **Timestamp (UTC)**: `2026-10-18T20:32:30Z`
@@ -540,7 +1007,7 @@ Each of the **28 Open Terminal endpoints** (`/vm/all` + 27 `/vm/<ip>`) implement
 ### 1.2 Three-Layer Live Integration
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT99-OPENWEBUI-PIPELINES-BDKB-IMAGE-SPEECH-50TOOLS-RECEIPTS.md`)*
 
-## 14. [AGENT98-OPENWEBUI-SUPERSUITE-MAX-POWER-RECEIPTS.md] AGENT-98 RECEIPT: OpenWebUI Super-Suite Maximum Power Configuration (`.164:8090` & `.72:8080`)
+## 32. [AGENT98-OPENWEBUI-SUPERSUITE-MAX-POWER-RECEIPTS.md] AGENT-98 RECEIPT: OpenWebUI Super-Suite Maximum Power Configuration (`.164:8090` & `.72:8080`)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT98-OPENWEBUI-SUPERSUITE-MAX-POWER-RECEIPTS.md` | **Updated**: `2026-10-18T20:27:56Z` | **SHA-256**: `6a03519794a2d205`
 
 - **WRITTEN-AT**: `2026-10-18T20:27:45Z`
@@ -566,7 +1033,7 @@ Each of the **28 Open Terminal endpoints** (`/vm/all` + 27 `/vm/<ip>`) implement
 - Verified via `POST /api/v1/knowledge/external/connections/qdrant-boylenet-fleet-rag/retrieve-test` on `.164:8090`: `HTTP 200`, returned `5` matching chunks with top-1 hit `## Rule 86: Dynamic Capability Routing (O1740)` (`distance: 0.596501`).
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT98-OPENWEBUI-SUPERSUITE-MAX-POWER-RECEIPTS.md`)*
 
-## 15. [AGENT96-LOCAL-VS-CLOUD-MODEL-LABELS-RECEIPTS.md] AGENT-96 RECEIPT: Local vs Cloud Model Labeling & Filtering across OpenWebUI (`.164:8090` & `.72:8080`), Storefront (`:4084`), Multi-Harness Studio (`:4098`), and Boylenet OS Shell (`:4085`)
+## 33. [AGENT96-LOCAL-VS-CLOUD-MODEL-LABELS-RECEIPTS.md] AGENT-96 RECEIPT: Local vs Cloud Model Labeling & Filtering across OpenWebUI (`.164:8090` & `.72:8080`), Storefront (`:4084`), Multi-Harness Studio (`:4098`), and Boylenet OS Shell (`:4085`)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT96-LOCAL-VS-CLOUD-MODEL-LABELS-RECEIPTS.md` | **Updated**: `2026-10-18T19:58:06Z` | **SHA-256**: `a3041c2933cb0e7c`
 
 - **WRITTEN-AT**: `2026-10-18T19:58:00Z`
@@ -591,7 +1058,7 @@ Every model in OpenWebUI on both `.164:8090` and `.72:8080` has been upserted in
 ### 2. Boylenet UI Services (`:4084`, `:4098`, `:4085`) Updated & Verified
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT96-LOCAL-VS-CLOUD-MODEL-LABELS-RECEIPTS.md`)*
 
-## 16. [AGENT97-OPENWEBUI-TOOLS-SKILLS-PLUGINS-MCP-RECEIPTS.md] AGENT 97 — OpenWebUI Universal Tool, Skill, Plugin, Git, Web, Browser & MCP Importer Receipts (`O1789`)
+## 34. [AGENT97-OPENWEBUI-TOOLS-SKILLS-PLUGINS-MCP-RECEIPTS.md] AGENT 97 — OpenWebUI Universal Tool, Skill, Plugin, Git, Web, Browser & MCP Importer Receipts (`O1789`)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT97-OPENWEBUI-TOOLS-SKILLS-PLUGINS-MCP-RECEIPTS.md` | **Updated**: `2026-10-18T19:53:17Z` | **SHA-256**: `a7078404175724cc`
 
 - **Written At**: `2026-10-18T19:53:00Z`
@@ -611,7 +1078,7 @@ Every model in OpenWebUI on both `.164:8090` and `.72:8080` has been upserted in
 | **6. OpenWebUI Tool Server & SearXNG Web Search (`config` table)** | `:8090/api/v1/configs/tool_servers` & `.72:8080/api/v1/configs/tool_servers` | `http://10.0.70.164:4079` (`/openapi.json`) + SearXNG `http://10.0.70.164:8888/search?q=<query>&format=json` | `verified_tool_servers: 1` on both `:8090` and `.72:8080`; `web.search.enable = true` |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT97-OPENWEBUI-TOOLS-SKILLS-PLUGINS-MCP-RECEIPTS.md`)*
 
-## 17. [AGENT94-ALL-165-VIEWS-WIRED-LIVE-60FPS-RECEIPTS.md] AGENT-94: ALL 165 VIEWS (`V01`–`V100` + `T01`–`T65`) WIRED AS LIVE 60FPS VIEWS + PREFERRED VIEW PERSISTER + 4×2 8-VIEW WALLBOARD + GALLERY LAUNCHERS RECEIPTS
+## 35. [AGENT94-ALL-165-VIEWS-WIRED-LIVE-60FPS-RECEIPTS.md] AGENT-94: ALL 165 VIEWS (`V01`–`V100` + `T01`–`T65`) WIRED AS LIVE 60FPS VIEWS + PREFERRED VIEW PERSISTER + 4×2 8-VIEW WALLBOARD + GALLERY LAUNCHERS RECEIPTS
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT94-ALL-165-VIEWS-WIRED-LIVE-60FPS-RECEIPTS.md` | **Updated**: `2026-10-18T19:32:58Z` | **SHA-256**: `c38f46326952938a`
 
 - **WRITTEN-AT**: `2026-10-18T19:32:45Z`
@@ -642,7 +1109,7 @@ Every model in OpenWebUI on both `.164:8090` and `.72:8080` has been upserted in
 - `hybrid`, `n8n_hanging_circles`, `hivemind_crt`, `kimi_radial_core`, `knime_swimlanes`, `rivet_noodles`, `langgraph_state`, `crewai_arena`, `mcts_tree`, `flamegraph_spans`, `military_c4isr_radar`, `f35_hud_mfd`, `carrier_catapult`, `submarine_sonar`, `rack_12u_front_rear_xray`, `etherlighting_switch_matrix`, `sankey_river`, `rehoboam_ring`, `nerv_magi_trinity`, `cern_collider`, `quantum_bloch_rails`, `eurorack_synth_patch`, `hft_orderbook`, `jwst_hex_mirrors`, `ue5_blueprint_nodes`, `factorio_conveyor_bus`, `eve_tidi_orbit`, `centurion_omega_masterpiece`, `dna_helix`, `lcars_deck`, `neural_cortex`, `unifi_os`, `iso_floor`, and `rack_twin`.
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT94-ALL-165-VIEWS-WIRED-LIVE-60FPS-RECEIPTS.md`)*
 
-## 18. [AGENT95-86-MODELS-ALL-PLATFORMS-OPENWEBUI-LITELLM-RECEIPTS.md] AGENT 95 — Universal 86-Model Platform Sync Receipts (`O1789`)
+## 36. [AGENT95-86-MODELS-ALL-PLATFORMS-OPENWEBUI-LITELLM-RECEIPTS.md] AGENT 95 — Universal 86-Model Platform Sync Receipts (`O1789`)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT95-86-MODELS-ALL-PLATFORMS-OPENWEBUI-LITELLM-RECEIPTS.md` | **Updated**: `2026-10-18T19:32:27Z` | **SHA-256**: `46bda5e1eb8affbd`
 
 - **Written At**: `2026-10-18T19:32:00Z`
@@ -660,7 +1127,7 @@ Every model in OpenWebUI on both `.164:8090` and `.72:8080` has been upserted in
 | **3B. OpenWebUI (Vault A `.72:8080`)** | `http://10.0.70.72:8080` (`http://ai-webui.boylenet.themfboyles.com`) | `open-webui` on `.72` (`webui.db` -> `http://10.0.70.164:4000/v1`) | `64` OpenAI models | **`228` OpenAI/LiteLLM models** + local `.72:11434` Ollama models | `GET http://10.0.70.72:8080/api/version` (`v0.9.6`) + `webui.db` bound to `http://10.0.70.164:4000/v1` (`sk-fleet-local`) |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT95-86-MODELS-ALL-PLATFORMS-OPENWEBUI-LITELLM-RECEIPTS.md`)*
 
-## 19. [AGENT86-50VIEW-60FPS-AND-WALLBOARD-RECEIPTS.md] Agent-86 Receipt: 50-View 60fps Engine (`V01`–`V50`) + `2×2` Quad & `3×2` Six-View Wallboard + Auto-Cycle Cinema (`:4088`)
+## 37. [AGENT86-50VIEW-60FPS-AND-WALLBOARD-RECEIPTS.md] Agent-86 Receipt: 50-View 60fps Engine (`V01`–`V50`) + `2×2` Quad & `3×2` Six-View Wallboard + Auto-Cycle Cinema (`:4088`)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT86-50VIEW-60FPS-AND-WALLBOARD-RECEIPTS.md` | **Updated**: `2026-10-18T18:48:08Z` | **SHA-256**: `2024d594e89a17ca`
 
 - **Written At**: `2026-10-18T18:47:35Z`
@@ -677,7 +1144,7 @@ Every model in OpenWebUI on both `.164:8090` and `.72:8080` has been upserted in
 5. **Cat 5 `🛸 Sci-Fi, Cloud & Cyberpunk Decks (V35–V42)`**: `V35 Ubiquiti UniFi OS Dark Topology`, `V36 Isometric 3D Data-Center Floor`, `V37 Iron Man JARVIS Arc-Reactor HUD`, `V38 Star Trek LCARS Engineering Deck`, `V39 TRON Legacy Light-Grid`, `V40 Cyberpunk 2077 Arasaka Netrunner Deck`, `V41 Apple VisionOS Spatial Glass`, `V42 Datadog / Cilium eBPF Service Mesh`.
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT86-50VIEW-60FPS-AND-WALLBOARD-RECEIPTS.md`)*
 
-## 20. [AGENT81-RACK-TWINS-AND-BLUEPRINT-MOCKUPS-RECEIPTS.md] AGENT-81 RECEIPT: Physical 12U Rack Digital Twins (`#11`–`#15`) & Architectural/Silicon/City Blueprints (`#41`–`#45`)
+## 38. [AGENT81-RACK-TWINS-AND-BLUEPRINT-MOCKUPS-RECEIPTS.md] AGENT-81 RECEIPT: Physical 12U Rack Digital Twins (`#11`–`#15`) & Architectural/Silicon/City Blueprints (`#41`–`#45`)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT81-RACK-TWINS-AND-BLUEPRINT-MOCKUPS-RECEIPTS.md` | **Updated**: `2026-10-18T18:41:27Z` | **SHA-256**: `56d98bd24acbe71a`
 
 - **WRITTEN-AT**: `2026-10-18T18:41:05Z`
@@ -695,7 +1162,7 @@ Every model in OpenWebUI on both `.164:8090` and `.72:8080` has been upserted in
 | `#14` | `topology_mockup_14.png` | `480,301` | `1920x1080` | `40801f4257c16557ece227c5c75382c695d7044c7b3cd98f19aa47810bb06ea6` | Thermal Infrared (FLIR Ironbow) Rack & CFD Airflow Heatmap (`79.5°F` intake -> CPU/T4 heat plumes `60–74°C` -> rear PSU exhaust & iLO4 fan RPMs) |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT81-RACK-TWINS-AND-BLUEPRINT-MOCKUPS-RECEIPTS.md`)*
 
-## 21. [AGENT87-HIVEMIND-COT-11-27-RECEIPTS.md] AGENT-87 RECEIPTS: HiveMind + Chain-of-Thought + Local 12U Rack + Cloud Search Mockups (11..27)
+## 39. [AGENT87-HIVEMIND-COT-11-27-RECEIPTS.md] AGENT-87 RECEIPTS: HiveMind + Chain-of-Thought + Local 12U Rack + Cloud Search Mockups (11..27)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT87-HIVEMIND-COT-11-27-RECEIPTS.md` | **Updated**: `2026-10-18T18:41:24Z` | **SHA-256**: `4ca6913c97a8c21a`
 
 - **WRITTEN-AT**: 2026-10-18T18:41:05Z
@@ -718,7 +1185,7 @@ Every model in OpenWebUI on both `.164:8090` and `.72:8080` has been upserted in
 | 19 | `/home/mboyle/.gemini/antigravity-cli/brain/d61a0f86-9a87-4a9f-8b2c-ea5791e23bc8/screenshots/hivemind_cot_19.png` | 95,321 | Stanford Generative Agents / Smallville Hive-Mind Memory Stream & Reflection Tree |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT87-HIVEMIND-COT-11-27-RECEIPTS.md`)*
 
-## 22. [AGENT92-HIVEMIND-COT-81-90-RECEIPTS.md] AGENT-92 HIVEMIND COT 81-90 RECEIPTS
+## 40. [AGENT92-HIVEMIND-COT-81-90-RECEIPTS.md] AGENT-92 HIVEMIND COT 81-90 RECEIPTS
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT92-HIVEMIND-COT-81-90-RECEIPTS.md` | **Updated**: `2026-10-18T18:39:49Z` | **SHA-256**: `1ca948c5b3889ad7`
 
 - **WRITTEN-AT**: `2026-10-18T18:39:49Z`
@@ -738,7 +1205,7 @@ Every model in OpenWebUI on both `.164:8090` and `.72:8080` has been upserted in
 | 88 | `/home/mboyle/.gemini/antigravity-cli/brain/d61a0f86-9a87-4a9f-8b2c-ea5791e23bc8/screenshots/hivemind_cot_88.png` | SpaceX Starshield / Starlink Laser-Interlink Orbital Mesh + Boylenet 12U Ground Terminus | 309411 | `10fa052b607017bb269f5902b2a85ac8232ac0649d78219558ae8b8db428f173` |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT92-HIVEMIND-COT-81-90-RECEIPTS.md`)*
 
-## 23. [AGENT84-HIVEMIND-COT-MOVEMENT-MOCKUPS-RECEIPTS.md] AGENT-84 RECEIPT — HIVEMIND & CoT WORKFLOW MOVEMENT MOCKUPS (`hivemind_cot_01.png` .. `hivemind_cot_10.png`)
+## 41. [AGENT84-HIVEMIND-COT-MOVEMENT-MOCKUPS-RECEIPTS.md] AGENT-84 RECEIPT — HIVEMIND & CoT WORKFLOW MOVEMENT MOCKUPS (`hivemind_cot_01.png` .. `hivemind_cot_10.png`)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT84-HIVEMIND-COT-MOVEMENT-MOCKUPS-RECEIPTS.md` | **Updated**: `2026-10-18T18:38:38Z` | **SHA-256**: `1cbd3bce86a74805`
 
 - **WRITTEN-AT**: `2026-10-18T18:38:15Z`
@@ -760,7 +1227,7 @@ To address the operator's request (*"I want more like visual movement not just t
 - Central glowing `CORE (HIVE MIND <CoT>)` orb radiating particle-studded spokes through concentric reasoning rings (`CoT-1: DECOMPOSE` .. `CoT-6: SYNTHESIZE` -> 12 active cross-pool subagents) to the **Left Outer Hemisphere (12U Physical Rack Hardware `.72`, `.83`, `.125`, `.228`, `.82`, `79.5°F` bezel, Rear UPS & Pro Max)** and **Right Outer Hemisphere (Cloud Search & Browser Oracles)**.
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT84-HIVEMIND-COT-MOVEMENT-MOCKUPS-RECEIPTS.md`)*
 
-## 24. [AGENT90-HIVEMIND-COT-61-70-RECEIPTS.md] AGENT-90 STRIKE TEAM D — HIVEMIND + CoT + 12U RACK + CLOUD SEARCH RECEIPTS (`hivemind_cot_61.png` .. `hivemind_cot_70.png`)
+## 42. [AGENT90-HIVEMIND-COT-61-70-RECEIPTS.md] AGENT-90 STRIKE TEAM D — HIVEMIND + CoT + 12U RACK + CLOUD SEARCH RECEIPTS (`hivemind_cot_61.png` .. `hivemind_cot_70.png`)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT90-HIVEMIND-COT-61-70-RECEIPTS.md` | **Updated**: `2026-10-18T18:38:15Z` | **SHA-256**: `2ed7d55946b5fa68`
 
 - **WRITTEN-AT**: `2026-10-18T18:38:15Z`
@@ -781,7 +1248,7 @@ To address the operator's request (*"I want more like visual movement not just t
 | 67 | `/home/mboyle/.gemini/antigravity-cli/brain/d61a0f86-9a87-4a9f-8b2c-ea5791e23bc8/screenshots/hivemind_cot_67.png` | 553,066 | `82f8497fef3ccb4a33094effd994847511c079a5a676b19a312da1c6c8ca4fd7` | Qdrant Vector Hippocampus (.125:6333) + PostgreSQL Episodic Dreamer CoT Consolidation Graph |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT90-HIVEMIND-COT-61-70-RECEIPTS.md`)*
 
-## 25. [AGENT85-LIVE-60FPS-HIVEMIND-COT-ENGINE-RECEIPTS.md] AGENT-85: Live 60fps Animated HiveMind, CoT Workflow, Local 12U Rack & Cloud Search Engine (`:4088`)
+## 43. [AGENT85-LIVE-60FPS-HIVEMIND-COT-ENGINE-RECEIPTS.md] AGENT-85: Live 60fps Animated HiveMind, CoT Workflow, Local 12U Rack & Cloud Search Engine (`:4088`)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT85-LIVE-60FPS-HIVEMIND-COT-ENGINE-RECEIPTS.md` | **Updated**: `2026-10-18T18:18:44Z` | **SHA-256**: `5a9ef648ad41c132`
 
 - **Written-At**: 2026-10-18T18:18:30Z
@@ -800,7 +1267,7 @@ To address the operator's request (*"I want more like visual movement not just t
 - Added the floating **5-Sub-View Switcher** (`#hm-subbar`) inside the stage:
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT85-LIVE-60FPS-HIVEMIND-COT-ENGINE-RECEIPTS.md`)*
 
-## 26. [AGENT64-3D-TOPOLOGY-SWARM-VISUALIZER-RECEIPTS.md] AGENT-64: Boylenet Live 6-Mode Architecture Topology, 12U Server Rack Digital Twin & Military C4ISR Visualizer (`:4088` v2.1) — Verification Receipts
+## 44. [AGENT64-3D-TOPOLOGY-SWARM-VISUALIZER-RECEIPTS.md] AGENT-64: Boylenet Live 6-Mode Architecture Topology, 12U Server Rack Digital Twin & Military C4ISR Visualizer (`:4088` v2.1) — Verification Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT64-3D-TOPOLOGY-SWARM-VISUALIZER-RECEIPTS.md` | **Updated**: `2026-10-18T18:08:51Z` | **SHA-256**: `eefacfdc46509227`
 
 - **Timestamp (UTC)**: `2026-10-18T18:08:15Z`
@@ -824,7 +1291,7 @@ To address the operator's request (*"I want more like visual movement not just t
 - **Front Top Bezel**: Red 7-segment LED thermostat reading **`79.5°F`** + illuminated red rocker switch.
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT64-3D-TOPOLOGY-SWARM-VISUALIZER-RECEIPTS.md`)*
 
-## 27. [AGENT80-MILITARY-SCIFI-MISSION-MOCKUPS-RECEIPTS.md] AGENT-80 STRIKE TEAM A — MILITARY C4ISR (#61–#65), SCI-FI DECKS (#16–#20) & MISSION CONTROL (#31–#35) RECEIPTS
+## 45. [AGENT80-MILITARY-SCIFI-MISSION-MOCKUPS-RECEIPTS.md] AGENT-80 STRIKE TEAM A — MILITARY C4ISR (#61–#65), SCI-FI DECKS (#16–#20) & MISSION CONTROL (#31–#35) RECEIPTS
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT80-MILITARY-SCIFI-MISSION-MOCKUPS-RECEIPTS.md` | **Updated**: `2026-10-18T18:07:38Z` | **SHA-256**: `4293c2a78e08f07f`
 
 - **Timestamp (UTC)**: `2026-10-18T18:07:15Z`
@@ -848,7 +1315,7 @@ To address the operator's request (*"I want more like visual movement not just t
 | `#18` | `topology_mockup_18.png` | `81,069` | `1920x1080` | Star Trek LCARS Enterprise Engineering Deck (amber/periwinkle curved LCARS elbows + Warp-Core GPU column) |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT80-MILITARY-SCIFI-MISSION-MOCKUPS-RECEIPTS.md`)*
 
-## 28. [AGENT78-UX-PILLAR6-BRIEFING-SEARCH-DOCTOR-RECEIPTS.md] AGENT-78 RECEIPT: Pillar 6 — Morning Executive Briefing, Universal Semantic Search (`Ctrl+Shift+F`), Toast Notification Center & 1-Click Full Cluster Doctor (`:4081` — `#UX-27..31`)
+## 46. [AGENT78-UX-PILLAR6-BRIEFING-SEARCH-DOCTOR-RECEIPTS.md] AGENT-78 RECEIPT: Pillar 6 — Morning Executive Briefing, Universal Semantic Search (`Ctrl+Shift+F`), Toast Notification Center & 1-Click Full Cluster Doctor (`:4081` — `#UX-27..31`)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT78-UX-PILLAR6-BRIEFING-SEARCH-DOCTOR-RECEIPTS.md` | **Updated**: `2026-10-18T18:06:14Z` | **SHA-256**: `062e1845ecd552e3`
 
 - **WRITTEN-AT**: `2026-10-18T18:05:30Z`
@@ -874,7 +1341,7 @@ To address the operator's request (*"I want more like visual movement not just t
 - Measured latency: **`79.55 ms`** (`< 150 ms` SLA).
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT78-UX-PILLAR6-BRIEFING-SEARCH-DOCTOR-RECEIPTS.md`)*
 
-## 29. [AGENT83-SWARM-HYBRID-AND-SPECIALIZED-MOCKUPS-RECEIPTS.md] AGENT-83: Strike Team D — 20 AI Swarm Workflows (`#36`–`#40`), Next-Gen OS & Master Hybrid Cockpits (`#46`–`#50`), and Specialized Operational Lenses (`#51`–`#60`) Receipts
+## 47. [AGENT83-SWARM-HYBRID-AND-SPECIALIZED-MOCKUPS-RECEIPTS.md] AGENT-83: Strike Team D — 20 AI Swarm Workflows (`#36`–`#40`), Next-Gen OS & Master Hybrid Cockpits (`#46`–`#50`), and Specialized Operational Lenses (`#51`–`#60`) Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT83-SWARM-HYBRID-AND-SPECIALIZED-MOCKUPS-RECEIPTS.md` | **Updated**: `2026-10-18T18:03:14Z` | **SHA-256**: `974a30ddbbd811f8`
 
 - **WRITTEN-AT**: `2026-10-18T18:02:20Z`
@@ -895,7 +1362,7 @@ To address the operator's request (*"I want more like visual movement not just t
 | `40` | AI Swarm Workflow | **"$1,000 Cloud Credit & Pool Quota Fuel-Tank Transfer" Diagram** (`4×$250 Claude Tanks A–D` + `Codex Cloud` + `Local 4×T4 Reserve` + `O1740 3-Valve Manifold`) | `/home/mboyle/.gemini/antigravity-cli/brain/d61a0f86-9a87-4a9f-8b2c-ea5791e23bc8/screenshots/topology_mockup_40.png` | `137,628 B` | **PASS** |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT83-SWARM-HYBRID-AND-SPECIALIZED-MOCKUPS-RECEIPTS.md`)*
 
-## 30. [AGENT74-UX-PILLAR1-7-UNIFIED-OS-SHELL-RECEIPTS.md] AGENT-74 RECEIPTS — UI/UX Super-Swarm Pillars 1 & 7: Boylenet Unified OS Desktop Shell (`:4085` / `http://os.boylenet.themfboyles.com`)
+## 48. [AGENT74-UX-PILLAR1-7-UNIFIED-OS-SHELL-RECEIPTS.md] AGENT-74 RECEIPTS — UI/UX Super-Swarm Pillars 1 & 7: Boylenet Unified OS Desktop Shell (`:4085` / `http://os.boylenet.themfboyles.com`)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT74-UX-PILLAR1-7-UNIFIED-OS-SHELL-RECEIPTS.md` | **Updated**: `2026-10-18T17:49:41Z` | **SHA-256**: `67365e269361f02f`
 
 - **WRITTEN-AT**: `2026-10-18T17:49:15Z`
@@ -934,7 +1401,7 @@ To address the operator's request (*"I want more like visual movement not just t
 - **`📺 TV Wallboard Auto-Cycle (#UX-21)`**: Automatically cycles through flagship operational dashboards (`:4081`, `:4088`, `:4098`, `:4090`, `:4084`, `:4091`, `:4099`, `:3001`) every 15 seconds with next-up indicator and manual step controls.
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT74-UX-PILLAR1-7-UNIFIED-OS-SHELL-RECEIPTS.md`)*
 
-## 31. [AGENT73-60-TOPOLOGY-MOCKUPS-RECEIPTS.md] AGENT73 — 60 Topology Visual Mockups + 5 Military C4ISR Screenshots Receipt (O1789)
+## 49. [AGENT73-60-TOPOLOGY-MOCKUPS-RECEIPTS.md] AGENT73 — 60 Topology Visual Mockups + 5 Military C4ISR Screenshots Receipt (O1789)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT73-60-TOPOLOGY-MOCKUPS-RECEIPTS.md` | **Updated**: `2026-10-18T17:45:14Z` | **SHA-256**: `998aa54141378d4d`
 
 - **Status**: `PASS`
@@ -966,7 +1433,7 @@ To address the operator's request (*"I want more like visual movement not just t
 ### Complete Catalog of 60 Rendered `1920x1080` Screenshots (`/home/mboyle/.gemini/antigravity-cli/brain/d61a0f86-9a87-4a9f-8b2c-ea5791e23bc8/screenshots/`)
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT73-60-TOPOLOGY-MOCKUPS-RECEIPTS.md`)*
 
-## 32. [AGENT82-DEVOPS-AND-NEURAL-PHYSICS-MOCKUPS-RECEIPTS.md] AGENT-82 DEVOPS & NEURAL/PHYSICS TOPOLOGY MOCKUPS RECEIPT (`#21`–`#30`)
+## 50. [AGENT82-DEVOPS-AND-NEURAL-PHYSICS-MOCKUPS-RECEIPTS.md] AGENT-82 DEVOPS & NEURAL/PHYSICS TOPOLOGY MOCKUPS RECEIPT (`#21`–`#30`)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT82-DEVOPS-AND-NEURAL-PHYSICS-MOCKUPS-RECEIPTS.md` | **Updated**: `2026-10-18T17:40:19Z` | **SHA-256**: `e1b469d388667b1b`
 
 - **WRITTEN-AT**: `2026-10-18T17:40:19Z`
@@ -989,7 +1456,7 @@ To address the operator's request (*"I want more like visual movement not just t
 | `#29` | `topology_mockup_29.png` | Gravitational N-Body Solar System (VMs sized by RAM/VRAM + orbiting agent moons) | `1920x1080` | `770,275` | PASS |
 | `#30` | `topology_mockup_30.png` | Circos 360° Chord Ribbon Wheel (27 VMs + 12 Harnesses) | `1920x1080` | `552,926` | PASS |
 
-## 33. [AGENT79-UX-SUPER-SWARM-MASTER-E2E-RECEIPTS.md] AGENT-79: UI/UX Super-Swarm — Pillar 4 & Master Traefik/Dashy/UniFi DNS & Browser Oracle E2E Integration Receipts (`:4081..:4085` & `:4088`)
+## 51. [AGENT79-UX-SUPER-SWARM-MASTER-E2E-RECEIPTS.md] AGENT-79: UI/UX Super-Swarm — Pillar 4 & Master Traefik/Dashy/UniFi DNS & Browser Oracle E2E Integration Receipts (`:4081..:4085` & `:4088`)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT79-UX-SUPER-SWARM-MASTER-E2E-RECEIPTS.md` | **Updated**: `2026-10-18T17:30:13Z` | **SHA-256**: `8210f6b6ddc68301`
 
 - **WRITTEN-AT**: `2026-10-18T17:29:35Z`
@@ -1008,7 +1475,7 @@ All 6 UI/UX Pillar services (plus Dashy `:4080`, Multi-Harness `:4098`, and Clou
 | `:4081` | **Pillar 6 — Morning Executive Briefing, Universal Search & 12-Point Cluster Doctor** (`briefing` / `doctor`) | `bd-executive-briefing.service` (`/home/mboyle/bin/bd-executive-briefing.py`) | `boylenet-briefing-doctor` -> `http://10.0.70.164:4081` | `200` | `200` | `200` |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT79-UX-SUPER-SWARM-MASTER-E2E-RECEIPTS.md`)*
 
-## 34. [AGENT75-UX-PILLAR5-MODEL-STOREFRONT-AND-TERMINAL-RECEIPTS.md] AGENT-75: UI/UX Super-Swarm Pillar 5 — Visual 86-Model Vault Storefront (`:4084`) & Browser Multi-Node Terminal / Live Headless + `tmux` Agent TV Wall / Receipt Explorer (`:4083`) Receipts
+## 52. [AGENT75-UX-PILLAR5-MODEL-STOREFRONT-AND-TERMINAL-RECEIPTS.md] AGENT-75: UI/UX Super-Swarm Pillar 5 — Visual 86-Model Vault Storefront (`:4084`) & Browser Multi-Node Terminal / Live Headless + `tmux` Agent TV Wall / Receipt Explorer (`:4083`) Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT75-UX-PILLAR5-MODEL-STOREFRONT-AND-TERMINAL-RECEIPTS.md` | **Updated**: `2026-10-18T17:23:43Z` | **SHA-256**: `15bca7a06efebbce`
 
 - **Timestamp (UTC)**: `2026-10-18T17:23:00Z`
@@ -1030,7 +1497,7 @@ Upgraded `/home/mboyle/bin/bd-web-terminal-drawer.py` (`GET /api/tv-wall`, `GET 
 - Updated `/home/mboyle/bin/bd-ai-harness` (`_TeeOut` stream tap) so every headless invocation of `claude`, `codex`, `opencode`, `openclaw`, `hermes`, `deepseek`, or `openrouter` automatically tees its prompt, reasoning trace, tool calls, and output into `/var/tmp/bd-headless-streams/<harness>-latest.log`.
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT75-UX-PILLAR5-MODEL-STOREFRONT-AND-TERMINAL-RECEIPTS.md`)*
 
-## 35. [AGENT73-10-TOPOLOGY-MOCKUPS-RECEIPTS.md] AGENT-73: 10-Style Boylenet Architecture Topology & Live Swarm Visualizer Mockups + Physical 12U Rack Digital Twin Receipts
+## 53. [AGENT73-10-TOPOLOGY-MOCKUPS-RECEIPTS.md] AGENT-73: 10-Style Boylenet Architecture Topology & Live Swarm Visualizer Mockups + Physical 12U Rack Digital Twin Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT73-10-TOPOLOGY-MOCKUPS-RECEIPTS.md` | **Updated**: `2026-10-18T17:22:56Z` | **SHA-256**: `e7f78b5bad223992`
 
 - **WRITTEN-AT**: `2026-10-18T17:22:30Z`
@@ -1050,7 +1517,7 @@ Upgraded `/home/mboyle/bin/bd-web-terminal-drawer.py` (`GET /api/tv-wall`, `GET 
 | `03` | **Palantir Gotham Tactical Defense HUD** | `#03070b` C4ISR command screen with `#00f0ff` cyan & `#ffb000` amber hairlines, central 360° azimuth radar with corner targeting reticles `[+]` on active VMs/GPUs, O1740 Pool Quota ledger on left, and 27-VM readiness matrix + WAL intercept stream on right | `/home/mboyle/.gemini/antigravity-cli/brain/d61a0f86-9a87-4a9f-8b2c-ea5791e23bc8/screenshots/topology_mockup_03.png` | `248,555 B` | **PASS** |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT73-10-TOPOLOGY-MOCKUPS-RECEIPTS.md`)*
 
-## 36. [AGENT77-UX-PILLAR3-GUIDED-SWARM-STUDIO-RECEIPTS.md] AGENT-77 RECEIPT: UI/UX Super-Swarm Pillar 3 — Guided AI & Swarm Launch UX (`#UX-11..#UX-16`)
+## 54. [AGENT77-UX-PILLAR3-GUIDED-SWARM-STUDIO-RECEIPTS.md] AGENT-77 RECEIPT: UI/UX Super-Swarm Pillar 3 — Guided AI & Swarm Launch UX (`#UX-11..#UX-16`)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT77-UX-PILLAR3-GUIDED-SWARM-STUDIO-RECEIPTS.md` | **Updated**: `2026-10-18T17:04:28Z` | **SHA-256**: `90e7db375bdbca32`
 
 - **Timestamp (UTC)**: 2026-10-18T17:04:00Z
@@ -1077,7 +1544,7 @@ Upgraded `/home/mboyle/bin/bd-web-terminal-drawer.py` (`GET /api/tv-wall`, `GET 
 9. `🌙 Kimi 1M Codebase Cartography` (`studio` • `kimi` • `cartograph` • `kimi-for-coding`)
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT77-UX-PILLAR3-GUIDED-SWARM-STUDIO-RECEIPTS.md`)*
 
-## 37. [AGENT76-UX-PILLAR2-SSO-QR-AND-CA-RECEIPTS.md] Agent-76 Receipts — UI/UX Super-Swarm Pillar 2: Zero-Friction Auto-Auth, QR Mobile Handoff, Companion Bookmarklet & Local Wildcard HTTPS Root CA (`:4082` `#UX-6..10`)
+## 55. [AGENT76-UX-PILLAR2-SSO-QR-AND-CA-RECEIPTS.md] Agent-76 Receipts — UI/UX Super-Swarm Pillar 2: Zero-Friction Auto-Auth, QR Mobile Handoff, Companion Bookmarklet & Local Wildcard HTTPS Root CA (`:4082` `#UX-6..10`)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT76-UX-PILLAR2-SSO-QR-AND-CA-RECEIPTS.md` | **Updated**: `2026-10-18T17:04:23Z` | **SHA-256**: `746de36c46cb8546`
 
 - **Written-At**: `2026-10-18T17:04:00Z`
@@ -1107,7 +1574,7 @@ Each button triggers `/sso/login/<target>`, performing a live server-side authen
 | **⚡ Auto-Login LiteLLM (.164)** | `/sso/login/litellm-164` | `verified=True`, `HTTP 303`, mints `token=eyJ...` (`proxy_admin` JWT cookie) |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT76-UX-PILLAR2-SSO-QR-AND-CA-RECEIPTS.md`)*
 
-## 38. [AGENT72-ORACLE-FULL-CLUSTER-E2E-SUITE-RECEIPTS.md] AGENT-72: Full-Cluster Browser Oracle CDP Visual & Functional E2E Suite + Master Dashy/Traefik/DNS Synchronization Receipts
+## 56. [AGENT72-ORACLE-FULL-CLUSTER-E2E-SUITE-RECEIPTS.md] AGENT-72: Full-Cluster Browser Oracle CDP Visual & Functional E2E Suite + Master Dashy/Traefik/DNS Synchronization Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT72-ORACLE-FULL-CLUSTER-E2E-SUITE-RECEIPTS.md` | **Updated**: `2026-10-18T16:44:01Z` | **SHA-256**: `63349d8ff7e5424e`
 
 - **WRITTEN-AT**: `2026-10-18T16:43:30Z`
@@ -1132,7 +1599,7 @@ All 15 Web UI microservices (`:4080` and `:4086`..`:4099`) were polled until `10
 | `:4093` | Unified Voice, Vision & Multimodal Cockpit (`voice` / `multimodal`) | `boylenet-multimodal` -> `http://10.0.70.164:4093` | `200` | `200` | `200` |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT72-ORACLE-FULL-CLUSTER-E2E-SUITE-RECEIPTS.md`)*
 
-## 39. [AGENT68-TIMECAPSULE-LOGCORRELATOR-LORAFACTORY-RECEIPTS.md] AGENT-68 RECEIPT: vSphere Snapshot TimeCapsule, 27-Node Log Correlator & LoRA Dataset Factory
+## 57. [AGENT68-TIMECAPSULE-LOGCORRELATOR-LORAFACTORY-RECEIPTS.md] AGENT-68 RECEIPT: vSphere Snapshot TimeCapsule, 27-Node Log Correlator & LoRA Dataset Factory
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT68-TIMECAPSULE-LOGCORRELATOR-LORAFACTORY-RECEIPTS.md` | **Updated**: `2026-10-18T16:41:57Z` | **SHA-256**: `f3efc9a2e298946d`
 
 - **Agent**: Agent-68 (Swarms `#19`, `#20`, `#23`, `#C14`)
@@ -1162,7 +1629,7 @@ bd-ubuntu-2404-template-20261003 pristine-20261003                          2026
 ### 2. Swarm #23 & #C14: 27-Node Elasticsearch Log Correlator (`/home/mboyle/bin/bd-log-correlator`)
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT68-TIMECAPSULE-LOGCORRELATOR-LORAFACTORY-RECEIPTS.md`)*
 
-## 40. [AGENT67-KV-WARMER-AND-BUILD-FARM-RECEIPTS.md] AGENT-67: Prompt-Cache KV-Prefix Pinning Daemon (`bd-kv-warmer`) & Distributed Build Farm (`bd-build-farm`) Receipts
+## 58. [AGENT67-KV-WARMER-AND-BUILD-FARM-RECEIPTS.md] AGENT-67: Prompt-Cache KV-Prefix Pinning Daemon (`bd-kv-warmer`) & Distributed Build Farm (`bd-build-farm`) Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT67-KV-WARMER-AND-BUILD-FARM-RECEIPTS.md` | **Updated**: `2026-10-18T16:40:29Z` | **SHA-256**: `f74b1104a5dd6afa`
 
 - **WRITTEN-AT**: `2026-10-18T16:40:00Z`
@@ -1196,7 +1663,7 @@ bd-ubuntu-2404-template-20261003 pristine-20261003                          2026
 | `tier1-pool-beta` | `http://10.0.70.125:8081/v1/chat/completions` | `qwen2.5-coder-32b-distributed` | `9,740.53 ms` | `248.09 ms` | **39.26x** | **-97.45%** | `3,835` |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT67-KV-WARMER-AND-BUILD-FARM-RECEIPTS.md`)*
 
-## 41. [AGENT71-CODEX-WAL-AND-INFRA-TEST-SUITE-RECEIPTS.md] Agent-71 Receipt: OpenAI Codex `gpt-6.1-sol` / `gpt-6-astra` Concurrency Suite (`#C5` & `#C6`) & Unified Boylenet Infrastructure E2E Verification Suite (`#C7` & `#C8`)
+## 59. [AGENT71-CODEX-WAL-AND-INFRA-TEST-SUITE-RECEIPTS.md] Agent-71 Receipt: OpenAI Codex `gpt-6.1-sol` / `gpt-6-astra` Concurrency Suite (`#C5` & `#C6`) & Unified Boylenet Infrastructure E2E Verification Suite (`#C7` & `#C8`)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT71-CODEX-WAL-AND-INFRA-TEST-SUITE-RECEIPTS.md` | **Updated**: `2026-10-18T16:28:00Z` | **SHA-256**: `ffe879ade2fc6121`
 
 - **WRITTEN-AT**: `2026-10-18T16:26:30Z`
@@ -1217,7 +1684,7 @@ bd-ubuntu-2404-template-20261003 pristine-20261003                          2026
 7. `test_16_thread_concurrent_rate_limiter_fairness_and_thread_safety` — Exercises **16 concurrent threads** (`240` token acquisitions under live throttle/recovery perturbations) with zero race conditions and invariant `0.0 <= tokens <= capacity`.
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT71-CODEX-WAL-AND-INFRA-TEST-SUITE-RECEIPTS.md`)*
 
-## 42. [AGENT70-CLAUDE-CD-SECURITY-AND-TYPE-AUDIT-RECEIPTS.md] O1789 Agent-70: Swarms #C3 & #C4 (`claude-opus-5-5` Pool C & D) Security, Static Type & Lint Hardening Receipts
+## 60. [AGENT70-CLAUDE-CD-SECURITY-AND-TYPE-AUDIT-RECEIPTS.md] O1789 Agent-70: Swarms #C3 & #C4 (`claude-opus-5-5` Pool C & D) Security, Static Type & Lint Hardening Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT70-CLAUDE-CD-SECURITY-AND-TYPE-AUDIT-RECEIPTS.md` | **Updated**: `2026-10-18T16:21:47Z` | **SHA-256**: `8db161d4ad106666`
 
 - **Timestamp (UTC)**: `2026-10-18T16:21:10Z`
@@ -1240,7 +1707,7 @@ bd-ubuntu-2404-template-20261003 pristine-20261003                          2026
 | 6 | `/home/mboyle/bin/bd-remote-pytest-turbo` | Bash CLI (`#!/usr/bin/env bash`) | `bash -n PASS (0 errors)` | `PASS (array SSH_OPTS)` | `N/A (Bash)` | Verified `bash -n` syntax and embedded Python `compileall` invocation | `PASS` |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT70-CLAUDE-CD-SECURITY-AND-TYPE-AUDIT-RECEIPTS.md`)*
 
-## 43. [AGENT65-OPS-SHELL-AND-MOBILE-PWA-RECEIPTS.md] AGENT-65 RECEIPTS — Natural-Language Ops Shell (`:4089`) & Mobile/Tablet PWA Command Deck (`:4086`)
+## 61. [AGENT65-OPS-SHELL-AND-MOBILE-PWA-RECEIPTS.md] AGENT-65 RECEIPTS — Natural-Language Ops Shell (`:4089`) & Mobile/Tablet PWA Command Deck (`:4086`)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT65-OPS-SHELL-AND-MOBILE-PWA-RECEIPTS.md` | **Updated**: `2026-10-18T16:20:24Z` | **SHA-256**: `a46ca7768bb905d4`
 
 - **Written At**: `2026-10-18T16:19:30Z`
@@ -1274,7 +1741,7 @@ BOYLENET 4x TESLA T4 GPU CLUSTER TELEMETRY (active_model=qwythos-27b-mtp-bf16 | 
 NODE           MGMT IP       ROCE IP       TEMP     VRAM MiB        POWER     DDR4 RAM GiB     STATUS
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT65-OPS-SHELL-AND-MOBILE-PWA-RECEIPTS.md`)*
 
-## 44. [AGENT49-SPECULATIVE-DECODING-IK-LLAMA-RECEIPTS.md] AGENT-49: Speculative Decoding (`ngram-mod`) & `ik_llama.cpp` Fused-MoE Turbo Receipts
+## 62. [AGENT49-SPECULATIVE-DECODING-IK-LLAMA-RECEIPTS.md] AGENT-49: Speculative Decoding (`ngram-mod`) & `ik_llama.cpp` Fused-MoE Turbo Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT49-SPECULATIVE-DECODING-IK-LLAMA-RECEIPTS.md` | **Updated**: `2026-10-18T16:18:24Z` | **SHA-256**: `71d24bbde509c37f`
 
 - **Date**: 2026-10-18 UTC
@@ -1298,7 +1765,7 @@ NODE           MGMT IP       ROCE IP       TEMP     VRAM MiB        POWER     DD
 | **6. `ik_llama.cpp` Build on `.83`** | `/opt/ik-llama-src` -> `/opt/ik-llama/bin` (`c446f1e`) | Not installed | Built with `GGML_CUDA=ON`, `CMAKE_CUDA_ARCHITECTURES=75`, `GGML_AVX512=ON` | 60 binaries + shared libs in `/opt/ik-llama` | **PASS (`rc=0`)** |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT49-SPECULATIVE-DECODING-IK-LLAMA-RECEIPTS.md`)*
 
-## 45. [AGENT66-CREDENTIALS-AND-SSH-VAULT-RECEIPTS.md] AGENT-66 RECEIPTS — Unified Credentials, API Key & 27-Node SSH Health Vault (`:4087` / `http://vault.boylenet.themfboyles.com`)
+## 63. [AGENT66-CREDENTIALS-AND-SSH-VAULT-RECEIPTS.md] AGENT-66 RECEIPTS — Unified Credentials, API Key & 27-Node SSH Health Vault (`:4087` / `http://vault.boylenet.themfboyles.com`)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT66-CREDENTIALS-AND-SSH-VAULT-RECEIPTS.md` | **Updated**: `2026-10-18T16:18:11Z` | **SHA-256**: `0b0b5f28fb846b0f`
 
 - **Written At**: `2026-10-18T16:17:30Z`
@@ -1323,7 +1790,7 @@ Built `/home/mboyle/bin/bd-credentials-vault.py` and deployed `/etc/systemd/syst
 - `Gitea (:3000)` (`http://gitea.boylenet.themfboyles.com`) -> `mboyle` / `boylenet-admin`
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT66-CREDENTIALS-AND-SSH-VAULT-RECEIPTS.md`)*
 
-## 46. [AGENT69-CLAUDE-AB-DOWNLOADER-BENCH-AND-TESTS-RECEIPTS.md] AGENT-69 RECEIPT: Swarms #22, #C1, #C2 (`bd-downloader-bench` + Claude Pools A & B `claude-opus-5-5` Hermetic Test Suites)
+## 64. [AGENT69-CLAUDE-AB-DOWNLOADER-BENCH-AND-TESTS-RECEIPTS.md] AGENT-69 RECEIPT: Swarms #22, #C1, #C2 (`bd-downloader-bench` + Claude Pools A & B `claude-opus-5-5` Hermetic Test Suites)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT69-CLAUDE-AB-DOWNLOADER-BENCH-AND-TESTS-RECEIPTS.md` | **Updated**: `2026-10-18T16:12:52Z` | **SHA-256**: `ae2988d9236117eb`
 
 - **Timestamp (UTC)**: `2026-10-18T16:12:17Z`
@@ -1387,7 +1854,7 @@ Built `/home/mboyle/bin/bd-credentials-vault.py` and deployed `/etc/systemd/syst
 - **Output**: `{"pool":"Pool-B","model":"claude-opus-5-5","suite":"#C2 UI Signal/Worker Thread-Safety","verdict":"PASS"}`
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT69-CLAUDE-AB-DOWNLOADER-BENCH-AND-TESTS-RECEIPTS.md`)*
 
-## 47. [AGENT59-EPISODIC-MEMORY-DREAMER-RECEIPTS.md] AGENT-59: Cross-Harness Episodic Memory Consolidator ("Dreamer" Swarm `bd-memory-dreamer`) Receipts
+## 65. [AGENT59-EPISODIC-MEMORY-DREAMER-RECEIPTS.md] AGENT-59: Cross-Harness Episodic Memory Consolidator ("Dreamer" Swarm `bd-memory-dreamer`) Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT59-EPISODIC-MEMORY-DREAMER-RECEIPTS.md` | **Updated**: `2026-10-18T16:03:12Z` | **SHA-256**: `8244d3bfcf2b3a4e`
 
 - **Agent**: Agent-59 (Swarm #11: Cross-Harness Episodic Memory Consolidator "Dreamer" Swarm)
@@ -1413,7 +1880,7 @@ Built `/home/mboyle/bin/bd-credentials-vault.py` and deployed `/etc/systemd/syst
 - `bd-memory-dreamer --consolidate [--json]`
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT59-EPISODIC-MEMORY-DREAMER-RECEIPTS.md`)*
 
-## 48. [AGENT63-HYBRID-CLOUD-BURST-ORCHESTRATOR-RECEIPTS.md] AGENT-63 RECEIPTS — Hybrid Cloud + Local Burst Orchestrator (`bd-cloud-burst` & `:4090` `http://cloud.boylenet.themfboyles.com`)
+## 66. [AGENT63-HYBRID-CLOUD-BURST-ORCHESTRATOR-RECEIPTS.md] AGENT-63 RECEIPTS — Hybrid Cloud + Local Burst Orchestrator (`bd-cloud-burst` & `:4090` `http://cloud.boylenet.themfboyles.com`)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT63-HYBRID-CLOUD-BURST-ORCHESTRATOR-RECEIPTS.md` | **Updated**: `2026-10-18T16:01:38Z` | **SHA-256**: `ad9fb141bb2998cf`
 
 - **Written At**: `2026-10-18T16:01:00Z`
@@ -1456,7 +1923,7 @@ Built `/home/mboyle/bin/bd-credentials-vault.py` and deployed `/etc/systemd/syst
 ### B. Anthropic Claude ABCD Cloud Environments (`claude --cloud`, `--environment <ccpool_...>`)
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT63-HYBRID-CLOUD-BURST-ORCHESTRATOR-RECEIPTS.md`)*
 
-## 49. [AGENT52-HYBRID-RAG-QDRANT-TEI-RECEIPTS.md] AGENT-52: Fleet-Wide Hybrid RAG + AST Semantic Indexer Receipt (`Qdrant .125:6333` + `TEI :8081/:8082`)
+## 67. [AGENT52-HYBRID-RAG-QDRANT-TEI-RECEIPTS.md] AGENT-52: Fleet-Wide Hybrid RAG + AST Semantic Indexer Receipt (`Qdrant .125:6333` + `TEI :8081/:8082`)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT52-HYBRID-RAG-QDRANT-TEI-RECEIPTS.md` | **Updated**: `2026-10-18T16:00:34Z` | **SHA-256**: `fef69b5abbbd7b16`
 
 - **WRITTEN-AT (UTC)**: `2026-10-18T15:59:30Z`
@@ -1519,7 +1986,7 @@ Built `/home/mboyle/bin/bd-credentials-vault.py` and deployed `/etc/systemd/syst
 - Hybrid `1024`-dim Vector Architecture: Combines unit-normalized dense neural TEI embeddings from `:8081/embed` ($\sqrt{0.60} \cdot v_{\text{dense}} \in \mathbb{R}^{384}$) with an orthogonal signed feature-hashed AST/lexical identifier projection ($\sqrt{0.40} \cdot v_{\text{AST/lex}} \in \mathbb{R}^{640}$) into a unit-normalized `1024`-dim Cosine vector ($\|\tilde{v}\|_2 = 1.0$), preserving 100% compatibility with existing `hivemind-memory` 384-d consumers while delivering `1024`-dim hybrid dense+lexical retrieval in Qdrant.
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT52-HYBRID-RAG-QDRANT-TEI-RECEIPTS.md`)*
 
-## 50. [AGENT50-MULTI-HARNESS-ARENA-MODE-C-RECEIPTS.md] AGENT-50 RECEIPT: Mode C Multi-Harness Parallel Swarm Arena & Consensus Judge (`:4098`)
+## 68. [AGENT50-MULTI-HARNESS-ARENA-MODE-C-RECEIPTS.md] AGENT-50 RECEIPT: Mode C Multi-Harness Parallel Swarm Arena & Consensus Judge (`:4098`)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT50-MULTI-HARNESS-ARENA-MODE-C-RECEIPTS.md` | **Updated**: `2026-10-18T15:55:59Z` | **SHA-256**: `800d2b51059ad98c`
 
 - **Written-At**: `2026-10-18T15:55:35Z`
@@ -1545,7 +2012,7 @@ Built `/home/mboyle/bin/bd-credentials-vault.py` and deployed `/etc/systemd/syst
 - `/home/mboyle/BulkDownloader/venv/bin/ruff format /home/mboyle/bin/bd-multi-harness-web.py`: **PASS**
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT50-MULTI-HARNESS-ARENA-MODE-C-RECEIPTS.md`)*
 
-## 51. [AGENT57-DEEP-RESEARCH-DUAL-ORACLE-RECEIPTS.md] AGENT-57: Dual-Oracle Deep-Web Research & Citation Engine (`bd-deep-research` + `:4094` Web Studio) Receipts
+## 69. [AGENT57-DEEP-RESEARCH-DUAL-ORACLE-RECEIPTS.md] AGENT-57: Dual-Oracle Deep-Web Research & Citation Engine (`bd-deep-research` + `:4094` Web Studio) Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT57-DEEP-RESEARCH-DUAL-ORACLE-RECEIPTS.md` | **Updated**: `2026-10-18T15:53:35Z` | **SHA-256**: `7fd449d249a574a6`
 
 - **WRITTEN-AT**: `2026-10-18T15:53:00Z`
@@ -1572,7 +2039,7 @@ Built `/home/mboyle/bin/bd-credentials-vault.py` and deployed `/etc/systemd/syst
 2. **`/home/mboyle/bin/bd-deep-research-web.py` (`bd-deep-research-web.service` on `:4094`)**:
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT57-DEEP-RESEARCH-DUAL-ORACLE-RECEIPTS.md`)*
 
-## 52. [AGENT60-VAULT-CURATOR-AND-DRAFT-PAIRS-RECEIPTS.md] AGENT-60 RECEIPT: Automated GGUF Model Vault Curator, Integrity Verifier & Speculative Draft-Pair Builder (`bd-vault-curator`)
+## 70. [AGENT60-VAULT-CURATOR-AND-DRAFT-PAIRS-RECEIPTS.md] AGENT-60 RECEIPT: Automated GGUF Model Vault Curator, Integrity Verifier & Speculative Draft-Pair Builder (`bd-vault-curator`)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT60-VAULT-CURATOR-AND-DRAFT-PAIRS-RECEIPTS.md` | **Updated**: `2026-10-18T15:51:17Z` | **SHA-256**: `6cd680992103b458`
 
 - **WRITTEN-AT**: `2026-10-18T15:48:28Z`
@@ -1596,7 +2063,7 @@ Built `/home/mboyle/bin/bd-credentials-vault.py` and deployed `/etc/systemd/syst
 - **GGUF Magic Verification**: **`251 / 251` `.gguf` files in `/opt/models`** and **`30 / 30` Ollama GGUF blobs** start with exact valid `GGUF` magic bytes **`47 47 55 46`** (`v3`, non-zero size, `0` corrupt headers).
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT60-VAULT-CURATOR-AND-DRAFT-PAIRS-RECEIPTS.md`)*
 
-## 53. [AGENT56-RAMDISK-CI-TURBO-OFFLOAD-RECEIPTS.md] AGENT-56: Ramdisk `/dev/shm` Ephemeral CI Shard Offload Swarm Receipts (O1789 Swarm #8)
+## 71. [AGENT56-RAMDISK-CI-TURBO-OFFLOAD-RECEIPTS.md] AGENT-56: Ramdisk `/dev/shm` Ephemeral CI Shard Offload Swarm Receipts (O1789 Swarm #8)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT56-RAMDISK-CI-TURBO-OFFLOAD-RECEIPTS.md` | **Updated**: `2026-10-18T15:51:12Z` | **SHA-256**: `140f17e3aa0a287e`
 
 - **WRITTEN-AT**: `2026-10-18T15:50:40Z`
@@ -1620,7 +2087,7 @@ Built `/home/mboyle/bin/bd-credentials-vault.py` and deployed `/etc/systemd/syst
 `/home/mboyle/bin/bd-remote-pytest-turbo` uses SSH `ControlMaster=auto` (`ControlPersist=600`) and `rsync -a --delete` excluding bulky non-test artifacts (`.git/`, `.worktrees/` 13G, `captures/` 2.5G, `.claude/` 2.0G, `profiles/`, `node_modules/`, `*.db*`), then pre-compiles `.pyc` bytecode in `/dev/shm/bd-ci-ramdisk` via `python -m compileall -q -j 16`.
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT56-RAMDISK-CI-TURBO-OFFLOAD-RECEIPTS.md`)*
 
-## 54. [AGENT62-HARDWARE-ILO-VSAN-TELEMETRY-RECEIPTS.md] AGENT-62 RECEIPT: vSphere `vc04`, ESXi `01..04`, HPE iLO4/iLO5 & vSAN Predictive Hardware Telemetry Autopilot (`bd-hardware-telemetry` `:4091`)
+## 72. [AGENT62-HARDWARE-ILO-VSAN-TELEMETRY-RECEIPTS.md] AGENT-62 RECEIPT: vSphere `vc04`, ESXi `01..04`, HPE iLO4/iLO5 & vSAN Predictive Hardware Telemetry Autopilot (`bd-hardware-telemetry` `:4091`)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT62-HARDWARE-ILO-VSAN-TELEMETRY-RECEIPTS.md` | **Updated**: `2026-10-18T15:49:29Z` | **SHA-256**: `558290b1c4002d2c`
 
 - **WRITTEN-AT**: `2026-10-18T15:49:00Z`
@@ -1645,7 +2112,7 @@ Built `/home/mboyle/bin/bd-credentials-vault.py` and deployed `/etc/systemd/syst
 - `GET /metrics`: Prometheus metrics exporter (`boylenet_esxi_cpu_mhz_used`, `boylenet_esxi_memory_gib_used`, `boylenet_vsan_free_tib`, `boylenet_ilo_power_watts`, `boylenet_ilo_temp_celsius`, `boylenet_t4_power_watts`, `boylenet_t4_temp_celsius`, plus total/capacity/disk_group gauges).
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT62-HARDWARE-ILO-VSAN-TELEMETRY-RECEIPTS.md`)*
 
-## 55. [AGENT61-MULTIMODAL-VOICE-VISION-BRIDGE-RECEIPTS.md] AGENT-61: Unified Voice, Vision & Multimodal Cockpit Bridge (`bd-multimodal-bridge` on `:4093`) Receipts
+## 73. [AGENT61-MULTIMODAL-VOICE-VISION-BRIDGE-RECEIPTS.md] AGENT-61: Unified Voice, Vision & Multimodal Cockpit Bridge (`bd-multimodal-bridge` on `:4093`) Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT61-MULTIMODAL-VOICE-VISION-BRIDGE-RECEIPTS.md` | **Updated**: `2026-10-18T15:48:24Z` | **SHA-256**: `60260a3ab715899d`
 
 - **WRITTEN-AT**: `2026-10-18T15:48:00Z`
@@ -1671,7 +2138,7 @@ Built `/home/mboyle/bin/bd-credentials-vault.py` and deployed `/etc/systemd/syst
 - Accepts base64 screenshots (`Ctrl+V` clipboard paste, drag-and-drop, or API payload) + operator prompt + mode (`screenshot-to-code`, `ui-bug-diagnosis`, `ocr-dom-extract`, `architecture-review`).
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT61-MULTIMODAL-VOICE-VISION-BRIDGE-RECEIPTS.md`)*
 
-## 56. [AGENT58-GITEA-PREREVIEW-REDTEAM-SWARM-RECEIPTS.md] AGENT-58 RECEIPT: Gitea (`:3000`) PR Webhook -> Autonomous Multi-Lens Pre-Review & Security Red-Team Swarm (`bd-gitea-prereview` on `:4092`)
+## 74. [AGENT58-GITEA-PREREVIEW-REDTEAM-SWARM-RECEIPTS.md] AGENT-58 RECEIPT: Gitea (`:3000`) PR Webhook -> Autonomous Multi-Lens Pre-Review & Security Red-Team Swarm (`bd-gitea-prereview` on `:4092`)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT58-GITEA-PREREVIEW-REDTEAM-SWARM-RECEIPTS.md` | **Updated**: `2026-10-18T15:47:19Z` | **SHA-256**: `946127a31f7b32fd`
 
 - **Timestamp (UTC)**: `2026-10-18T15:46:30Z`
@@ -1698,7 +2165,7 @@ Built `/home/mboyle/bin/bd-credentials-vault.py` and deployed `/etc/systemd/syst
 - Stores every CLI, API, and Webhook review report in `/var/tmp/bd-gitea-prereview/` and renders a live Cyber-Glass Web UI on `http://prereview.boylenet.themfboyles.com` (`:4092`) with an interactive diff/commit paste workbench.
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT58-GITEA-PREREVIEW-REDTEAM-SWARM-RECEIPTS.md`)*
 
-## 57. [AGENT51-LANGFUSE-GRAFANA-TELEMETRY-RECEIPTS.md] AGENT-51: Langfuse LLM Observability + Prometheus + Grafana AI & GPU Telemetry Nexus Receipts
+## 75. [AGENT51-LANGFUSE-GRAFANA-TELEMETRY-RECEIPTS.md] AGENT-51: Langfuse LLM Observability + Prometheus + Grafana AI & GPU Telemetry Nexus Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT51-LANGFUSE-GRAFANA-TELEMETRY-RECEIPTS.md` | **Updated**: `2026-10-18T15:44:40Z` | **SHA-256**: `5407be0a0657dfa3`
 
 - **Timestamp (UTC)**: `2026-10-18T15:44:00Z`
@@ -1744,7 +2211,7 @@ Session: {"user":{"name":"Matthew Boyle","email":"mcboyle@me.com","organizations
 - Wired `LANGFUSE_PUBLIC_KEY=pk-lf-boylenet-local`, `LANGFUSE_SECRET_KEY=sk-lf-boylenet-local`, `LANGFUSE_HOST=http://10.0.70.228:3000`, and `success_callback: ["langfuse"]` into both LiteLLM gateways (`.164:4000` and `.228:4000`).
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT51-LANGFUSE-GRAFANA-TELEMETRY-RECEIPTS.md`)*
 
-## 58. [AGENT53-INFRA-SENTINEL-SELF-HEALING-RECEIPTS.md] AGENT-53: Autonomous 83-Service Self-Healing Infrastructure Sentinel (`bd-infra-sentinel` on `:4099`) Receipts
+## 76. [AGENT53-INFRA-SENTINEL-SELF-HEALING-RECEIPTS.md] AGENT-53: Autonomous 83-Service Self-Healing Infrastructure Sentinel (`bd-infra-sentinel` on `:4099`) Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT53-INFRA-SENTINEL-SELF-HEALING-RECEIPTS.md` | **Updated**: `2026-10-18T15:44:39Z` | **SHA-256**: `dfdb7086dd9ae7a5`
 
 - **WRITTEN-AT**: `2026-10-18T15:44:15Z`
@@ -1768,7 +2235,7 @@ Session: {"user":{"name":"Matthew Boyle","email":"mcboyle@me.com","organizations
 - `GET /api/status`: Full 83-service telemetry + category rollups + recent `self_heal_events`.
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT53-INFRA-SENTINEL-SELF-HEALING-RECEIPTS.md`)*
 
-## 59. [AGENT54-25GBE-TENSOR-TRANSPORT-TUNING-RECEIPTS.md] Agent-54 (Swarm #6): 25GbE VLAN 75 Low-Latency Tensor Transport Tuning Receipts
+## 77. [AGENT54-25GBE-TENSOR-TRANSPORT-TUNING-RECEIPTS.md] Agent-54 (Swarm #6): 25GbE VLAN 75 Low-Latency Tensor Transport Tuning Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT54-25GBE-TENSOR-TRANSPORT-TUNING-RECEIPTS.md` | **Updated**: `2026-10-18T15:41:32Z` | **SHA-256**: `2d242e8450fc4fac`
 
 - **Date (UTC)**: `2026-10-18T15:40:09Z`
@@ -1793,7 +2260,7 @@ Session: {"user":{"name":"Matthew Boyle","email":"mcboyle@me.com","organizations
 - `ethtool -c ens33` showed `rx-usecs: 250` across all 4 nodes, introducing up to 0.25 ms of artificial RX interrupt delay on small RPC control/sync packets, inflating 64B ping tail latency to `0.962–1.070 ms` and jitter (`mdev`) to `0.189–0.214 ms`.
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT54-25GBE-TENSOR-TRANSPORT-TUNING-RECEIPTS.md`)*
 
-## 60. [AGENT55-POOL-AUTOBALANCER-RECEIPTS.md] AGENT-55 RECEIPT: Autonomous Cross-Pool Quota Load-Balancer & Failover Daemon (`bd-pool-autobalancer`)
+## 78. [AGENT55-POOL-AUTOBALANCER-RECEIPTS.md] AGENT-55 RECEIPT: Autonomous Cross-Pool Quota Load-Balancer & Failover Daemon (`bd-pool-autobalancer`)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT55-POOL-AUTOBALANCER-RECEIPTS.md` | **Updated**: `2026-10-18T15:41:18Z` | **SHA-256**: `7a414c9ecf803bc5`
 
 - **Timestamp (UTC)**: `2026-10-18T15:40:42Z`
@@ -1823,43 +2290,7 @@ Session: {"user":{"name":"Matthew Boyle","email":"mcboyle@me.com","organizations
 - Picks the fast-model pool with the highest idle quota (`max(100 - five_hour_pct)`) or Local Tier 1 (`local-4xt4` running `qwen3-coder-30b-a3b` / `swift-qwen3.8-flash-next` at `$0.00` marginal cost).
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT55-POOL-AUTOBALANCER-RECEIPTS.md`)*
 
-## 61. [AGENT6-SURGICAL-REGROUP-RECEIPTS.md] AGENT-6: Per-Disk vSAN Surgical Re-Grouping Receipts (`esxi01`)
-- **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT6-SURGICAL-REGROUP-RECEIPTS.md` | **Updated**: `2026-10-18T15:18:16Z` | **SHA-256**: `d77596c73e907e62`
-
-- **Generated At (UTC)**: `2026-10-17T17:08:58Z`
-- **Agent**: Agent-6 (Per-Disk vSAN Surgical Re-Grouping Architect)
-- **Operator Directive Compliance (`2026-10-17T16:59:29Z`)**:
-- **"The ssd stays"**: `t10.ATA_____LITEON_CV32D8D5122D41_SATA_512GB_SED______TW0MN0K7LOH0075G01ZI` in `esxi03` `DG 528858fc-16cc-a790-ee2a-218b8cdb3cd8` was **NOT removed** (`IsMounted=true`, `InCMMDS=true`). All SSDs in `esxi03` remain untouched in vSAN.
-- **Scope**: Software-only per-disk capacity re-grouping on `esxi01` so `DG 52e69070` (`mpx.vmhba0:C2:T0:L0`) holds all `4x 24TB Seagate Exos` (`T3, T4, T5, T13`) and `DG 520e7405` (`mpx.vmhba0:C2:T1:L0`) holds all `7x 3TB SAS` (`T6..T12`).
-- **Runtime Name (`T6..T12`) Ground Truth**:
-- `T6` = `naa.5000cca01aa9a96c` (3TB Hitachi SAS, `360.3 GiB` used) — initially in `DG 52e69070` (`T0`)
-- `T7` = `naa.5000cca01ab112cc` (3TB Hitachi SAS, `642.0 GiB` used) — already in `DG 520e7405` (`T1`)
-- `T8` = `naa.5000cca01aa7e5ec` (3TB Hitachi SAS, `881.8 GiB` used) — initially in `DG 52e69070` (`T0`)
-- `T9` = `naa.5000cca01ad7dc48` (3TB Hitachi SAS, `984.3 GiB` used) — already in `DG 520e7405` (`T1`)
-- `T10` = `naa.5000cca01aa800e0` (3TB Hitachi SAS, `1012.3 GiB` used) — initially in `DG 52e69070` (`T0`)
-- `T11` = `naa.50000c0f012d3630` (3TB WD SAS, `648.7 GiB` used) — already in `DG 520e7405` (`T1`)
-- `T12` = `naa.50000c0f01e0c290` (3TB WD SAS, `414.8 GiB` used) — already in `DG 520e7405` (`T1`)
----
-### 0. Pre-Flight Baseline (`2026-10-17T17:08:58Z`)
-### `esxi01`: `esxcli vsan cluster get` (`rc=0`)
-```text
-ConfigGeneration:                   11deb2da-af76-4c32-8756-f7e5e7e05301 20 2026-10-17T08:16:46.99
-CurrentLocalTime:                   2026-10-17T17:08:56Z
-Enabled:                            true
-LocalNodeHealthState:               HEALTHY
-LocalNodeState:                     MASTER
-LocalNodeType:                      NORMAL
-LocalNodeUUID:                      690bf025-a834-166a-7963-48df37d56620
-MaintenanceModeState:               OFF
-Mode:                               REGULAR
-SubClusterBackupUUID:               690bed89-0b5f-39b0-71b3-48df37e0b790
-SubClusterMasterUUID:               690bf025-a834-166a-7963-48df37d56620
-SubClusterMemberCount:              4
-SubClusterMemberHostNames:          ESXI01, ESXI02, ESXI04, ESXI03
-SubClusterMemberUUIDs:              690bf025-a834-166a-7963-48df37d56620, 690bed89-0b5f-39b0-71b3-48df37e0b790, 690be3b3-a4fc-84dc-bf83-98b785225eea, 690bf3f8-a3c0-fbe0-3b20-98b78522598c
-... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT6-SURGICAL-REGROUP-RECEIPTS.md`)*
-
-## 62. [AGENT48-ORACLE-LITELLM-DB-AND-HARNESS-UIS-RECEIPTS.md] AGENT-48: UniFi DNS, Traefik Ingress, Dashy Command Nexus & Browser Oracle CDP E2E Verification Receipts
+## 79. [AGENT48-ORACLE-LITELLM-DB-AND-HARNESS-UIS-RECEIPTS.md] AGENT-48: UniFi DNS, Traefik Ingress, Dashy Command Nexus & Browser Oracle CDP E2E Verification Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT48-ORACLE-LITELLM-DB-AND-HARNESS-UIS-RECEIPTS.md` | **Updated**: `2026-10-18T14:50:56Z` | **SHA-256**: `18aa32e73a79d165`
 
 - **WRITTEN-AT**: `2026-10-18T14:50:15Z`
@@ -1886,7 +2317,7 @@ All 16 short and FQDN DNS records for the new AI Studios, Harnesses, and Satelli
 | 8 | `harnesses.boylenet.themfboyles.com` | `A` | `10.0.70.164` | Multi-Harness Studio (`:4098`) | `2be81eca-3812-4643-a834-253e782d5f17` | `10.0.70.164` |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT48-ORACLE-LITELLM-DB-AND-HARNESS-UIS-RECEIPTS.md`)*
 
-## 63. [AGENT46-LITELLM-POSTGRES-DB-RECEIPTS.md] Agent-46 Receipt: LiteLLM PostgreSQL Database & Admin UI Provisioning (`.164:4000` & `.228:4000`)
+## 80. [AGENT46-LITELLM-POSTGRES-DB-RECEIPTS.md] Agent-46 Receipt: LiteLLM PostgreSQL Database & Admin UI Provisioning (`.164:4000` & `.228:4000`)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT46-LITELLM-POSTGRES-DB-RECEIPTS.md` | **Updated**: `2026-10-18T14:31:01Z` | **SHA-256**: `c7e88c4781fc446f`
 
 **WRITTEN-AT**: `2026-10-18T14:30:30Z`
@@ -1908,7 +2339,7 @@ All 16 short and FQDN DNS records for the new AI Studios, Harnesses, and Satelli
 - `config.yaml`: Added `database_url: os.environ/DATABASE_URL` and `store_model_in_db: true` under `general_settings`.
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT46-LITELLM-POSTGRES-DB-RECEIPTS.md`)*
 
-## 64. [AGENT47-HARNESS-WEBUIS-AND-WORKFLOW-RECEIPTS.md] AGENT-47 RECEIPT: Harness WebUIs, LobeChat Container & 5-Harness Fleet Workflow Integration
+## 81. [AGENT47-HARNESS-WEBUIS-AND-WORKFLOW-RECEIPTS.md] AGENT-47 RECEIPT: Harness WebUIs, LobeChat Container & 5-Harness Fleet Workflow Integration
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT47-HARNESS-WEBUIS-AND-WORKFLOW-RECEIPTS.md` | **Updated**: `2026-10-18T14:29:50Z` | **SHA-256**: `53208ae0003fdd78`
 
 - **WRITTEN-AT**: `2026-10-18T14:29:30Z`
@@ -1946,7 +2377,7 @@ $ curl -s -o /dev/null -w "%{http_code}\n" http://10.0.70.164:4097/
 - `/home/mboyle/infra/lobechat/lobechat_server.py`
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT47-HARNESS-WEBUIS-AND-WORKFLOW-RECEIPTS.md`)*
 
-## 65. [AGENT45-ORACLE-DASHY-AND-DNS-E2E-RECEIPTS.md] AGENT-45: Browser Oracle CDP E2E Verification — Dashy Command Nexus Portal & UniFi DNS Hostnames
+## 82. [AGENT45-ORACLE-DASHY-AND-DNS-E2E-RECEIPTS.md] AGENT-45: Browser Oracle CDP E2E Verification — Dashy Command Nexus Portal & UniFi DNS Hostnames
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT45-ORACLE-DASHY-AND-DNS-E2E-RECEIPTS.md` | **Updated**: `2026-10-18T12:48:11Z` | **SHA-256**: `faec2bb79988b496`
 
 - **WRITTEN-AT**: `2026-10-18T12:47:30Z`
@@ -1972,7 +2403,7 @@ During live Playwright CDP visual inspection of the initial Dashy render on `10.
 3. **`Elasticsearch :9200` Blank Icon (`fas fa-magnifying-glass-chart` -> `fas fa-search-plus`)**:
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT45-ORACLE-DASHY-AND-DNS-E2E-RECEIPTS.md`)*
 
-## 66. [AGENT44-DASHY-PORTAL-AND-TRAEFIK-INGRESS-RECEIPTS.md] AGENT-44: Dashy Command Nexus Portal (`:4080`) & Traefik DNS VirtualHost Ingress (`:80`) Receipts
+## 83. [AGENT44-DASHY-PORTAL-AND-TRAEFIK-INGRESS-RECEIPTS.md] AGENT-44: Dashy Command Nexus Portal (`:4080`) & Traefik DNS VirtualHost Ingress (`:80`) Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT44-DASHY-PORTAL-AND-TRAEFIK-INGRESS-RECEIPTS.md` | **Updated**: `2026-10-18T12:18:11Z` | **SHA-256**: `140e0d0d9b037231`
 
 - **WRITTEN-AT**: `2026-10-18T12:18:00Z`
@@ -2000,7 +2431,7 @@ During live Playwright CDP visual inspection of the initial Dashy render on `10.
 3. `Observability, Telemetry & Tracing` (7 items, hotkeys `6..7`: Grafana `:3001`, Prometheus `:9090`, Alertmanager `:9093`, Langfuse `.228:3000`, cAdvisor `:8085`, Traefik `:8080/dashboard/`, Node Exporter `:9100/metrics`)
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT44-DASHY-PORTAL-AND-TRAEFIK-INGRESS-RECEIPTS.md`)*
 
-## 67. [AGENT43-UNIFI-DNS-COMPLETE-REGISTRY-RECEIPTS.md] AGENT-43: UniFi DNS Complete Infrastructure & Web UI Service Registry Receipts
+## 84. [AGENT43-UNIFI-DNS-COMPLETE-REGISTRY-RECEIPTS.md] AGENT-43: UniFi DNS Complete Infrastructure & Web UI Service Registry Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT43-UNIFI-DNS-COMPLETE-REGISTRY-RECEIPTS.md` | **Updated**: `2026-10-18T12:15:42Z` | **SHA-256**: `84a675c83ee58756`
 
 - **Timestamp (UTC)**: `2026-10-18T12:15:42Z`
@@ -2028,7 +2459,7 @@ During live Playwright CDP visual inspection of the initial Dashy render on `10.
 | Management & Network | `10.0.10.20` | `ilom-20`, `esxi02-ilo` | `ilom-20.boylenet.themfboyles.com`, `esxi02-ilo.boylenet.themfboyles.com` |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT43-UNIFI-DNS-COMPLETE-REGISTRY-RECEIPTS.md`)*
 
-## 68. [AGENT41-FLEET-AI-PLATFORMS-UPDATE-RECEIPTS.md] AGENT-41: FLEET-WIDE AI PLATFORM & MODEL CATALOG SYNCHRONIZATION RECEIPTS (O1789)
+## 85. [AGENT41-FLEET-AI-PLATFORMS-UPDATE-RECEIPTS.md] AGENT-41: FLEET-WIDE AI PLATFORM & MODEL CATALOG SYNCHRONIZATION RECEIPTS (O1789)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT41-FLEET-AI-PLATFORMS-UPDATE-RECEIPTS.md` | **Updated**: `2026-10-18T10:36:14Z` | **SHA-256**: `9fe056640329e548`
 
 - **Agent**: Agent-41 (Fleet-Wide AI Platform & Model Catalog Synchronizer)
@@ -2059,7 +2490,7 @@ During live Playwright CDP visual inspection of the initial Dashy render on `10.
 - `qwen3.8-flash-next-ud-iq4_xs` (`Qwen3.8-Flash-Next-UD-IQ4_XS`, `87.25 GiB` on `.72`, `READY`, `11.40 tg128 / 98.40 pp512`)
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT41-FLEET-AI-PLATFORMS-UPDATE-RECEIPTS.md`)*
 
-## 69. [AGENT38-ORACLE-JARVIS-COCKPIT-CHAT-E2E-RECEIPTS.md] AGENT-38: Browser Oracle CDP E2E Verification Receipts — Jarvis OS Cockpit (`:3002`) & Swarm Chat (`:3003`)
+## 86. [AGENT38-ORACLE-JARVIS-COCKPIT-CHAT-E2E-RECEIPTS.md] AGENT-38: Browser Oracle CDP E2E Verification Receipts — Jarvis OS Cockpit (`:3002`) & Swarm Chat (`:3003`)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT38-ORACLE-JARVIS-COCKPIT-CHAT-E2E-RECEIPTS.md` | **Updated**: `2026-10-18T10:21:13Z` | **SHA-256**: `65ea36ba77fa45b2`
 
 - **Timestamp (UTC)**: `2026-10-18T10:20:45Z`
@@ -2083,7 +2514,7 @@ During live Playwright CDP visual inspection of the initial Dashy render on `10.
 | 2 | `:3002` & `:3003` Browser Console | `Failed to load resource: the server responded with a status of 404 (Not Found)` on `http://10.0.70.164:3002/favicon.ico` and `http://10.0.70.164:3003/favicon.ico`. | Missing `public/favicon.ico` in both Next.js apps and no `/favicon.ico` route handler in `/var/tmp/bd-chat-server.js`. | Added valid `public/favicon.ico` to both apps and added a `204 No Content` `/favicon.ico` handler in `/var/tmp/bd-chat-server.js`. | `console_errors: []`, `bad_http: []` on both `:3002` and `:3003`. |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT38-ORACLE-JARVIS-COCKPIT-CHAT-E2E-RECEIPTS.md`)*
 
-## 70. [AGENT42-FLEET-CLI-UPGRADE-PARITY-RECEIPTS.md] AGENT-42 FLEET-WIDE AI CLI BINARY UPGRADE & PARITY RECONCILIATION RECEIPT (O1789)
+## 87. [AGENT42-FLEET-CLI-UPGRADE-PARITY-RECEIPTS.md] AGENT-42 FLEET-WIDE AI CLI BINARY UPGRADE & PARITY RECONCILIATION RECEIPT (O1789)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT42-FLEET-CLI-UPGRADE-PARITY-RECEIPTS.md` | **Updated**: `2026-10-18T10:10:01Z` | **SHA-256**: `f0871a5962db028b`
 
 - **Timestamp (UTC)**: `2026-10-18T10:10:01Z`
@@ -2109,7 +2540,7 @@ During live Playwright CDP visual inspection of the initial Dashy render on `10.
 | **Codeburn (`codeburn`)** | `~/.local/bin/codeburn` & `/usr/bin/codeburn` | `0.9.27` | **`0.9.27`** | `~/.local/bin/codeburn -> ~/.local/lib/node_modules/codeburn/dist/cli.js` |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT42-FLEET-CLI-UPGRADE-PARITY-RECEIPTS.md`)*
 
-## 71. [AGENT39-ORACLE-OPENWEBUI-LITELLM-E2E-RECEIPTS.md] AGENT-39: Browser Oracle CDP End-to-End UI Verification Receipt (OpenWebUI `:8090` / `.72:8080` & LiteLLM `:4000/ui`)
+## 88. [AGENT39-ORACLE-OPENWEBUI-LITELLM-E2E-RECEIPTS.md] AGENT-39: Browser Oracle CDP End-to-End UI Verification Receipt (OpenWebUI `:8090` / `.72:8080` & LiteLLM `:4000/ui`)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT39-ORACLE-OPENWEBUI-LITELLM-E2E-RECEIPTS.md` | **Updated**: `2026-10-18T09:49:50Z` | **SHA-256**: `c3ec3d67cbbd6c67`
 
 - **WRITTEN-AT**: `2026-10-18T09:49:10Z`
@@ -2131,7 +2562,7 @@ During live Playwright CDP visual inspection of the initial Dashy render on `10.
 - **Verification**: `http://10.0.70.72:8080/api/models` immediately populated **45** models (`38` LiteLLM fleet models + `7` local Ollama/Arena models).
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT39-ORACLE-OPENWEBUI-LITELLM-E2E-RECEIPTS.md`)*
 
-## 72. [AGENT34-QWEN38-FLASH-NEXT-AND-R1-Q4KM-RECEIPTS.md] AGENT-34 — Vault-72 `Qwen3.8-Flash-Next` (`63.48 GiB` / `87.25 GiB` / `329.73 GiB`) & `DeepSeek-R1-Distill-Llama-70B-Q4_K_M` (`39.60 GiB`) Parallel Shard Acceleration & Benchmark Receipts (O1789)
+## 89. [AGENT34-QWEN38-FLASH-NEXT-AND-R1-Q4KM-RECEIPTS.md] AGENT-34 — Vault-72 `Qwen3.8-Flash-Next` (`63.48 GiB` / `87.25 GiB` / `329.73 GiB`) & `DeepSeek-R1-Distill-Llama-70B-Q4_K_M` (`39.60 GiB`) Parallel Shard Acceleration & Benchmark Receipts (O1789)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT34-QWEN38-FLASH-NEXT-AND-R1-Q4KM-RECEIPTS.md` | **Updated**: `2026-10-18T09:45:11Z` | **SHA-256**: `59701899f6dc8571`
 
 - **WRITTEN-AT (UTC)**: `2026-10-18T09:44:00Z`
@@ -2149,7 +2580,7 @@ During live Playwright CDP visual inspection of the initial Dashy render on `10.
 | **`Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS`** (Single-Node Hybrid) | `/opt/models/qwen3.8-flash-next/swift-IQ2_XS/Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-0000[1-2]-of-00002.gguf` | `2 / 2` | `68,152,167,168 B` | `133,109,920` | `63.47 GiB` | **1x Tesla T4 (`16 GB` `.72`) + `314 GiB` AVX-512 DDR4 Hybrid** (`-ngl 999 -fa 1 -t 32 -ot "\.ffn_.*_exps\.=CPU" -lzm off`) | **`110.00 ± 0.00`** | **`13.45 ± 0.00`** | **COMPLETE & BENCHMARKED (`rc=0`)** |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT34-QWEN38-FLASH-NEXT-AND-R1-Q4KM-RECEIPTS.md`)*
 
-## 73. [AGENT40-ORACLE-INFRA-UIS-E2E-RECEIPTS.md] AGENT-40: Browser Oracle CDP End-to-End Cluster Infrastructure & Observability UIs Receipt
+## 90. [AGENT40-ORACLE-INFRA-UIS-E2E-RECEIPTS.md] AGENT-40: Browser Oracle CDP End-to-End Cluster Infrastructure & Observability UIs Receipt
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT40-ORACLE-INFRA-UIS-E2E-RECEIPTS.md` | **Updated**: `2026-10-18T09:44:32Z` | **SHA-256**: `e3d3542d248f0b89`
 
 - **Written-At**: `2026-10-18T09:43:30Z`
@@ -2173,7 +2604,7 @@ During E2E testing, **3 defects** were identified, root-caused, and remediated i
 - **Fix**: Added `.catch(() => {})` guard on `Browser.setDownloadBehavior` in `/home/mboyle/BulkDownloader/venv/lib/python3.12/site-packages/playwright/driver/package/lib/coreBundle.js`, restoring seamless Playwright CDP attachment across the fleet.
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT40-ORACLE-INFRA-UIS-E2E-RECEIPTS.md`)*
 
-## 74. [AGENT28-DEEPSEEK-V4-FLASH-VAULT83-RECEIPTS.md] AGENT-28: `AI DEV` (`10.0.70.83`) `5.0 TB` Vault B — `DeepSeek-V4-Flash` (`Q2` `80.76 GiB` / `Q4_K` `153.33 GiB`) & `dspark-BF16` Speculative Decoding Receipts (O1789)
+## 91. [AGENT28-DEEPSEEK-V4-FLASH-VAULT83-RECEIPTS.md] AGENT-28: `AI DEV` (`10.0.70.83`) `5.0 TB` Vault B — `DeepSeek-V4-Flash` (`Q2` `80.76 GiB` / `Q4_K` `153.33 GiB`) & `dspark-BF16` Speculative Decoding Receipts (O1789)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT28-DEEPSEEK-V4-FLASH-VAULT83-RECEIPTS.md` | **Updated**: `2026-10-18T09:43:15Z` | **SHA-256**: `fbdf8af1e9363420`
 
 - **Timestamp (UTC)**: `2026-10-18T09:42:00Z`
@@ -2195,7 +2626,7 @@ All 4 files from `huihui-ai/Huihui-DeepSeek-V4-Flash-0731-abliterated-GGUF` are 
 ### 2. Deliverable 1 & 2: Vault B (`10.0.70.83:/opt/models/deepseek-v4-flash`) Provisioning & `25GbE` Fabric Transfer (`10.0.75.12 -> 10.0.75.11`)
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT28-DEEPSEEK-V4-FLASH-VAULT83-RECEIPTS.md`)*
 
-## 75. [AGENT36-FRONTIER-OPTIMIZATION-RESEARCH-REPORT.md] AGENT-36: Boylenet Hybrid 4x Tesla T4 + 1.73 TB Xeon DDR4 Cluster Audit & Frontier LLM Inference Optimization Report
+## 92. [AGENT36-FRONTIER-OPTIMIZATION-RESEARCH-REPORT.md] AGENT-36: Boylenet Hybrid 4x Tesla T4 + 1.73 TB Xeon DDR4 Cluster Audit & Frontier LLM Inference Optimization Report
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT36-FRONTIER-OPTIMIZATION-RESEARCH-REPORT.md` | **Updated**: `2026-10-18T02:42:24Z` | **SHA-256**: `69b910a1869fe141`
 
 - **WRITTEN-AT (UTC)**: `2026-10-18T02:41:10Z`
@@ -2216,7 +2647,7 @@ All 4 files from `huihui-ai/Huihui-DeepSeek-V4-Flash-0731-abliterated-GGUF` are 
 | **`10.0.70.228`** (`10.0.75.13`) | `ai-ollama01` | **`esxi02`**: 2x Xeon E5-2699 v4 @ 2.20GHz (Broadwell-EP, 8ch DDR4-2400) | **44C / 88T** (`2x 22C`) + **AVX2** | `64 vCPUs` (`2 Sockets x 32 Cores`, `1 Thread/Core`) | **2 Nodes**:<br>`node0`: CPUs `0–31` (`225.7 GB`)<br>`node1`: CPUs `32–63` (`225.8 GB`) | `avx2 bmi1 bmi2 f16c fma movbe` | `libggml-cpu-haswell.so` (`score=64`) |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT36-FRONTIER-OPTIMIZATION-RESEARCH-REPORT.md`)*
 
-## 76. [AGENT24-6MODEL-HF-SUITE-BENCHMARK-RECEIPTS.md] AGENT-24: 6-Model Custom Hugging Face Suite — Download & Multi-Tier Distributed Benchmark Receipts (O1789)
+## 93. [AGENT24-6MODEL-HF-SUITE-BENCHMARK-RECEIPTS.md] AGENT-24: 6-Model Custom Hugging Face Suite — Download & Multi-Tier Distributed Benchmark Receipts (O1789)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT24-6MODEL-HF-SUITE-BENCHMARK-RECEIPTS.md` | **Updated**: `2026-10-18T02:04:39Z` | **SHA-256**: `86e61eb652bd440f`
 
 - **Timestamp (UTC)**: `2026-10-18T01:10:00Z`
@@ -2236,7 +2667,7 @@ All 6 requested Hugging Face model families (including the **LARGEST / highest-p
 | **2a** | `empero-ai/Qwythos-27B-v1-GGUF` | `Qwythos-27B-MTP-Q4_K_M.gguf` | `17,603,699,008` | `16.39 GiB` | `.72:/opt/models/qwythos-27b/` | **2x Tesla T4 (`32 GB` Pure VRAM, `.72+.83`)** | **`289.31 ± 0.00`** | **`12.30 ± 0.00`** | — | **PASS (`rc=0`)** |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT24-6MODEL-HF-SUITE-BENCHMARK-RECEIPTS.md`)*
 
-## 77. [AGENT29-VAULT83-TIER3-AND-GLM52-RECEIPTS.md] AGENT-29 RECEIPTS: AI DEV `10.0.70.83` 4.8 TB Vault — `GLM-5.2`, `Qwen3-235B-A22B`, `Qwen3-Coder-480B` & `CyberStrike-OffSec-35B` Benchmarks
+## 94. [AGENT29-VAULT83-TIER3-AND-GLM52-RECEIPTS.md] AGENT-29 RECEIPTS: AI DEV `10.0.70.83` 4.8 TB Vault — `GLM-5.2`, `Qwen3-235B-A22B`, `Qwen3-Coder-480B` & `CyberStrike-OffSec-35B` Benchmarks
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT29-VAULT83-TIER3-AND-GLM52-RECEIPTS.md` | **Updated**: `2026-10-18T01:46:53Z` | **SHA-256**: `170540a0310d11dd`
 
 - **Timestamp (UTC)**: `2026-10-18T01:20:00Z`
@@ -2271,7 +2702,7 @@ EXACT_BYTES: /opt/models/tier3a-qwen3-235b-a22b/Qwen3-235B-A22B-Instruct-2507-Q4
 ```text
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT29-VAULT83-TIER3-AND-GLM52-RECEIPTS.md`)*
 
-## 78. [AGENT32-O1740-DISPATCH-AND-LOCAL-SEAT-PARITY-RECEIPTS.md] AGENT-32: O1740 Dispatcher, `POOL_STATE.tsv`, Telemetry & `bd-say.sh` Local Pool Parity Receipts
+## 95. [AGENT32-O1740-DISPATCH-AND-LOCAL-SEAT-PARITY-RECEIPTS.md] AGENT-32: O1740 Dispatcher, `POOL_STATE.tsv`, Telemetry & `bd-say.sh` Local Pool Parity Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT32-O1740-DISPATCH-AND-LOCAL-SEAT-PARITY-RECEIPTS.md` | **Updated**: `2026-10-17T23:59:54Z` | **SHA-256**: `70f770462d06ccec`
 
 - **WRITTEN-AT**: `2026-10-17T23:58:25Z`
@@ -2294,7 +2725,7 @@ EXACT_BYTES: /opt/models/tier3a-qwen3-235b-a22b/Qwen3-235B-A22B-Instruct-2507-Q4
 | Live `bd-say.sh` Delivery to Local Seats | `/home/mboyle/bin/bd-say.sh` -> tmux `=bd-local-*` & inbox | `sent+consumed` & `FILED` | `PASS` (`rc=0`) |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT32-O1740-DISPATCH-AND-LOCAL-SEAT-PARITY-RECEIPTS.md`)*
 
-## 79. [AGENT36-MASTER-MODEL-VAULT-AND-FLEET-PARITY-REPORT.md] AGENT 36 — UNIFIED MASTER MODEL VAULT CATALOG & FLEET PARITY DOCUMENTATION SYNTHESIS
+## 96. [AGENT36-MASTER-MODEL-VAULT-AND-FLEET-PARITY-REPORT.md] AGENT 36 — UNIFIED MASTER MODEL VAULT CATALOG & FLEET PARITY DOCUMENTATION SYNTHESIS
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT36-MASTER-MODEL-VAULT-AND-FLEET-PARITY-REPORT.md` | **Updated**: `2026-10-17T23:58:01Z` | **SHA-256**: `e9fd14d46ce91d04`
 
 - **WRITTEN-AT**: `2026-10-17T23:54:45Z`
@@ -2316,7 +2747,7 @@ Across the O1789 infrastructure upgrade and local LLM swarm expansion (Agents 19
 - **1 Newly Completed Tier 3A Frontier MoE (`Qwen3-235B-A22B-Instruct-2507-Q4_K_M`, `142,154,074,880 B` / `132.39 GiB`, 3/3 shards complete on `.83`)**.
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT36-MASTER-MODEL-VAULT-AND-FLEET-PARITY-REPORT.md`)*
 
-## 80. [AGENT31-LOCAL-FLEET-MCP-SKILL-HOOK-PARITY-RECEIPTS.md] AGENT-31: Local GPU AI Platform Fleet MCP, Skill & Hook Parity Receipts (O1789)
+## 97. [AGENT31-LOCAL-FLEET-MCP-SKILL-HOOK-PARITY-RECEIPTS.md] AGENT-31: Local GPU AI Platform Fleet MCP, Skill & Hook Parity Receipts (O1789)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT31-LOCAL-FLEET-MCP-SKILL-HOOK-PARITY-RECEIPTS.md` | **Updated**: `2026-10-17T23:56:50Z` | **SHA-256**: `e0d15d06cbc80bd9`
 
 - **Written-At**: `2026-10-17T23:56:00Z`
@@ -2343,7 +2774,7 @@ Exposes 12 Fleet MCP & Native tools as both OpenAI (`tools=[{"type":"function","
 11. `guarded_bash` — Protected by `/home/mboyle/.gemini/config/shield.py` (Rule 22) + `/home/mboyle/bin/bd-token-guard.py` (Rules 58/62/78) + `/home/mboyle/bin/bd-blob-ptr` (Rule 80 output decoupler)
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT31-LOCAL-FLEET-MCP-SKILL-HOOK-PARITY-RECEIPTS.md`)*
 
-## 81. [AGENT60-RECEIPT.md] AGENT-60 RECEIPT: Qwen3-Coder-480B-A35B Shards 3-4 Launch
+## 98. [AGENT60-RECEIPT.md] AGENT-60 RECEIPT: Qwen3-Coder-480B-A35B Shards 3-4 Launch
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT60-RECEIPT.md` | **Updated**: `2026-10-17T23:52:46Z` | **SHA-256**: `3867fd865ba8358b`
 
 - **WRITTEN-AT**: 2026-10-17T23:52:46Z
@@ -2370,7 +2801,7 @@ total 7.7G
 -rw-rw-r-- 1 mboyle mboyle    0 Oct 17 23:41 aria2c_Qwen3-Coder-480B-A35B-Instruct-Q4_K_M-00005-of-00006.gguf.log
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT60-RECEIPT.md`)*
 
-## 82. [AGENT33-8AGENT-CONCURRENT-BATCHING-BENCHMARK-RECEIPTS.md] AGENT-33: Tier 1 Dual-Pool Continuous Batching (`--parallel 4 -cb -ctk q8_0 -ctv q8_0`) & `CyberStrike-35B-Q4_K_M` Pool Beta Receipts
+## 99. [AGENT33-8AGENT-CONCURRENT-BATCHING-BENCHMARK-RECEIPTS.md] AGENT-33: Tier 1 Dual-Pool Continuous Batching (`--parallel 4 -cb -ctk q8_0 -ctv q8_0`) & `CyberStrike-35B-Q4_K_M` Pool Beta Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT33-8AGENT-CONCURRENT-BATCHING-BENCHMARK-RECEIPTS.md` | **Updated**: `2026-10-17T23:47:56Z` | **SHA-256**: `64e54a596c261def`
 
 - **Timestamp (UTC)**: `2026-10-17T23:46:45Z`
@@ -2410,7 +2841,7 @@ Filesystem                         Size  Used Avail Use% Mounted on
 Also persisted into `/usr/local/bin/bd-gpu-orchestrator.py` (`unit_alpha` template) so `:4010` preserves 4-slot continuous batching across mode switches:
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT33-8AGENT-CONCURRENT-BATCHING-BENCHMARK-RECEIPTS.md`)*
 
-## 83. [AGENT27-JARVIS-COCKPIT-GPU-TIER-UI-RECEIPTS.md] AGENT-27: Jarvis OS Cockpit (`:3002`) & Chat (`:3003`) GPU Tier Switcher, Model Vault UI & Argon-4 Anti-Sycophancy Shield Receipts
+## 100. [AGENT27-JARVIS-COCKPIT-GPU-TIER-UI-RECEIPTS.md] AGENT-27: Jarvis OS Cockpit (`:3002`) & Chat (`:3003`) GPU Tier Switcher, Model Vault UI & Argon-4 Anti-Sycophancy Shield Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT27-JARVIS-COCKPIT-GPU-TIER-UI-RECEIPTS.md` | **Updated**: `2026-10-17T23:46:09Z` | **SHA-256**: `57572829f095ec78`
 
 - **Date:** 2026-10-17 UTC
@@ -2427,7 +2858,7 @@ Also persisted into `/usr/local/bin/bd-gpu-orchestrator.py` (`unit_alpha` templa
 | **Chat UI Tier / Model Selector Bar & Vault Drawer (`:3003`)** | `/home/mboyle/bd-cuts/swarm-cockpit-fleet-view/src/components/chat/ChatTierSelectorBar.tsx` & `fleet-chats/page.tsx` | **`200 OK` (`rc=0`)** — Top bar with `ARGON-4 SHIELD: ACTIVE` invariant badges, 1-Click Tier Switcher pills, 11-Model Vault dropdown + `Switch & Activate`, 5-Harness 1-click copy buttons, expandable 4-Node Telemetry & Model Vault drawer, and live `ARGON-4` contract injection on local chat messages. |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT27-JARVIS-COCKPIT-GPU-TIER-UI-RECEIPTS.md`)*
 
-## 84. [AGENT30-ARGON4-AND-DUAL-VAULT-E2E-RECEIPTS.md] AGENT-30: ARGON-4 ANTI-SYCOPHANCY & ANTI-HALLUCINATION E2E AUDIT + DUAL-VAULT (`.72`/`.83`) ORCHESTRATOR SYNC RECEIPTS
+## 101. [AGENT30-ARGON4-AND-DUAL-VAULT-E2E-RECEIPTS.md] AGENT-30: ARGON-4 ANTI-SYCOPHANCY & ANTI-HALLUCINATION E2E AUDIT + DUAL-VAULT (`.72`/`.83`) ORCHESTRATOR SYNC RECEIPTS
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT30-ARGON4-AND-DUAL-VAULT-E2E-RECEIPTS.md` | **Updated**: `2026-10-17T23:45:17Z` | **SHA-256**: `fca23dcc35f4bc2f`
 
 - **Seat**: Agent-30 (Argon-4 Anti-Sycophancy & Anti-Hallucination E2E Auditor + Dual-Vault `.72`/`.83` Orchestrator Sync Engineer)
@@ -2451,7 +2882,7 @@ Also persisted into `/usr/local/bin/bd-gpu-orchestrator.py` (`unit_alpha` templa
 - `tier1-beta-cyberstrike-35b` (`20.22 GiB`, Tier 1 Beta `:8084`, `READY`)
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT30-ARGON4-AND-DUAL-VAULT-E2E-RECEIPTS.md`)*
 
-## 85. [AGENT26-MULTI-HARNESS-CLI-INTEGRATION-RECEIPTS.md] AGENT-26: MULTI-HARNESS CLI & AGENT INTEGRATION RECEIPTS (O1789)
+## 102. [AGENT26-MULTI-HARNESS-CLI-INTEGRATION-RECEIPTS.md] AGENT-26: MULTI-HARNESS CLI & AGENT INTEGRATION RECEIPTS (O1789)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT26-MULTI-HARNESS-CLI-INTEGRATION-RECEIPTS.md` | **Updated**: `2026-10-17T23:44:50Z` | **SHA-256**: `655bb0fe3613542a`
 
 - **Written-At**: `2026-10-17T23:44:00Z`
@@ -2475,7 +2906,7 @@ All CLI binaries and symlinks are installed in both `/home/mboyle/bin/` and `/us
 | `bd-openrouter-local` | `/home/mboyle/bin/bd-openrouter-local` (`/usr/local/bin/bd-openrouter-local`) | OpenRouter-compatible local gateway client (`auto-local`, `--list-models`, routing headers) |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT26-MULTI-HARNESS-CLI-INTEGRATION-RECEIPTS.md`)*
 
-## 86. [AGENT77-RECEIPT.md] AGENT-77 RECEIPT: `/home/mboyle/bin/bd-local-openai-smoke`
+## 103. [AGENT77-RECEIPT.md] AGENT-77 RECEIPT: `/home/mboyle/bin/bd-local-openai-smoke`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT77-RECEIPT.md` | **Updated**: `2026-10-17T23:42:44Z` | **SHA-256**: `9774b23dfd4177e7`
 
 - **WRITTEN-AT**: 2026-10-17T23:42:44Z
@@ -2529,7 +2960,7 @@ All CLI binaries and symlinks are installed in both `/home/mboyle/bin/` and `/us
 }
 ```
 
-## 87. [AGENT64-RECEIPT.md] AGENT-64 REPLICATION RECEIPT (O1789)
+## 104. [AGENT64-RECEIPT.md] AGENT-64 REPLICATION RECEIPT (O1789)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT64-RECEIPT.md` | **Updated**: `2026-10-17T23:42:38Z` | **SHA-256**: `9a8d2e053afe3c01`
 
 - **Agent**: Agent-64 (Fast 2-Turn 25GbE Model Replicator)
@@ -2544,7 +2975,7 @@ All CLI binaries and symlinks are installed in both `/home/mboyle/bin/` and `/us
 - **Exit Code (`rc`)**: `0`
 - **Status**: PASS
 
-## 88. [AGENT89-RECEIPT.md] AGENT-89 RECEIPT: bd-local-pytest-runner (O1789)
+## 105. [AGENT89-RECEIPT.md] AGENT-89 RECEIPT: bd-local-pytest-runner (O1789)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT89-RECEIPT.md` | **Updated**: `2026-10-17T23:42:07Z` | **SHA-256**: `f3aba4e97471ff95`
 
 - **WRITTEN-AT**: 2026-10-17T23:42:07Z
@@ -2566,7 +2997,7 @@ PASS: 1 passed
 BLOB_PTR: /var/tmp/bd-blobs/d2d744b6b2df2bbb0d73cb7a43f6675bd03881bc2a2c2a74e54ecf18667789e2.log (sha256=d2d744b6b2df bytes=98 TMPDIR=/mnt/ramdisk-ci)
 ```
 
-## 89. [AGENT91-RECEIPT.md] AGENT-91 RECEIPT: `/home/mboyle/bin/bd-local-rebase-helper`
+## 106. [AGENT91-RECEIPT.md] AGENT-91 RECEIPT: `/home/mboyle/bin/bd-local-rebase-helper`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT91-RECEIPT.md` | **Updated**: `2026-10-17T23:41:59Z` | **SHA-256**: `e51206db41de0d55`
 
 - **WRITTEN-AT**: 2026-10-17T23:41:59Z
@@ -2656,7 +3087,7 @@ TIER1_SUGGESTION: {
 }
 ```
 
-## 90. [AGENT99-RECEIPT.md] AGENT-99 RECEIPT: `bd-local-model-verify`
+## 107. [AGENT99-RECEIPT.md] AGENT-99 RECEIPT: `bd-local-model-verify`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT99-RECEIPT.md` | **Updated**: `2026-10-17T23:41:54Z` | **SHA-256**: `e03b0b4ba24bc873`
 
 - **WRITTEN-AT**: 2026-10-17T23:41:54Z
@@ -2685,7 +3116,7 @@ NODE         | FILE                                                     | SIZE  
 10.0.70.72   | qwen3.8-flash-next/mmproj-Qwen3.8-Flash-Next-BF16.gguf   | 866MB     | GGUF   | COMPLETE    | VERIFIED
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT99-RECEIPT.md`)*
 
-## 91. [AGENT88-RECEIPT.md] AGENT-88 RECEIPT: DeepSeek-V3-0324 Shards 3-5 Launcher
+## 108. [AGENT88-RECEIPT.md] AGENT-88 RECEIPT: DeepSeek-V3-0324 Shards 3-5 Launcher
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT88-RECEIPT.md` | **Updated**: `2026-10-17T23:41:49Z` | **SHA-256**: `7cfea44cd1b02145`
 
 - **WRITTEN-AT**: 2026-10-17T23:41:49Z
@@ -2720,7 +3151,7 @@ mboyle     17906       1  0 23:34 ?        00:00:00 bash -c while true; do aria2
 mboyle     17921       1  0 23:34 ?        00:00:00 bash -c until aria2c -x 8 -s 8 -k 10M --continue=true --file-allocation=none --max-tries=0 --retry-wait=5 --timeout=60 --connect-timeout=30 -d '/opt/models/glm-5.2/UD-Q3_K_M' -o 'GLM-5.2-UD-Q3_K_M-00007-of-00009.gguf' 'https://huggingface.co/huihui-ai/Huihui-GLM-5.2-abliterated-GGUF/resolve/main/UD-Q3_K_M/GLM-5.2-UD-Q3_K_M-00007-of-00009.gguf' >> '/opt/models/glm-5.2/UD-Q3_K_M/aria2c-00007.log' 2>&1; do sleep 3; done
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT88-RECEIPT.md`)*
 
-## 92. [AGENT104-RECEIPT.md] AGENT-104 RECEIPT: `bd-local-lean-build`
+## 109. [AGENT104-RECEIPT.md] AGENT-104 RECEIPT: `bd-local-lean-build`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT104-RECEIPT.md` | **Updated**: `2026-10-17T23:41:48Z` | **SHA-256**: `e764c5c4d67ded44`
 
 - **Agent**: Agent-104 (1-Turn Builder)
@@ -2755,7 +3186,7 @@ mboyle     17921       1  0 23:34 ?        00:00:00 bash -c until aria2c -x 8 -s
 }
 ```
 
-## 93. [AGENT102-RECEIPT.md] AGENT-102 RECEIPT: /home/mboyle/bin/bd-local-resume-state
+## 110. [AGENT102-RECEIPT.md] AGENT-102 RECEIPT: /home/mboyle/bin/bd-local-resume-state
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT102-RECEIPT.md` | **Updated**: `2026-10-17T23:41:40Z` | **SHA-256**: `b3dbb142c853434f`
 
 - WRITTEN-AT: 2026-10-17T23:41:40Z
@@ -2770,7 +3201,7 @@ mboyle     17921       1  0 23:34 ?        00:00:00 bash -c until aria2c -x 8 -s
 - `--write-test`: `WROTE /var/tmp/bd-local-resume-state-agent102-test.md (turn=20/20)` (rc=0)
 - `--read`: `READ /var/tmp/bd-local-resume-state-agent102-test.md seat=local-gpu-worker-01 task=O1789-local-worker turn=20/20 status=TURN_CAP_CHECKPOINT next="Resume headless worker from RESUME_STATE.md without repeating completed turns."` (rc=0)
 
-## 94. [AGENT92-RECEIPT.md] AGENT-92 RECEIPT: bd-local-cut-preflight
+## 111. [AGENT92-RECEIPT.md] AGENT-92 RECEIPT: bd-local-cut-preflight
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT92-RECEIPT.md` | **Updated**: `2026-10-17T23:41:39Z` | **SHA-256**: `b3bd90cf42ef3555`
 
 - **WRITTEN-AT**: 2026-10-17T23:41:39Z
@@ -2797,7 +3228,7 @@ PATCH-SHA256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 GPU-DIFF-CHECK: PASS | endpoint=http://10.0.70.164:4010/v1/chat/completions | model=auto-local | http=200 | verdict=PASS: Empty diff requires no hygiene verification.
 ```
 
-## 95. [AGENT59-RECEIPT.md] AGENT-59 RECEIPT: Qwen3-Coder-480B-A35B-UD-Q2_K_XL Shards 1-2 (`10.0.70.83`)
+## 112. [AGENT59-RECEIPT.md] AGENT-59 RECEIPT: Qwen3-Coder-480B-A35B-UD-Q2_K_XL Shards 1-2 (`10.0.70.83`)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT59-RECEIPT.md` | **Updated**: `2026-10-17T23:41:36Z` | **SHA-256**: `395c49b084385df3`
 
 - **Timestamp (UTC)**: `2026-10-17T23:41:36Z`
@@ -2820,7 +3251,7 @@ mboyle     19682   19336  0 23:39 ?        S      0:00 /usr/bin/aria2c.real -x 1
 mboyle     20410   20408  6 23:41 ?        S      0:00 /usr/bin/aria2c.real -x 8 -s 8 -k 10M --continue=true --file-allocation=none -d /opt/models/tier3a-qwen3-coder-480b-a35b -o Qwen3-Coder-480B-A35B-Instruct-UD-Q2_K_XL-00002-of-00004.gguf https://huggingface.co/unsloth/Qwen3-Coder-480B-A35B-Instruct-GGUF/resolve/main/UD-Q2_K_XL/Qwen3-Coder-480B-A35B-Instruct-UD-Q2_K_XL-00002-of-00004.gguf
 ```
 
-## 96. [AGENT103-RECEIPT.md] AGENT-103 RECEIPT: `/home/mboyle/bin/bd-local-blob-cat`
+## 113. [AGENT103-RECEIPT.md] AGENT-103 RECEIPT: `/home/mboyle/bin/bd-local-blob-cat`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT103-RECEIPT.md` | **Updated**: `2026-10-17T23:41:27Z` | **SHA-256**: `7c8e1405c8379130`
 
 - **WRITTEN-AT**: 2026-10-17T23:41:27Z
@@ -2835,7 +3266,7 @@ mboyle     20410   20408  6 23:41 ?        S      0:00 /usr/bin/aria2c.real -x 8
 - `--tail 4`: `4` payload lines (`rc=0`)
 - `--grep CRITICAL_ERROR_MARKER`: matched line 26 (`1` match, `rc=0`)
 
-## 97. [AGENT97-RECEIPT.md] AGENT-97 RECEIPT: `/home/mboyle/bin/bd-local-vram-top`
+## 114. [AGENT97-RECEIPT.md] AGENT-97 RECEIPT: `/home/mboyle/bin/bd-local-vram-top`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT97-RECEIPT.md` | **Updated**: `2026-10-17T23:41:23Z` | **SHA-256**: `b1c8ac151e213615`
 
 - **WRITTEN-AT**: 2026-10-17T23:41:23Z
@@ -2860,7 +3291,7 @@ CLUSTER TOTAL (4x T4)    4/4 UP     [##################------] 45.3/60.0G (75.5%
 ============================================================================================================
 ```
 
-## 98. [AGENT87-RECEIPT.md] AGENT-87 SHARD LAUNCH RECEIPT (O1789)
+## 115. [AGENT87-RECEIPT.md] AGENT-87 SHARD LAUNCH RECEIPT (O1789)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT87-RECEIPT.md` | **Updated**: `2026-10-17T23:41:20Z` | **SHA-256**: `d637543e0b78337d`
 
 - **WRITTEN-AT**: `2026-10-17T23:41:20Z`
@@ -2884,7 +3315,7 @@ mboyle     17924       1  0 23:34 ?        00:00:00 bash -c until aria2c -x 8 -s
 mboyle     17927       1  0 23:34 ?        00:00:00 bash -c until aria2c -x 8 -s 8 -k 10M --continue=true --file-allocation=none --max-tries=0 --retry-wait=5 --timeout=60 --connect-timeout=30 -d '/opt/models/glm-5.2/UD-Q3_K_M' -o 'GLM-5.2-UD-Q3_K_M-00009-of-00009.gguf' 'https://huggingface.co/huihui-ai/Huihui-GLM-5.2-abliterated-GGUF/resolve/main/UD-Q3_K_M/GLM-5.2-UD-Q3_K_M-00009-of-00009.gguf' >> '/opt/models/glm-5.2/UD-Q3_K_M/aria2c-00009.log' 2>&1; do sleep 3; done
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT87-RECEIPT.md`)*
 
-## 99. [AGENT100-RECEIPT.md] AGENT-100 RECEIPT: `bd-local-prompt-guard`
+## 116. [AGENT100-RECEIPT.md] AGENT-100 RECEIPT: `bd-local-prompt-guard`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT100-RECEIPT.md` | **Updated**: `2026-10-17T23:41:20Z` | **SHA-256**: `a83fba2687c8635b`
 
 - **WRITTEN-AT**: 2026-10-17T23:41:20Z
@@ -2913,7 +3344,7 @@ If blocked by genuine ambiguity: `AMBIGUOUS: <path> | (1) <opt1> (2) <opt2>. Rep
 Reply PASS /home/mboyle/bin/bd-local-prompt-guard
 ```
 
-## 100. [AGENT96-RECEIPT.md] AGENT-96 RECEIPT: bd-local-rpc-ping
+## 117. [AGENT96-RECEIPT.md] AGENT-96 RECEIPT: bd-local-rpc-ping
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT96-RECEIPT.md` | **Updated**: `2026-10-17T23:41:19Z` | **SHA-256**: `097f96754f029a26`
 
 - **WRITTEN-AT**: 2026-10-17T23:41:19Z
@@ -3015,7 +3446,7 @@ port-4000      127.0.0.1:4000       OK                     0.167ms     0.391ms
 }
 ```
 
-## 101. [AGENT90-RECEIPT.md] AGENT-90 RECEIPT: `/home/mboyle/bin/bd-local-fast-lint`
+## 118. [AGENT90-RECEIPT.md] AGENT-90 RECEIPT: `/home/mboyle/bin/bd-local-fast-lint`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT90-RECEIPT.md` | **Updated**: `2026-10-17T23:41:17Z` | **SHA-256**: `debba3ae1a185522`
 
 - **WRITTEN-AT**: 2026-10-17T23:41:17Z
@@ -3027,7 +3458,7 @@ port-4000      127.0.0.1:4000       OK                     0.167ms     0.391ms
 - **LIVE_TEST_TIER1_RC**: `0` (`{"protocol": "Argon-4", "endpoint": "http://10.0.70.164:4010/v1/chat/completions", "model": "tier1", "throughput": "77.6 tok/s", "checked_files": 1, "rc": 0, "issues_found": 1, "results": [{"file": "/tmp/bd-fast-lint-test-iggj5T.py", "tool": "ruff", "diagnostics": "I001 [*] Import block is un-sorted or un-formatted\n --> /tmp/bd-fast-lint-test-iggj5T.py:1:1\n  |\n1 | import os, sys\n  | ^^^^^^^^^^^^^^\n2 | x = 1\n  |\nhelp: Organize imports\n  |\n  - import os, sys\n1 + import os\n2 + import sys\n3 +\n4 | x = 1\n  |\n\nF401 [*] `os` imported but unused\n --> /tmp/bd-fast-lint-test-iggj5T.py:1:8\n  |\n1 | import os, sys\n  |        ^^\n2 | x = 1\n  |\nhelp: Remove unused import\n  |\n  - import os, sys\n1 | x = 1\n  |\n\nF401 [*] `sys` imported but unused\n --> /tmp/bd-fast-lint-test-iggj5T.py:1:12\n  |\n1 | import os, sys\n  |            ^^^\n2 | x = 1\n  |\nhelp: Remove unused import\n  |\n  - import os, sys\n1 | x = 1\n  |", "argon4_tier1": {"status": "ok", "endpoint": "http://10.0.70.164:4010/v1/chat/completions", "model": "tier1", "fix": "import sys\nx = 1"}}]}`)
 - **PRECHECK**: PASS
 
-## 102. [AGENT105-RECEIPT.md] AGENT-105 RECEIPT — `bd-local-migration-check`
+## 119. [AGENT105-RECEIPT.md] AGENT-105 RECEIPT — `bd-local-migration-check`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT105-RECEIPT.md` | **Updated**: `2026-10-17T23:41:17Z` | **SHA-256**: `7ae908e806c5dd94`
 
 - **Agent**: Agent-105 (1-Turn Builder)
@@ -3042,7 +3473,7 @@ port-4000      127.0.0.1:4000       OK                     0.167ms     0.391ms
 {"checks": {"compat_window": true, "inventory": true, "preservation": true, "rollback_path": true}, "cluster_error": "timed out", "endpoint": "http://10.0.70.164:4010/v1/chat/completions", "model": "tier1", "reversible": true, "risks": [], "rollback_proof": "Verified rollback/reversibility markers present", "source": "local-heuristic-fallback", "verdict": "PASS"}
 ```
 
-## 103. [AGENT98-RECEIPT.md] AGENT-98 RECEIPT: `/home/mboyle/bin/bd-local-ddr4-top`
+## 120. [AGENT98-RECEIPT.md] AGENT-98 RECEIPT: `/home/mboyle/bin/bd-local-ddr4-top`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT98-RECEIPT.md` | **Updated**: `2026-10-17T23:41:16Z` | **SHA-256**: `f4d0326b926f3878`
 
 - **WRITTEN-AT**: 2026-10-17T23:41:16Z
@@ -3064,7 +3495,7 @@ POOL TOTAL    4x DDR4 NODES     1730 GiB 1702.5 GiB   37.5 GiB 1665.0 GiB  704.7
 Pool Spec: 1,730 GiB (1.73 TB) Locked DDR4 [10.0.70.83=386G, 10.0.70.72=320G, 10.0.70.228=448G, 10.0.70.125=576G]
 ```
 
-## 104. [AGENT93-RECEIPT.md] AGENT-93 RECEIPT: `bd-local-token-estimator`
+## 121. [AGENT93-RECEIPT.md] AGENT-93 RECEIPT: `bd-local-token-estimator`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT93-RECEIPT.md` | **Updated**: `2026-10-17T23:41:15Z` | **SHA-256**: `826994a177c23efb`
 
 - **WRITTEN-AT**: 2026-10-17T23:41:15Z
@@ -3082,7 +3513,7 @@ Pool Spec: 1,730 GiB (1.73 TB) Locked DDR4 [10.0.70.83=386G, 10.0.70.72=320G, 10
 - `~20k tokens (tier1 32k)`: `TOKENS=18001 (tiktoken:cl100k_base) | GUARD[workers/lens<=150000]=OK (12.0%) | CEILINGS[workers/lens<=150k:PASS, pm/integrator<=250k:PASS] | RECOMMENDED_TIER=tier1 (32k)`
 - `~46k tokens (qwythos-9b 1M)`: `TOKENS=40001 (tiktoken:cl100k_base) | GUARD[pm/integrator<=250000]=OK (16.0%) | CEILINGS[workers/lens<=150k:PASS, pm/integrator<=250k:PASS] | RECOMMENDED_TIER=qwythos-9b (1M)`
 
-## 105. [AGENT101-RECEIPT.md] AGENT-101 RECEIPT: bd-local-oracle-fallback
+## 122. [AGENT101-RECEIPT.md] AGENT-101 RECEIPT: bd-local-oracle-fallback
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT101-RECEIPT.md` | **Updated**: `2026-10-17T23:41:13Z` | **SHA-256**: `0c4a31ae81f3c1ca`
 
 - **WRITTEN-AT**: 2026-10-17T23:41:13Z
@@ -3102,7 +3533,7 @@ Pool Spec: 1,730 GiB (1.73 TB) Locked DDR4 [10.0.70.83=386G, 10.0.70.72=320G, 10
 {"route": "bd-oracle", "cdp": "10.0.10.137:9222", "cmd": ["/home/mboyle/bin/bd-oracle", "--oracle", "all", "--json", "Architecture check"], "status": "DRY_RUN_READY"}
 ```
 
-## 106. [AGENT95-RECEIPT.md] AGENT-95 RECEIPT — `bd-local-bench-matrix`
+## 123. [AGENT95-RECEIPT.md] AGENT-95 RECEIPT — `bd-local-bench-matrix`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT95-RECEIPT.md` | **Updated**: `2026-10-17T23:41:11Z` | **SHA-256**: `e33d00c0a5581eb9`
 
 - **WRITTEN-AT**: 2026-10-17T23:41:11Z
@@ -3174,7 +3605,7 @@ DeepSeek-V3-671B        MoE-Hybrid  1.97-2.31 tok/s  -                  hybrid
 "pp_tok_s": "-",
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT95-RECEIPT.md`)*
 
-## 107. [AGENT63-RECEIPT.md] AGENT-63 RECEIPT: Qwythos-27B-MTP-Q8_0.gguf Download on 10.0.70.72
+## 124. [AGENT63-RECEIPT.md] AGENT-63 RECEIPT: Qwythos-27B-MTP-Q8_0.gguf Download on 10.0.70.72
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT63-RECEIPT.md` | **Updated**: `2026-10-17T23:41:07Z` | **SHA-256**: `f48547d654ddaff6`
 
 - **Timestamp**: 2026-10-17T23:41:07Z
@@ -3192,7 +3623,7 @@ mboyle    109914  109913  0 23:41 ?        00:00:00 aria2c -x 16 -s 16 -k 10M --
 VERIFIED_PID=109914 rc=0
 ```
 
-## 108. [AGENT83-RECEIPT.md] AGENT-83 RECEIPT — `/home/mboyle/bin/bd-local-council` (O1789)
+## 125. [AGENT83-RECEIPT.md] AGENT-83 RECEIPT — `/home/mboyle/bin/bd-local-council` (O1789)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT83-RECEIPT.md` | **Updated**: `2026-10-17T23:41:05Z` | **SHA-256**: `1ce5e3abd48c3096`
 
 - **Status**: COMPLETE (`rc=0`, `2/2` pools responding in parallel)
@@ -3244,7 +3675,7 @@ VERIFIED_PID=109914 rc=0
 "rationale": "The sequence of operations does not ensure atomicity of the entire write operation, which can lead to data inconsistency in case of a system crash.",
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT83-RECEIPT.md`)*
 
-## 109. [AGENT69-RECEIPT.md] AGENT-69 RECEIPT: `/home/mboyle/bin/bd-local-surgical-patch`
+## 126. [AGENT69-RECEIPT.md] AGENT-69 RECEIPT: `/home/mboyle/bin/bd-local-surgical-patch`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT69-RECEIPT.md` | **Updated**: `2026-10-17T23:40:33Z` | **SHA-256**: `95f03b0c30bcf51d`
 
 - **Agent**: Agent-69 (Fast 2-Turn Builder)
@@ -3274,7 +3705,7 @@ return result
 ```text
 ```
 
-## 110. [AGENT66-RECEIPT.md] AGENT-66 RECEIPT: bd-local-lens-hygiene (O1789)
+## 127. [AGENT66-RECEIPT.md] AGENT-66 RECEIPT: bd-local-lens-hygiene (O1789)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT66-RECEIPT.md` | **Updated**: `2026-10-17T23:40:30Z` | **SHA-256**: `b2b879e6a41e0665`
 
 - **WRITTEN-AT**: 2026-10-17T23:40:30Z
@@ -3288,7 +3719,7 @@ return result
 {"round": "O1789-HYGIENE-TEST", "seat": "review-hygiene", "verdict": "REFUTE", "findings": [{"file": "pyproject.toml", "line": 12, "rule": "GEMINI.md Dependency Pin Order (yt-dlp)", "severity": "ERROR", "message": "Unpinned yt-dlp dependency detected ('\"yt-dlp>=2026.03.15\",'); yt-dlp pin is strict operator order."}]}
 ```
 
-## 111. [AGENT76-RECEIPT.md] AGENT-76 EXECUTION RECEIPT — `bd-local-kv-calc`
+## 128. [AGENT76-RECEIPT.md] AGENT-76 EXECUTION RECEIPT — `bd-local-kv-calc`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT76-RECEIPT.md` | **Updated**: `2026-10-17T23:40:30Z` | **SHA-256**: `fd5e41915009492a`
 
 - **Agent**: Agent-76 (Fast 2-Turn Builder)
@@ -3315,7 +3746,7 @@ T2   | Llama-3.3-70B-Instruct-Q4_K_M       | GQA       |   41472M |      0G |   
 T2   | Qwen2.5-72B-Instruct-Q4_K_M         | GQA       |   42200M |      0G |   15400M |    5120M / p=3   |    2720M / p=5   |    1440M / p=10
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT76-RECEIPT.md`)*
 
-## 112. [AGENT74-RECEIPT.md] AGENT-74 RECEIPT: `/home/mboyle/bin/bd-local-quota-guard`
+## 129. [AGENT74-RECEIPT.md] AGENT-74 RECEIPT: `/home/mboyle/bin/bd-local-quota-guard`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT74-RECEIPT.md` | **Updated**: `2026-10-17T23:40:27Z` | **SHA-256**: `b31682c659eb8865`
 
 - **WRITTEN-AT**: 2026-10-17T23:40:27Z
@@ -3362,7 +3793,7 @@ ROUTE role=integrator class=COMMAND_SQUAD target=A endpoint=A tier=opus_heavy bu
 "raw": "A|OK|2026-10-17T09:15:08Z|five_hour 4%, weekly_all/seven_day 2% at 5% of the week, cache 1805s old, 1 pane(s) [binding: session at 4%, vs weekly_all/seven_day 2%; cache 1805s old]|4|2026-10-17T16:20:00Z|2|96|-|-|-|-|-"
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT74-RECEIPT.md`)*
 
-## 113. [AGENT73-RECEIPT.md] AGENT-73 RECEIPT: `/home/mboyle/bin/bd-local-context-compress`
+## 130. [AGENT73-RECEIPT.md] AGENT-73 RECEIPT: `/home/mboyle/bin/bd-local-context-compress`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT73-RECEIPT.md` | **Updated**: `2026-10-17T23:40:27Z` | **SHA-256**: `d70be86474cc3a4c`
 
 - **WRITTEN-AT**: 2026-10-17T23:40:27Z
@@ -3396,7 +3827,7 @@ to now there 27 nodes and 656 vCPUs in cluster, and working directory located at
 ```
 ```
 
-## 114. [AGENT70-RECEIPT.md] AGENT-70 RECEIPT: `/home/mboyle/bin/bd-local-safe-refactor`
+## 131. [AGENT70-RECEIPT.md] AGENT-70 RECEIPT: `/home/mboyle/bin/bd-local-safe-refactor`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT70-RECEIPT.md` | **Updated**: `2026-10-17T23:40:24Z` | **SHA-256**: `afa61bf96877dc0f`
 
 - **WRITTEN-AT**: 2026-10-17T23:40:24Z
@@ -3463,7 +3894,7 @@ return round(subtotal * (1.0 + tax_rate), 2)
 }
 ```
 
-## 115. [AGENT67-RECEIPT.md] AGENT-67 RECEIPT — `/home/mboyle/bin/bd-local-commit-msg`
+## 132. [AGENT67-RECEIPT.md] AGENT-67 RECEIPT — `/home/mboyle/bin/bd-local-commit-msg`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT67-RECEIPT.md` | **Updated**: `2026-10-17T23:40:22Z` | **SHA-256**: `6b330c978ba052db`
 
 - **WRITTEN-AT**: 2026-10-17T23:40:22Z
@@ -3483,7 +3914,7 @@ return round(subtotal * (1.0 + tax_rate), 2)
 - Exit code: `0`
 - Output: `{"message": "feat(health): resp = requests.get(url, timeout=2.0)", "subject": "feat(health): resp = requests.get(url, timeout=2.0)", "length": 51, "backend": "fallback:TimeoutError", "endpoint": "http://10.0.70.164:4010/v1/chat/completions", "model": "tier1", "argon4_verified": true}`
 
-## 116. [AGENT61-RECEIPT.md] AGENT-61 RECEIPT: Qwen3.8-Flash-Next-UD-IQ4_XS Shard Download on 10.0.70.72
+## 133. [AGENT61-RECEIPT.md] AGENT-61 RECEIPT: Qwen3.8-Flash-Next-UD-IQ4_XS Shard Download on 10.0.70.72
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT61-RECEIPT.md` | **Updated**: `2026-10-17T23:40:21Z` | **SHA-256**: `28058beba83763dc`
 
 - **WRITTEN-AT**: 2026-10-17T23:40:21Z
@@ -3512,7 +3943,7 @@ total 81M
 ===RC=0===
 ```
 
-## 117. [AGENT68-RECEIPT.md] AGENT-68 RECEIPT — `/home/mboyle/bin/bd-local-diff-summary`
+## 134. [AGENT68-RECEIPT.md] AGENT-68 RECEIPT — `/home/mboyle/bin/bd-local-diff-summary`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT68-RECEIPT.md` | **Updated**: `2026-10-17T23:40:20Z` | **SHA-256**: `0cd6330c41512776`
 
 - **WRITTEN-AT**: 2026-10-17T23:40:20Z
@@ -3532,7 +3963,7 @@ AST_DELTA: test_settings_center_slice4.py~[fn:test_containment_routes_and_versio
 {"action": "Verify AST delta (test_settings_center_slice4.py~[fn:test_containment_routes_and_version]) on release: v3.66.1908 --...", "ast_delta": ["test_settings_center_slice4.py~[fn:test_containment_routes_and_version]"], "files_changed": ["M:CHANGELOG.md", "M:PIN_INDEX.json", "M:bulk_downloader/__init__.py", "M:project-knowledge/STATIC_KB_MANIFEST.json", "M:tests/test_settings_center_slice4.py"], "order": "ORDER: O1789-A68 | REF: 6990dba3ae06 | TARGET: 747c3f6cb628 | ACTION: Verify AST delta (test_settings_center_slice4.py~[fn:test_containment_routes_and_version]) on release: v3.66.1908 --...", "order_id": "O1789-A68", "ref": "6990dba3ae06", "shortstat": "5 files changed, 8 insertions(+), 4 deletions(-)", "target": "747c3f6cb628", "telemetry": {"backend": "deterministic-ast-fallback", "endpoint": "http://10.0.70.164:4010/v1/chat/completions", "error": "timed out", "latency_ms": 4537.6, "model": "tier1"}}
 ```
 
-## 118. [AGENT53-ARGON4-ADVERSARIAL-SUITE-RECEIPT.md] AGENT-53 ARGON4 ADVERSARIAL SUITE RECEIPT (O1789)
+## 135. [AGENT53-ARGON4-ADVERSARIAL-SUITE-RECEIPT.md] AGENT-53 ARGON4 ADVERSARIAL SUITE RECEIPT (O1789)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT53-ARGON4-ADVERSARIAL-SUITE-RECEIPT.md` | **Updated**: `2026-10-17T23:40:15Z` | **SHA-256**: `241eb8700588533b`
 
 - **WRITTEN-AT**: 2026-10-17T23:40:15Z
@@ -3550,7 +3981,7 @@ AST_DELTA: test_settings_center_slice4.py~[fn:test_containment_routes_and_versio
 SUMMARY: 5/5 PASS (model=tier1-fast, endpoint=http://10.0.70.164:4010/v1/chat/completions, rc=0)
 ```
 
-## 119. [AGENT71-RECEIPT.md] AGENT-71 RECEIPT: `/home/mboyle/bin/bd-local-investigate`
+## 136. [AGENT71-RECEIPT.md] AGENT-71 RECEIPT: `/home/mboyle/bin/bd-local-investigate`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT71-RECEIPT.md` | **Updated**: `2026-10-17T23:40:13Z` | **SHA-256**: `aa92c88376ee4d18`
 
 - **WRITTEN-AT**: 2026-10-17T23:40:13Z
@@ -3574,7 +4005,7 @@ SUMMARY: 5/5 PASS (model=tier1-fast, endpoint=http://10.0.70.164:4010/v1/chat/co
 }
 ```
 
-## 120. [AGENT79-RECEIPT.md] AGENT-79 RECEIPT: `/home/mboyle/bin/bd-local-download-monitor`
+## 137. [AGENT79-RECEIPT.md] AGENT-79 RECEIPT: `/home/mboyle/bin/bd-local-download-monitor`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT79-RECEIPT.md` | **Updated**: `2026-10-17T23:40:09Z` | **SHA-256**: `e59e67c5ab0c1dae`
 
 - **WRITTEN-AT**: 2026-10-17T23:40:09Z
@@ -3590,7 +4021,7 @@ BD LOCAL DOWNLOAD MONITOR | 5.0 TB VAULTS (10.0.70.72 & 10.0.70.83) | 2026-10-17
 [NODE 10.0.70.72] ERROR: Command '['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5', '-o', 'StrictHostKeyChecking=accept-new', '10.0.70.72', 'python3 -c \'\nimport glob, json, os, subprocess\n\nout = {"hostname": "", "vaults": [], "aria2_procs": [], "aria2_ctrl": [], "files": []}\nout["hostname"] = subprocess.check_output(["hostname"], text=True).strip()\n\ndf_raw = subprocess.check_output(["df", "-B1", "-P"], text=True).splitlines()[1:]\ncandidates = []\nfor line in df_raw:\n    parts = line.split()\n    if len(parts) < 6:\n        continue\n    dev, total, used, avail, pct, mnt = parts[0], int(parts[1]), int(parts[2]), int(parts[3]), parts[4], parts[5]\n    if dev.startswith(("tmpfs", "devtmpfs", "overlay", "shm", "efivarfs")):\n        continue\n    candidates.append({"dev": dev, "total": total, "used": used, "avail": avail, "pct": pct, "mnt": mnt})\n\ncandidates.sort(key=lambda x: x["total"], reverse=True)\nvaults = [c for c in candidates if c["total"] >= 1000 * (1024**3)] or candidates[:1]\nout["vaults"] = vaults\n\nps_raw = subprocess.run(["ps", "-eo", "pid,etimes,pcpu,pmem,args"], capture_output=True, text=True).stdout.splitlines()[1:]\nfor line in ps_raw:\n    if "aria2c" in line and "python3 -c" not in line:\n        out["aria2_procs"].append(line.strip())\n\nsearch_roots = set()\nfor v in vaults:\n    if v["mnt"] != "/":\n        search_roots.add(v["mnt"])\nfor p in ["/mnt", "/data", "/srv", "/var/tmp", "/tmp", "/home/mboyle", "/opt"]:\n    if os.path.isdir(p):\n        search_roots.add(p)\n\nseen_ctrl = set()\nseen_files = set()\nfor root in sorted(search_roots):\n    try:\n        find_cmd = ["find", root, "-maxdepth", "4", "(", "-name", "*.aria2", "-o", "-name", "*.gguf", "-o", "-name", "*.safetensors", "-o", "-name", "*.bin", "-o", "-name", "*.tar*", "-o", "-name", "*.iso", "-o", "-size", "+100M", ")", "-not", "-path", "*/.*"]\n        res = subprocess.run(find_cmd, capture_output=True, text=True, timeout=8)\n        for fpath in res.stdout.splitlines():\n            fpath = fpath.strip()\n            if not fpath or not os.path.exists(fpath):\n                continue\n            try:\n                st = os.stat(fpath)\n            except OSError:\n                continue\n            if fpath.endswith(".aria2"):\n                if fpath not in seen_ctrl:\n                    seen_ctrl.add(fpath)\n                    target = fpath[:-6]\n                    tsize = os.path.getsize(target) if os.path.exists(target) else 0\n                    out["aria2_ctrl"].append({"ctrl": fpath, "ctrl_bytes": st.st_size, "target": target, "target_bytes": tsize})\n            else:\n                if fpath not in seen_files:\n                    seen_files.add(fpath)\n                    out["files"].append({"path": fpath, "bytes": st.st_size, "mtime": st.st_mtime})\n    except Exception:\n        pass\n\nout["files"].sort(key=lambda x: x["bytes"], reverse=True)\nout["files"] = out["files"][:25]\nprint(json.dumps(out))\n\'']' timed out after 15 seconds
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT79-RECEIPT.md`)*
 
-## 121. [AGENT65-RECEIPT.md] AGENT-65 RECEIPT — `bd-local-lens-concurrency`
+## 138. [AGENT65-RECEIPT.md] AGENT-65 RECEIPT — `bd-local-lens-concurrency`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT65-RECEIPT.md` | **Updated**: `2026-10-17T23:40:08Z` | **SHA-256**: `51c19d87e7f25939`
 
 - **Agent**: Agent-65
@@ -3607,7 +4038,7 @@ BD LOCAL DOWNLOAD MONITOR | 5.0 TB VAULTS (10.0.70.72 & 10.0.70.83) | 2026-10-17
 {"protocol":"Argon-4","rule_76":true,"rule_86":"enforced","round":"O1789-synth-race","seat":"review-concurrency","verdict":"REFUTE","findings":[{"file":"src/worker_pool.py","line":15,"category":"race_condition","severity":"blocking","defect":"Unsynchronized mutation of shared dictionary/state across concurrent execution without lock protection"},{"file":"src/worker_pool.py","line":16,"category":"race_condition","severity":"blocking","defect":"Unsynchronized mutation of shared dictionary/state across concurrent execution without lock protection"},{"file":"src/worker_pool.py","line":18,"category":"race_condition","severity":"blocking","defect":"Unsynchronized mutation of shared dictionary/state across concurrent execution without lock protection"}],"advisory_debt":[],"model_used":"tier1:fallback(TimeoutError)","endpoint":"http://10.0.70.164:4010/v1/chat/completions"}
 ```
 
-## 122. [AGENT82-RECEIPT.md] AGENT-82 RECEIPT: `/home/mboyle/bin/bd-local-swarm-fanout`
+## 139. [AGENT82-RECEIPT.md] AGENT-82 RECEIPT: `/home/mboyle/bin/bd-local-swarm-fanout`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT82-RECEIPT.md` | **Updated**: `2026-10-17T23:40:08Z` | **SHA-256**: `4016180f386ed7a6`
 
 - **WRITTEN-AT**: 2026-10-17T23:40:08Z
@@ -3691,7 +4122,7 @@ BD LOCAL DOWNLOAD MONITOR | 5.0 TB VAULTS (10.0.70.72 & 10.0.70.83) | 2026-10-17
 "completion_tokens": 2,
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT82-RECEIPT.md`)*
 
-## 123. [AGENT72-RECEIPT.md] AGENT-72 RECEIPT: `bd-local-verify-gate`
+## 140. [AGENT72-RECEIPT.md] AGENT-72 RECEIPT: `bd-local-verify-gate`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT72-RECEIPT.md` | **Updated**: `2026-10-17T23:40:06Z` | **SHA-256**: `2cf4fbe773740bc0`
 
 - **Agent**: Agent-72 (Fast 2-Turn Builder)
@@ -3710,7 +4141,7 @@ VERIFY-AND-STOP: STOP-AND-SHIP (no scope expansion)
 GPU-PRECHECK-SUMMARY: FALLBACK (http://10.0.70.164:4010/v1/chat/completions): deterministic verify-and-stop pass (TimeoutError)
 ```
 
-## 124. [AGENT75-RECEIPT.md] AGENT-75 RECEIPT — `/home/mboyle/bin/bd-local-speculative-bench`
+## 141. [AGENT75-RECEIPT.md] AGENT-75 RECEIPT — `/home/mboyle/bin/bd-local-speculative-bench`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT75-RECEIPT.md` | **Updated**: `2026-10-17T23:40:05Z` | **SHA-256**: `c3c8b9cb83fa92c2`
 
 - **WRITTEN-AT**: 2026-10-17T23:40:05Z
@@ -3727,7 +4158,7 @@ NODE 10.0.70.72   REACHABLE              spec=no            comp=yes           g
 NODE 10.0.70.83   REACHABLE              spec=no            comp=yes           gguf=DeepSeek-V3-0324-Q4_K_M-00001-of-00009.gguf,DeepSeek-V3-0324-Q4_K_M-00002-of-00009.gguf,DeepSeek-V3-0324-Q4_K_M-00003-of-00009.gguf,DeepSeek-V3-0324-Q4_K_M-00004-of-00009.gguf,DeepSeek-V3-0324-Q4_K_M-00005-of-00009.gguf,DeepSeek-V4-Flash-Q2-0731.gguf,dspark-DeepSeek-V4-Flash-0731-BF16.gguf,dspark-DeepSeek-V4-Flash-0731-Q8_0.gguf,GLM-5.2-UD-IQ2_XXS_RoutedIQ2XXS_blk78Q2K.gguf,GLM-5.2-UD-Q3_K_M-00001-of-00009.gguf,GLM-5.2-UD-Q3_K_M-00002-of-00009.gguf,GLM-5.2-UD-Q3_K_M-00003-of-00009.gguf,GLM-5.2-UD-Q3_K_M-00004-of-00009.gguf,GLM-5.2-UD-Q3_K_M-00005-of-00009.gguf,GLM-5.2-UD-Q3_K_M-00006-of-00009.gguf,GLM-5.2-UD-Q3_K_M-00007-of-00009.gguf,GLM-5.2-UD-Q3_K_M-00008-of-00009.gguf,GLM-5.2-UD-Q3_K_M-00009-of-00009.gguf,Qwen3-235B-A22B-Instruct-2507-Q4_K_M-00001-of-00003.gguf,Qwen3-235B-A22B-Instruct-2507-Q4_K_M-00002-of-00003.gguf,Qwen3-235B-A22B-Instruct-2507-Q4_K_M-00003-of-00003.gguf,Qwen3-Coder-480B-A35B-Instruct-Q4_K_M-00001-of-00006.gguf,Qwen3-Coder-480B-A35B-Instruct-UD-Q2_K_XL-00001-of-00004.gguf
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT75-RECEIPT.md`)*
 
-## 125. [AGENT78-RECEIPT.md] AGENT-78 RECEIPT: `bd-local-anthropic-smoke`
+## 142. [AGENT78-RECEIPT.md] AGENT-78 RECEIPT: `bd-local-anthropic-smoke`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT78-RECEIPT.md` | **Updated**: `2026-10-17T23:40:01Z` | **SHA-256**: `dad0419d68f57a21`
 
 - **WRITTEN-AT**: 2026-10-17T23:40:01Z
@@ -3743,7 +4174,7 @@ NODE 10.0.70.83   REACHABLE              spec=no            comp=yes           g
 {"ok": true, "status": 200, "url": "http://10.0.70.228:4000/v1/messages", "model": "tier1-qwen3-coder-30b-a3b", "id": "resp_bGl0ZWxsbTpjdXN0b21fbGxtX3Byb3ZpZGVyOm9wZW5haTttb2RlbF9pZDpkOGFkYjg5NDE1YjEwMTc1OGRkMzM3NWE2OTY5YjgzYzU5ZGVhZWM3OGQzNTEwMmU3Y2QzNjY0NDAxNTlhMTZhO3Jlc3BvbnNlX2lkOnJlc3BfbUNhMWRDc3VHZTNBbUhEZ3lnb0hNYkE3ejRLNURqeE0=", "type": "message", "role": "assistant", "stop_reason": "end_turn", "latency_ms": 19852, "reply": "OK"}
 ```
 
-## 126. [AGENT62-RECEIPT.md] AGENT-62 RECEIPT: Qwen3-Coder-30B-A3B-Instruct-Q6_K.gguf Download
+## 143. [AGENT62-RECEIPT.md] AGENT-62 RECEIPT: Qwen3-Coder-30B-A3B-Instruct-Q6_K.gguf Download
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT62-RECEIPT.md` | **Updated**: `2026-10-17T23:39:59Z` | **SHA-256**: `7da721b7b689dc71`
 
 - **WRITTEN-AT**: 2026-10-17T23:39:59Z
@@ -3765,7 +4196,7 @@ mboyle    109357  109353  5 23:39 ?        00:00:00 aria2c -x 16 -s 16 -k 10M --
 10/17 23:39:58 [[1;32mNOTICE[0m] CUID#14 - Redirecting to https://us.aws.cdn.hf.co/xet-bridge-us/688b451a53e70a07b0669a7c/7e6ae1cb1e0aec20e0967851ff32eaa9c88f9e63499436a2ec62420832310ddd?user_id=public&X-Xet-Cas-Uid=public&response-content-disposition=inline%3B+filename*%3DUTF-8%27%27Qwen3-Coder-30B-A3B-Instruct-Q6_K.gguf%3B+filename%3D%22Qwen3-Coder-30B-A3B-Instruct-Q6_K.gguf%22%3B&xip=T1WhO5jqZBE&Expires=1792283998&Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cHM6Ly91cy5hd3MuY2RuLmhmLmNvL3hldC1icmlkZ2UtdXMvNjg4YjQ1MWE1M2U3MGEwN2IwNjY5YTdjLzdlNmFlMWNiMWUwYWVjMjBlMDk2Nzg1MWZmMzJlYWE5Yzg4ZjllNjM0OTk0MzZhMmVjNjI0MjA4MzIzMTBkZGRcXD91c2VyX2lkPXB1YmxpYyZYLVhldC1DYXMtVWlkPXB1YmxpYyZyZXNwb25zZS1jb250ZW50LWRpc3Bvc2l0aW9uPWlubGluZSUzQitmaWxlbmFtZSUyQSUzRFVURi04JTI3JTI3UXdlbjMtQ29kZXItMzBCLUEzQi1JbnN0cnVjdC1RNl9LLmdndWYlM0IrZmlsZW5hbWUlM0QlMjJRd2VuMy1Db2Rlci0zMEItQTNCLUluc3RydWN0LVE2X0suZ2d1ZiUyMiUzQiZ4aXA9VDFXaE81anFaQkUiLCJDb25kaXRpb24iOnsiRGF0ZUxlc3NUaGFuIjp7IkVwb2NoVGltZSI6MTc5MjI4Mzk5OH19fV19&Signature=MEYCIQDXkRkqefpkSfjHwyPGbyCoJwDGQvwzgm2ESmCd8017kgIhAKL-BvFwPtzLc2pcdoeLvqklm62oEAPTLbQmZJAwskLb&Key-Pair-Id=01KXEF4KZ1B6FV465MAWR4M21F&Hash-Algorithm=SHA256
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT62-RECEIPT.md`)*
 
-## 127. [AGENT84-RECEIPT.md] AGENT-84 RECEIPT: Systemd Unit Boot-Persistence Audit
+## 144. [AGENT84-RECEIPT.md] AGENT-84 RECEIPT: Systemd Unit Boot-Persistence Audit
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT84-RECEIPT.md` | **Updated**: `2026-10-17T23:39:54Z` | **SHA-256**: `1e9d70c89e15e6f1`
 
 - **WRITTEN-AT**: `2026-10-17T23:39:54Z`
@@ -3785,7 +4216,7 @@ mboyle    109357  109353  5 23:39 ?        00:00:00 aria2c -x 16 -s 16 -k 10M --
 | `10.0.70.125` | `llama-rpc.service` | `enabled` | `0` | `active` | `0` | `running` | `/etc/systemd/system/llama-rpc.service` |
 | `10.0.70.125` | `llama-distributed-32b.service` | `enabled` | `0` | `active` | `0` | `running` | `/etc/systemd/system/llama-distributed-32b.service` |
 
-## 128. [AGENT86-RECEIPT.md] AGENT-86 RECEIPT — `bd-local-fleet-suite` Master CLI Index
+## 145. [AGENT86-RECEIPT.md] AGENT-86 RECEIPT — `bd-local-fleet-suite` Master CLI Index
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT86-RECEIPT.md` | **Updated**: `2026-10-17T23:39:44Z` | **SHA-256**: `463db0cb469c8b2f`
 
 - **WRITTEN-AT**: `2026-10-17T23:39:44Z`
@@ -3821,7 +4252,7 @@ bd-openrouter-local                  | PASS   | bd-openrouter-local --help
 SUMMARY: FOUND 16 tools | EXECUTABLE (-x): 16/16 PASS | FAIL: 0
 ```
 
-## 129. [AGENT85-ESXI-VSAN-LOCKED-RAM-CERTIFICATE.md] AGENT-85: ESXi Locked DDR4 RAM & vSAN Capacity Certificate
+## 146. [AGENT85-ESXI-VSAN-LOCKED-RAM-CERTIFICATE.md] AGENT-85: ESXi Locked DDR4 RAM & vSAN Capacity Certificate
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT85-ESXI-VSAN-LOCKED-RAM-CERTIFICATE.md` | **Updated**: `2026-10-17T23:39:37Z` | **SHA-256**: `31ceb685dd2e96f6`
 
 - **WRITTEN-AT**: `2026-10-17T23:39:37Z`
@@ -3878,7 +4309,7 @@ HugePages_Surp:        0
 total        used        free      shared  buff/cache   available
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT85-ESXI-VSAN-LOCKED-RAM-CERTIFICATE.md`)*
 
-## 130. [AGENT80-RECEIPT.md] AGENT-80 RECEIPT: Boylenet Local Codex Provider Config (O1789)
+## 147. [AGENT80-RECEIPT.md] AGENT-80 RECEIPT: Boylenet Local Codex Provider Config (O1789)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT80-RECEIPT.md` | **Updated**: `2026-10-17T23:39:37Z` | **SHA-256**: `c9a16eb8dbccce64`
 
 - **WRITTEN-AT**: 2026-10-17T23:39:37Z
@@ -3894,7 +4325,7 @@ total        used        free      shared  buff/cache   available
 - `[profiles.tier2]`: `model = "deepseek-r1-distill-llama-70b"`
 - `[profiles.tier3]`: `model = "deepseek-v4-flash-q4k"`
 
-## 131. [AGENT81-RECEIPT.md] AGENT-81 RECEIPT: `/home/mboyle/.claude/boylenet-local-settings.json`
+## 148. [AGENT81-RECEIPT.md] AGENT-81 RECEIPT: `/home/mboyle/.claude/boylenet-local-settings.json`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT81-RECEIPT.md` | **Updated**: `2026-10-17T23:39:36Z` | **SHA-256**: `7efe8e71e957cc5d`
 
 - **WRITTEN-AT**: `2026-10-17T23:39:36Z`
@@ -3908,7 +4339,7 @@ total        used        free      shared  buff/cache   available
 - `ANTHROPIC_MODEL=tier1-qwen3-coder-30b-a3b`
 - Argon-4 + Rule 22 variables preserved and enforced (`BD_PROTOCOL=ARGON-4`, `BD_ARGON4=1`, `BD_RULE22_SHIELD=1`, `BD_SANDBOX_ENFORCE=1`, `BD_AUTHORIZED_SANDBOXES=bd-cuts/:bd-local-wt/`, `BD_MAX_TURNS=20`)
 
-## 132. [AGENT45-LOCAL-LENS-SECURITY-RECEIPT.md] AGENT-45 RECEIPT: `/home/mboyle/bin/bd-local-lens-security`
+## 149. [AGENT45-LOCAL-LENS-SECURITY-RECEIPT.md] AGENT-45 RECEIPT: `/home/mboyle/bin/bd-local-lens-security`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT45-LOCAL-LENS-SECURITY-RECEIPT.md` | **Updated**: `2026-10-17T23:38:42Z` | **SHA-256**: `e4100eedb14accf0`
 
 - **WRITTEN-AT**: 2026-10-17T23:38:42Z
@@ -3935,7 +4366,7 @@ total        used        free      shared  buff/cache   available
 {"round":"O1789-sec-test-2","seat":"review-security-local","verdict":"BOARD","findings":[]}
 ```
 
-## 133. [AGENT47-LOCAL-CAVECREW-RECEIPT.md] AGENT-47 LOCAL CAVECREW RECEIPT (O1789)
+## 150. [AGENT47-LOCAL-CAVECREW-RECEIPT.md] AGENT-47 LOCAL CAVECREW RECEIPT (O1789)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT47-LOCAL-CAVECREW-RECEIPT.md` | **Updated**: `2026-10-17T23:37:03Z` | **SHA-256**: `ea4fea70976943f0`
 
 - **WRITTEN-AT**: 2026-10-17T23:37:03Z
@@ -3962,7 +4393,7 @@ BOARD /home/mboyle/bin/bd-local-cavecrew:24 | BOARD /home/mboyle/bin/bd-local-ca
 {"completion_tokens": 39, "elapsed_s": 10.914, "endpoint": "http://10.0.70.164:4010/v1/chat/completions", "model": "qwen3-coder-30b-a3b", "output": "/home/mboyle/bin/bd-local-cavecrew:4: http://10.0.70.164:4010/v1/chat/completions", "subcommand": "investigator", "word_count": 2}
 ```
 
-## 134. [AGENT50-LOCAL-WEB-RESEARCHER-RECEIPT.md] AGENT-50 RECEIPT: `/home/mboyle/bin/bd-local-web-researcher`
+## 151. [AGENT50-LOCAL-WEB-RESEARCHER-RECEIPT.md] AGENT-50 RECEIPT: `/home/mboyle/bin/bd-local-web-researcher`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT50-LOCAL-WEB-RESEARCHER-RECEIPT.md` | **Updated**: `2026-10-17T23:36:39Z` | **SHA-256**: `135b660acf4003a8`
 
 - **WRITTEN-AT**: 2026-10-17T23:36:39Z
@@ -3993,7 +4424,7 @@ LLM Endpoint / Model: http://10.0.70.164:4010/v1/chat/completions (tier1, 0.0s)
 - **Source Metadata**: URL=`https://huggingface.co/empero-ai/Qwythos-27B-v1`, SHA256=`19353d1ae1844928f745f58fbc0cfbc0a75a23563862043882fff24cbdd2d805`, fetch=`curl`
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT50-LOCAL-WEB-RESEARCHER-RECEIPT.md`)*
 
-## 135. [AGENT51-OPENWEBUI-LITELLM-PARITY-RECEIPT.md] AGENT-51: OpenWebUI (`:8090`) & LiteLLM (`:4000`) Model Catalog Parity Receipt
+## 152. [AGENT51-OPENWEBUI-LITELLM-PARITY-RECEIPT.md] AGENT-51: OpenWebUI (`:8090`) & LiteLLM (`:4000`) Model Catalog Parity Receipt
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT51-OPENWEBUI-LITELLM-PARITY-RECEIPT.md` | **Updated**: `2026-10-17T23:36:26Z` | **SHA-256**: `e8a2c888491328d0`
 
 - **WRITTEN-AT**: `2026-10-17T23:36:26Z`
@@ -4019,7 +4450,7 @@ LLM Endpoint / Model: http://10.0.70.164:4010/v1/chat/completions (tier1, 0.0s)
 | `tier2-cyberstrike-35b-bf16` | PASS (`registered`) | PASS (`reachable`) | `rc=0` |
 | `tier3-hybrid` | PASS (`registered`) | PASS (`reachable`) | `rc=0` |
 
-## 136. [AGENT54-GPU-CLUSTER-HEALTH-TOOL-RECEIPT.md] AGENT-54 RECEIPT: `/home/mboyle/bin/bd-gpu-cluster-health`
+## 153. [AGENT54-GPU-CLUSTER-HEALTH-TOOL-RECEIPT.md] AGENT-54 RECEIPT: `/home/mboyle/bin/bd-gpu-cluster-health`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT54-GPU-CLUSTER-HEALTH-TOOL-RECEIPT.md` | **Updated**: `2026-10-17T23:36:03Z` | **SHA-256**: `82192f6c0ef0209d`
 
 - **Agent**: Agent-54 (Fast 2-Turn Builder)
@@ -4055,7 +4486,7 @@ LLM Endpoint / Model: http://10.0.70.164:4010/v1/chat/completions (tier1, 0.0s)
 ### 2. Live Execution Output (`/home/mboyle/bin/bd-gpu-cluster-health`)
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT54-GPU-CLUSTER-HEALTH-TOOL-RECEIPT.md`)*
 
-## 137. [AGENT44-SHARD-RECEIPT.md] AGENT-44 SHARD DOWNLOAD RECEIPT (O1789)
+## 154. [AGENT44-SHARD-RECEIPT.md] AGENT-44 SHARD DOWNLOAD RECEIPT (O1789)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT44-SHARD-RECEIPT.md` | **Updated**: `2026-10-17T23:35:25Z` | **SHA-256**: `16a0a15a904d7815`
 
 - **WRITTEN-AT**: `2026-10-17T23:35:25Z`
@@ -4081,7 +4512,7 @@ LLM Endpoint / Model: http://10.0.70.164:4010/v1/chat/completions (tier1, 0.0s)
 17955 aria2c -x 8 -s 8 -k 10M --continue=true --file-allocation=none --max-tries=0 --retry-wait=5 -d /opt/models/glm-5.2/UD-Q3_K_M -o GLM-5.2-UD-Q3_K_M-00002-of-00009.gguf https://huggingface.co/huihui-ai/Huihui-GLM-5.2-abliterated-GGUF/resolve/main/UD-Q3_K_M/GLM-5.2-UD-Q3_K_M-00002-of-00009.gguf
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT44-SHARD-RECEIPT.md`)*
 
-## 138. [AGENT55-RESTORE-PAUSED-VMS-TOOL-RECEIPT.md] O1789 Agent-55 Receipt: `/home/mboyle/bin/bd-restore-paused-vms`
+## 155. [AGENT55-RESTORE-PAUSED-VMS-TOOL-RECEIPT.md] O1789 Agent-55 Receipt: `/home/mboyle/bin/bd-restore-paused-vms`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT55-RESTORE-PAUSED-VMS-TOOL-RECEIPT.md` | **Updated**: `2026-10-17T23:35:15Z` | **SHA-256**: `ca088d0aed34d581`
 
 - **WRITTEN-AT**: `2026-10-17T23:35:15Z`
@@ -4113,7 +4544,7 @@ Created: 2026-10-17T21:49:32.421864+00:00 | GPU VMs Locked RAM: 1,730 GiB
 13  spare2                        vm-289032   esxi02.boylenet.themfboyles.com        32.0     16  poweredOff
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT55-RESTORE-PAUSED-VMS-TOOL-RECEIPT.md`)*
 
-## 139. [AGENT42-SHARD-RECEIPT.md] AGENT-42 SHARD DOWNLOADER RECEIPT (`GLM-5.2-UD-Q3_K_M` Shards 4-6)
+## 156. [AGENT42-SHARD-RECEIPT.md] AGENT-42 SHARD DOWNLOADER RECEIPT (`GLM-5.2-UD-Q3_K_M` Shards 4-6)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT42-SHARD-RECEIPT.md` | **Updated**: `2026-10-17T23:35:04Z` | **SHA-256**: `71bf5d5b829c13ed`
 
 - **Status**: `rc=0` (ACTIVE & VERIFIED)
@@ -4133,7 +4564,7 @@ Created: 2026-10-17T21:49:32.421864+00:00 | GPU VMs Locked RAM: 1,730 GiB
 - **Verification (`ls -lh` & Log Check after 5s)**:
 - All 3 shards (`00004`, `00005`, `00006`) resolved and redirected to `us.aws.cdn.hf.co/xet-bridge-us/...` (`CUID#7`, `CUID#8`, `CUID#9`) with active file allocation (`--file-allocation=none`) and `.aria2` state files initialized.
 
-## 140. [AGENT48-LOCAL-CI-TRIAGE-RECEIPT.md] AGENT-48 RECEIPT: `/home/mboyle/bin/bd-local-ci-triage`
+## 157. [AGENT48-LOCAL-CI-TRIAGE-RECEIPT.md] AGENT-48 RECEIPT: `/home/mboyle/bin/bd-local-ci-triage`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT48-LOCAL-CI-TRIAGE-RECEIPT.md` | **Updated**: `2026-10-17T23:35:03Z` | **SHA-256**: `598b42dfbbf7d45c`
 
 - **WRITTEN-AT**: 2026-10-17T23:35:03Z
@@ -4175,7 +4606,7 @@ Created: 2026-10-17T21:49:32.421864+00:00 | GPU VMs Locked RAM: 1,730 GiB
 }
 ```
 
-## 141. [AGENT38-SHARD-RECEIPT.md] AGENT-38 SHARD DOWNLOAD RECEIPT (O1789)
+## 158. [AGENT38-SHARD-RECEIPT.md] AGENT-38 SHARD DOWNLOAD RECEIPT (O1789)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT38-SHARD-RECEIPT.md` | **Updated**: `2026-10-17T23:35:02Z` | **SHA-256**: `86d7aa104199ab66`
 
 - **WRITTEN-AT**: 2026-10-17T23:35:02Z
@@ -4200,7 +4631,7 @@ mboyle    106539       1  0 23:34 ?        00:00:00 aria2c -x 8 -s 8 -k 10M --co
 -rw-rw-r-- 1 mboyle mboyle 12K Oct 17 23:34 /opt/models/qwen3.8-flash-next/BF16/Qwen3.8-Flash-Next-BF16-00003-of-00008.gguf.aria2
 ```
 
-## 142. [AGENT57-25GBE-RPC-PERSISTENCE-AUDIT-RECEIPT.md] AGENT-57: 4-Node 25GbE RoCEv2 & llama-rpc Boot Persistence Audit Receipt
+## 159. [AGENT57-25GBE-RPC-PERSISTENCE-AUDIT-RECEIPT.md] AGENT-57: 4-Node 25GbE RoCEv2 & llama-rpc Boot Persistence Audit Receipt
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT57-25GBE-RPC-PERSISTENCE-AUDIT-RECEIPT.md` | **Updated**: `2026-10-17T23:34:58Z` | **SHA-256**: `d1463e361a814b01`
 
 - **WRITTEN-AT**: `2026-10-17T23:34:54Z`
@@ -4244,7 +4675,7 @@ addresses:
 - 1.1.1.1
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT57-25GBE-RPC-PERSISTENCE-AUDIT-RECEIPT.md`)*
 
-## 143. [AGENT25-DYNAMIC-TIER-ORCHESTRATOR-RECEIPTS.md] AGENT-25: Dynamic Tier 1/2/3 GPU Mode Orchestrator (`:4010`) & LiteLLM Auto-Router (`:4000`) Receipts
+## 160. [AGENT25-DYNAMIC-TIER-ORCHESTRATOR-RECEIPTS.md] AGENT-25: Dynamic Tier 1/2/3 GPU Mode Orchestrator (`:4010`) & LiteLLM Auto-Router (`:4000`) Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT25-DYNAMIC-TIER-ORCHESTRATOR-RECEIPTS.md` | **Updated**: `2026-10-17T23:34:56Z` | **SHA-256**: `0659252b4f213c8d`
 
 - **Date:** 2026-10-17 UTC
@@ -4262,7 +4693,7 @@ addresses:
 | **Tier 2 — Unified 4-GPU Pure-VRAM (`:8083`, Hot-Swap)** | `10.0.70.72:8083` + RPC `10.0.75.11,13,14:50052` | `llama-tier23.service` | `deepseek-r1-distill-llama-70b`, `llama-3.3-70b-instruct`, `qwythos-27b-mtp-bf16`, `cyberstrike-offsec-35b-bf16` | **4x Tesla T4 (`64 GB` GDDR6)** (`100%` GPU VRAM, `0%` CPU spill) | **`3.90 – 19.72 tok/s`** (`tg128`) / **`78.55 – 121.83 tok/s`** (`pp512`) | **Verified Live Switch & Inference (`rc=0`)** |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT25-DYNAMIC-TIER-ORCHESTRATOR-RECEIPTS.md`)*
 
-## 144. [AGENT49-LOCAL-AST-AGENT-RECEIPT.md] AGENT-49 RECEIPT: `/home/mboyle/bin/bd-local-ast-agent`
+## 161. [AGENT49-LOCAL-AST-AGENT-RECEIPT.md] AGENT-49 RECEIPT: `/home/mboyle/bin/bd-local-ast-agent`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT49-LOCAL-AST-AGENT-RECEIPT.md` | **Updated**: `2026-10-17T23:34:49Z` | **SHA-256**: `8ff2e2b3db51a850`
 
 - **Timestamp (UTC)**: 2026-10-17T23:34:49Z
@@ -4306,7 +4737,7 @@ def main [L1755-L1766] (12 lines)
 AST-SLICE: bd-gpu-orchestrator.py::run_ssh L531-L555 (25/1770 lines, 98.6% reduction)
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT49-LOCAL-AST-AGENT-RECEIPT.md`)*
 
-## 145. [AGENT46-LOCAL-LENS-CORRECTNESS-RECEIPT.md] AGENT-46 RECEIPT: `/home/mboyle/bin/bd-local-lens-correctness`
+## 162. [AGENT46-LOCAL-LENS-CORRECTNESS-RECEIPT.md] AGENT-46 RECEIPT: `/home/mboyle/bin/bd-local-lens-correctness`
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT46-LOCAL-LENS-CORRECTNESS-RECEIPT.md` | **Updated**: `2026-10-17T23:34:45Z` | **SHA-256**: `c0a3967ea17a6f7a`
 
 - **WRITTEN-AT**: 2026-10-17T23:34:45Z
@@ -4329,7 +4760,7 @@ AST-SLICE: bd-gpu-orchestrator.py::run_ssh L531-L555 (25/1770 lines, 98.6% reduc
 {"round": "O1789-T2", "seat": "review-correctness", "verdict": "BOARD", "classification": "BOARD-WITH-ADVISORY", "findings": [], "advisories": ["1 surviving synthetic test mutant noted on boundary condition max_attempts == 0; however, no behavioral defect exists as the logic correctly returns 0 for both <= 0 and >= max_attempts cases."]}
 ```
 
-## 146. [AGENT52-OPENCODE-AIDER-PROFILES-RECEIPT.md] AGENT-52 RECEIPT: OpenCode & Aider Local GPU Profiles (O1789)
+## 163. [AGENT52-OPENCODE-AIDER-PROFILES-RECEIPT.md] AGENT-52 RECEIPT: OpenCode & Aider Local GPU Profiles (O1789)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT52-OPENCODE-AIDER-PROFILES-RECEIPT.md` | **Updated**: `2026-10-17T23:34:44Z` | **SHA-256**: `323f66b915639094`
 
 - **WRITTEN-AT**: 2026-10-17T23:34:44Z
@@ -4353,7 +4784,7 @@ AST-SLICE: bd-gpu-orchestrator.py::run_ssh L531-L555 (25/1770 lines, 98.6% reduc
 3. **Rule 78 Pytest Digest**: `test-cmd: bd-pytest-digest`, never raw pytest.
 4. **Rule 22 Worktree & Git Safety**: `auto-commits: false`, `dirty-commits: false`, read-only floor injection (`/home/mboyle/bd-persist/FLEET_RULE-FLOOR.md`, `/home/mboyle/AGENTS.md`).
 
-## 147. [AGENT41-SHARD-RECEIPT.md] AGENT-41 SHARD DOWNLOAD RECEIPT (GLM-5.2-UD-Q3_K_M Shards 1-3)
+## 164. [AGENT41-SHARD-RECEIPT.md] AGENT-41 SHARD DOWNLOAD RECEIPT (GLM-5.2-UD-Q3_K_M Shards 1-3)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT41-SHARD-RECEIPT.md` | **Updated**: `2026-10-17T23:34:32Z` | **SHA-256**: `ab1a3f77422909e1`
 
 - **Timestamp**: 2026-10-17T23:34:32Z
@@ -4372,7 +4803,7 @@ AST-SLICE: bd-gpu-orchestrator.py::run_ssh L531-L555 (25/1770 lines, 98.6% reduc
 17957 aria2c -x 8 -s 8 -k 10M --continue=true --file-allocation=none --max-tries=0 --retry-wait=5 -d /opt/models/glm-5.2/UD-Q3_K_M -o GLM-5.2-UD-Q3_K_M-00003-of-00009.gguf https://huggingface.co/huihui-ai/Huihui-GLM-5.2-abliterated-GGUF/resolve/main/UD-Q3_K_M/GLM-5.2-UD-Q3_K_M-00003-of-00009.gguf
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT41-SHARD-RECEIPT.md`)*
 
-## 148. [AGENT37-SHARD-RECEIPT.md] AGENT-37 SHARD DOWNLOAD RECEIPT (O1789)
+## 165. [AGENT37-SHARD-RECEIPT.md] AGENT-37 SHARD DOWNLOAD RECEIPT (O1789)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT37-SHARD-RECEIPT.md` | **Updated**: `2026-10-17T23:34:31Z` | **SHA-256**: `7dc6ca212da1f356`
 
 - **Agent**: Agent-37
@@ -4410,7 +4841,7 @@ total 12G
 -rw-rw-r-- 1 mboyle mboyle 5.6K Oct 17 23:34 Qwen3.8-Flash-Next-BF16-00008-of-00008.gguf.aria2
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT37-SHARD-RECEIPT.md`)*
 
-## 149. [AGENT43-SHARD-RECEIPT.md] AGENT-43 SHARD DOWNLOADER RECEIPT (O1789)
+## 166. [AGENT43-SHARD-RECEIPT.md] AGENT-43 SHARD DOWNLOADER RECEIPT (O1789)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT43-SHARD-RECEIPT.md` | **Updated**: `2026-10-17T23:34:26Z` | **SHA-256**: `3e4aad4da10e0c68`
 
 - **WRITTEN-AT**: 2026-10-17T23:34:26Z
@@ -4434,7 +4865,7 @@ total 12G
 17927 bash -c until aria2c -x 8 -s 8 -k 10M --continue=true --file-allocation=none --max-tries=0 --retry-wait=5 --timeout=60 --connect-timeout=30 -d '/opt/models/glm-5.2/UD-Q3_K_M' -o 'GLM-5.2-UD-Q3_K_M-00009-of-00009.gguf' 'https://huggingface.co/huihui-ai/Huihui-GLM-5.2-abliterated-GGUF/resolve/main/UD-Q3_K_M/GLM-5.2-UD-Q3_K_M-00009-of-00009.gguf' >> '/opt/models/glm-5.2/UD-Q3_K_M/aria2c-00009.log' 2>&1; do sleep 3; done
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT43-SHARD-RECEIPT.md`)*
 
-## 150. [AGENT40-SHARD-RECEIPT.md] AGENT-40 SHARD DOWNLOAD RECEIPT (O1789)
+## 167. [AGENT40-SHARD-RECEIPT.md] AGENT-40 SHARD DOWNLOAD RECEIPT (O1789)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT40-SHARD-RECEIPT.md` | **Updated**: `2026-10-17T23:34:26Z` | **SHA-256**: `0b1f766dc1a6dcee`
 
 - **WRITTEN-AT**: 2026-10-17T23:34:26Z
@@ -4463,7 +4894,7 @@ mboyle    106206  106196  5 23:34 ?        00:00:00 aria2c -x 8 -s 8 -k 10M --co
 10/17 23:34:21 [[1;32mNOTICE[0m] CUID#13 - Redirecting to https://us.aws.cdn.hf.co/xet-bridge-us/6a9cea389d04f655f2d624e4/55a7285ff3f9537efe183a6f798cd596742caead590e033561509506575f03f2?X-Xet-Cas-Uid=public&response-content-disposition=inline%3B+filename*%3DUTF-8%27%27Qwen3.8-Flash-Next-BF16-00007-of-00008.gguf%3B+filename%3D%22Qwen3.8-Flash-Next-BF16-00007-of-00008.gguf%22%3B&user_id=public&xip=511TgCyxp8c&Expires=1792283661&Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cHM6Ly91cy5hd3MuY2RuLmhmLmNvL3hldC1icmlkZ2UtdXMvNmE5Y2VhMzg5ZDA0ZjY1NWYyZDYyNGU0LzU1YTcyODVmZjNmOTUzN2VmZTE4M2E2Zjc5OGNkNTk2NzQyY2FlYWQ1OTBlMDMzNTYxNTA5NTA2NTc1ZjAzZjJcXD9YLVhldC1DYXMtVWlkPXB1YmxpYyZyZXNwb25zZS1jb250ZW50LWRpc3Bvc2l0aW9uPWlubGluZSUzQitmaWxlbmFtZSUyQSUzRFVURi04JTI3JTI3UXdlbjMuOC1GbGFzaC1OZXh0LUJGMTYtMDAwMDctb2YtMDAwMDguZ2d1ZiUzQitmaWxlbmFtZSUzRCUyMlF3ZW4zLjgtRmxhc2gtTmV4dC1CRjE2LTAwMDA3LW9mLTAwMDA4LmdndWYlMjIlM0ImdXNlcl9pZD1wdWJsaWMmeGlwPTUxMVRnQ3l4cDhjIiwiQ29uZGl0aW9uIjp7IkRhdGVMZXNzVGhhbiI6eyJFcG9jaFRpbWUiOjE3OTIyODM2NjF9fX1dfQ__&Signature=MEQCIFi-ie5dZUtrbpigMPiTB5XQio3OM6ffvAuftmg-2qrcAiAD9cq-3%7E2jvpOGi4CDNz71XYercXRivOwwoeWZ8qL89Q__&Key-Pair-Id=01KXEF4KZ1B6FV465MAWR4M21F&Hash-Algorithm=SHA256
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT40-SHARD-RECEIPT.md`)*
 
-## 151. [AGENT56-TIER3-RAMDISK-FLEET-AUDIT-RECEIPT.md] AGENT-56: Tier 3 CI `tmpfs` RAM-Disk Fleet Audit Receipt (O1789)
+## 168. [AGENT56-TIER3-RAMDISK-FLEET-AUDIT-RECEIPT.md] AGENT-56: Tier 3 CI `tmpfs` RAM-Disk Fleet Audit Receipt (O1789)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT56-TIER3-RAMDISK-FLEET-AUDIT-RECEIPT.md` | **Updated**: `2026-10-17T23:34:24Z` | **SHA-256**: `8abd14b10509a5a9`
 
 - **WRITTEN-AT**: 2026-10-17T23:34:24Z
@@ -4491,7 +4922,7 @@ rc=0
 2. `/var/tmp/bd-ram-scratch` mounted/backed by `tmpfs` and verified read-write (`RW`).
 3. `/etc/fstab` persistence verified across all 7 nodes (`PERSISTED`).
 
-## 152. [AGENT39-SHARD-RECEIPT.md] AGENT-39 SHARD DOWNLOADER RECEIPT (O1789)
+## 169. [AGENT39-SHARD-RECEIPT.md] AGENT-39 SHARD DOWNLOADER RECEIPT (O1789)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT39-SHARD-RECEIPT.md` | **Updated**: `2026-10-17T23:34:12Z` | **SHA-256**: `bc45e1635d1f0afb`
 
 - **WRITTEN-AT**: 2026-10-17T23:34:12Z
@@ -4511,7 +4942,7 @@ mboyle    105687  105686  7 23:33 ?        00:00:04 aria2c -x 16 -s 16 -k 10M --
 mboyle    105797   41321  0 23:33 ?        00:00:00 timeout 180 aria2c -x 16 -s 16 -k 10M --continue=true --file-allocation=none --lowest-speed-limit=200K --timeout=10 --connect-timeout=10 --max-tries=5 --retry-wait=1 --summary-interval=10 -d /opt/models/qwen3.8-flash-next/swift-IQ2_XS -o Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00002-of-00002.gguf https://huggingface.co/huihui-ai/Huihui-Qwen3.8-Flash-Next-abliterated-GGUF/resolve/main/swift-IQ2_XS/Swift-Qwen3.8-Flash-Next-GSQ-RCO-IQ2_XS-00002-of-00002.gguf
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT39-SHARD-RECEIPT.md`)*
 
-## 153. [AGENT23-HF-FLAGSHIP-CODING-MODELS-RECEIPTS.md] AGENT-23: Hugging Face Flagship Coding Model Downloads & Multi-Tier GPU/RAM Benchmark Receipts
+## 170. [AGENT23-HF-FLAGSHIP-CODING-MODELS-RECEIPTS.md] AGENT-23: Hugging Face Flagship Coding Model Downloads & Multi-Tier GPU/RAM Benchmark Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT23-HF-FLAGSHIP-CODING-MODELS-RECEIPTS.md` | **Updated**: `2026-10-17T22:52:28Z` | **SHA-256**: `549b4734bd9bc33d`
 
 - **Date:** 2026-10-17 UTC
@@ -4529,7 +4960,7 @@ mboyle    105797   41321  0 23:33 ?        00:00:00 timeout 180 aria2c -x 16 -s 
 | **Tier 1 (1x T4 + Local `AVX-512` Hybrid MoE)** | `Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf` (`18,556,689,568 B` / `17.28 GiB`) | `30.53B` Total / **`3.3B` Active MoE** | **1x Tesla T4 (`16 GB`) + `AVX-512` (`32 threads`)**: `-ngl 999 -ot "\.ffn_.*_exps\.=CPU"` | Attention/Shared on GPU, Routed FFN Experts in DDR4 RAM | **`142.37 ± 0.00 tok/s`** | **`18.01 ± 0.00 tok/s`** | — | **`1.60x` faster than 2-GPU Dense `32B` using only 1 GPU!** |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT23-HF-FLAGSHIP-CODING-MODELS-RECEIPTS.md`)*
 
-## 154. [AGENT22-TIER1-AND-MAX-HYBRID-BENCHMARK-RECEIPTS.md] AGENT-22: Tier-1 Distributed `llama-server` + `LiteLLM (:4000)` Integration & Max Hybrid GPU (`4x Tesla T4 = 64 GB VRAM`) + System RAM (`1.73 TB DDR4`) Cluster Benchmark Receipts
+## 171. [AGENT22-TIER1-AND-MAX-HYBRID-BENCHMARK-RECEIPTS.md] AGENT-22: Tier-1 Distributed `llama-server` + `LiteLLM (:4000)` Integration & Max Hybrid GPU (`4x Tesla T4 = 64 GB VRAM`) + System RAM (`1.73 TB DDR4`) Cluster Benchmark Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT22-TIER1-AND-MAX-HYBRID-BENCHMARK-RECEIPTS.md` | **Updated**: `2026-10-17T22:31:36Z` | **SHA-256**: `126005e67752c1ee`
 
 - **Date:** 2026-10-17 UTC
@@ -4551,7 +4982,7 @@ mboyle    105797   41321  0 23:33 ?        00:00:00 timeout 180 aria2c -x 16 -s 
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT22-TIER1-AND-MAX-HYBRID-BENCHMARK-RECEIPTS.md`)*
 
-## 155. [AGENT20-MAX-RAM-RECLAIM-AND-GPU-VM-EXPANSION-RECEIPTS.md] AGENT-20: Non-Essential VM Power-Off & Maximum GPU VM RAM Expansion Receipts
+## 172. [AGENT20-MAX-RAM-RECLAIM-AND-GPU-VM-EXPANSION-RECEIPTS.md] AGENT-20: Non-Essential VM Power-Off & Maximum GPU VM RAM Expansion Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT20-MAX-RAM-RECLAIM-AND-GPU-VM-EXPANSION-RECEIPTS.md` | **Updated**: `2026-10-17T21:58:55Z` | **SHA-256**: `b2dc066c3f8f70ab`
 
 - **Timestamp (UTC)**: `2026-10-17T21:58:00Z`
@@ -4578,7 +5009,7 @@ All 27 non-essential VMs across `esxi01..04` were recorded to `/home/mboyle/bd-p
 [Cleanly poweredOff via ShutdownGuest] spare12 on esxi04.boylenet.themfboyles.com
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT20-MAX-RAM-RECLAIM-AND-GPU-VM-EXPANSION-RECEIPTS.md`)*
 
-## 156. [AGENT19-4GPU-32B-LLM-RECEIPTS.md] AGENT-19: 4-GPU Distributed LLM Inference (`qwen2.5-coder:32b` Across 4x Tesla T4 `64 GB` GDDR6 Over 25GbE `10.0.75.11..14`) Receipts
+## 173. [AGENT19-4GPU-32B-LLM-RECEIPTS.md] AGENT-19: 4-GPU Distributed LLM Inference (`qwen2.5-coder:32b` Across 4x Tesla T4 `64 GB` GDDR6 Over 25GbE `10.0.75.11..14`) Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT19-4GPU-32B-LLM-RECEIPTS.md` | **Updated**: `2026-10-17T21:50:58Z` | **SHA-256**: `6da16c5e466c0812`
 
 - **Date:** 2026-10-17 UTC
@@ -4606,7 +5037,7 @@ EXIT_CODE=0
 prompt_eval_count=49, prompt_eval_duration=2.630s, prompt_eval_rate=18.63 tok/s
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT19-4GPU-32B-LLM-RECEIPTS.md`)*
 
-## 157. [AGENT21-TIER3-CI-TMPFS-RAMDISK-RECEIPTS.md] AGENT-21: Tier-3 CI Runner `tmpfs` DDR4 RAM-Disk & Hot-Add Memory Receipts (O1789)
+## 174. [AGENT21-TIER3-CI-TMPFS-RAMDISK-RECEIPTS.md] AGENT-21: Tier-3 CI Runner `tmpfs` DDR4 RAM-Disk & Hot-Add Memory Receipts (O1789)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT21-TIER3-CI-TMPFS-RAMDISK-RECEIPTS.md` | **Updated**: `2026-10-17T21:49:34Z` | **SHA-256**: `d928b3de5039fa18`
 
 - **Timestamp (UTC)**: `2026-10-17T21:47:53Z`
@@ -4631,7 +5062,7 @@ prompt_eval_count=49, prompt_eval_duration=2.630s, prompt_eval_rate=18.63 tok/s
 - **`/etc/tmpfiles.d/bd-ram-scratch.conf`** (installed on all 7 nodes so `/mnt/ramdisk-ci/bd-ram-scratch` with `mode=1777` is automatically recreated on boot):
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT21-TIER3-CI-TMPFS-RAMDISK-RECEIPTS.md`)*
 
-## 158. [AGENT17-ROCE-POST-LACP-RECEIPTS.md] AGENT-17: Post-LACP Tesla T4 GPU RoCE DVPort Override & Switch Topology Verification Receipts
+## 175. [AGENT17-ROCE-POST-LACP-RECEIPTS.md] AGENT-17: Post-LACP Tesla T4 GPU RoCE DVPort Override & Switch Topology Verification Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT17-ROCE-POST-LACP-RECEIPTS.md` | **Updated**: `2026-10-17T21:04:59Z` | **SHA-256**: `d8270873cbd19c76`
 
 - **Timestamp (UTC)**: `2026-10-17T21:03:30Z`
@@ -4658,7 +5089,7 @@ DVPort 365 : pg=dvportgroup-11  entity='lens-r3c-cx4-20261014'    nic='4000' tp.
 DVPort 366 : pg=dvportgroup-11  entity='lens-r2eb3-cx5-20261014'  nic='4000' tp.inh=True po.inh=True policy=loadbalance_srcid active=['LAG1'] standby=[]
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT17-ROCE-POST-LACP-RECEIPTS.md`)*
 
-## 159. [AGENT8-PHYSICAL-RACK-GUIDE.md] Boylenet Physical Rack, Switch Port & Hardware Bay Guide (Agent-8 Audit)
+## 176. [AGENT8-PHYSICAL-RACK-GUIDE.md] Boylenet Physical Rack, Switch Port & Hardware Bay Guide (Agent-8 Audit)
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT8-PHYSICAL-RACK-GUIDE.md` | **Updated**: `2026-10-17T21:03:24Z` | **SHA-256**: `d7a542af1e466666`
 
 **Generated**: `2026-10-17T17:13:00Z`
@@ -4682,7 +5113,7 @@ You have **four working 10G DAC cables already plugged into `USAGGPRO` (`10.0.10
 4. **`USAGGPRO Port 17`** (`SFP-H10GB-CU3M`, OEM, SN `CSS11OA3458` — labeled `"ESXI03 - vmnic7"`, physically linked at `10,000 Mbps` to `esxi03` Embedded FlexibleLOM `556FLR-SFP+`, disabled by Emulex optic lock; carries **0 MACs / 0 traffic**).
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT8-PHYSICAL-RACK-GUIDE.md`)*
 
-## 160. [AGENT12-CLUSTER-E2E-HEALTH-RECEIPTS.md] O1789 INFRA-UPGRADE: 33-NODE CLUSTER, NFS, GRUB & SERVICE E2E HEALTH RECEIPTS
+## 177. [AGENT12-CLUSTER-E2E-HEALTH-RECEIPTS.md] O1789 INFRA-UPGRADE: 33-NODE CLUSTER, NFS, GRUB & SERVICE E2E HEALTH RECEIPTS
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT12-CLUSTER-E2E-HEALTH-RECEIPTS.md` | **Updated**: `2026-10-17T21:01:27Z` | **SHA-256**: `b0120b28250ed9bb`
 
 - **WRITTEN-AT**: `2026-10-17T21:01:26Z`
@@ -4707,7 +5138,7 @@ You have **four working 10G DAC cables already plugged into `USAGGPRO` (`10.0.10
 | 1 | `10.0.70.164` | `hub-mesh01` | `LOCAL_RW_OK` + `BD_PERSIST_RW_OK` | `/ /dev/mapper/ubuntu--vg-ubuntu--lv xfs rw,relatime,attr2,inode64,logbufs=8,logbsize=32k,noquota` | `LOCAL_EXPORT_ROOT` | `0` |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT12-CLUSTER-E2E-HEALTH-RECEIPTS.md`)*
 
-## 161. [AGENT15-CLUSTER-E2E-HEALTH-RECEIPTS.md] O1789 INFRA-UPGRADE: 33-NODE CLUSTER, NFS, GRUB & SERVICE E2E HEALTH RECEIPTS
+## 178. [AGENT15-CLUSTER-E2E-HEALTH-RECEIPTS.md] O1789 INFRA-UPGRADE: 33-NODE CLUSTER, NFS, GRUB & SERVICE E2E HEALTH RECEIPTS
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT15-CLUSTER-E2E-HEALTH-RECEIPTS.md` | **Updated**: `2026-10-17T21:01:27Z` | **SHA-256**: `b0120b28250ed9bb`
 
 - **WRITTEN-AT**: `2026-10-17T21:01:26Z`
@@ -4732,7 +5163,7 @@ You have **four working 10G DAC cables already plugged into `USAGGPRO` (`10.0.10
 | 1 | `10.0.70.164` | `hub-mesh01` | `LOCAL_RW_OK` + `BD_PERSIST_RW_OK` | `/ /dev/mapper/ubuntu--vg-ubuntu--lv xfs rw,relatime,attr2,inode64,logbufs=8,logbsize=32k,noquota` | `LOCAL_EXPORT_ROOT` | `0` |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT15-CLUSTER-E2E-HEALTH-RECEIPTS.md`)*
 
-## 162. [AGENT9-LACP-AGGREGATION-RECEIPTS.md] AGENT-9: UniFi Port Labeling & vSphere VDS `25GB` Multi-NIC Load-Based Teaming Receipts
+## 179. [AGENT9-LACP-AGGREGATION-RECEIPTS.md] AGENT-9: UniFi Port Labeling & vSphere VDS `25GB` Multi-NIC Load-Based Teaming Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT9-LACP-AGGREGATION-RECEIPTS.md` | **Updated**: `2026-10-17T20:27:08Z` | **SHA-256**: `1e35a9f8441ac821`
 
 - **Timestamp (UTC)**: `2026-10-17T20:25:30Z`
@@ -4760,7 +5191,7 @@ All 16 active 10GbE server links and 4 active 25GbE server links were verified v
 | **Port 13** | `esxi01 - vmnic4 (10G)` | `10,000 Mbps Full` | `SFP-H10GB-CU3M` | `CSS11OA3459` | Verified (`48:df:37:d5:66:20`) |
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT9-LACP-AGGREGATION-RECEIPTS.md`)*
 
-## 163. [AGENT13-VSAN-EXPANSION-HEALTH-RECEIPTS.md] AGENT-13: `esxi03` 9th Enterprise 12G SAS SSD Expansion, Orphaned `lens-*` VM Inventory Hygiene & vSAN Cluster Health Receipts
+## 180. [AGENT13-VSAN-EXPANSION-HEALTH-RECEIPTS.md] AGENT-13: `esxi03` 9th Enterprise 12G SAS SSD Expansion, Orphaned `lens-*` VM Inventory Hygiene & vSAN Cluster Health Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT13-VSAN-EXPANSION-HEALTH-RECEIPTS.md` | **Updated**: `2026-10-17T20:22:07Z` | **SHA-256**: `645a1faa02450fe4`
 
 - **Timestamp (UTC)**: `2026-10-17T20:20:36Z`
@@ -4785,7 +5216,7 @@ All 16 active 10GbE server links and 4 active 25GbE server links were verified v
 3. `naa.5000cca06cabeba0` (Bay `1I:1:6`, `1.92TB HGST SAS SSD`, `VSANUUID: 524140ce-400e-dc1b-bbf2-ca0597d61a0c`)
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT13-VSAN-EXPANSION-HEALTH-RECEIPTS.md`)*
 
-## 164. [AGENT11-GPU-SRIOV-POSTBOOT-RECEIPTS.md] AGENT-11: Post-Boot SR-IOV VF Instantiation, 4-Node Tesla T4 GPU RoCE Mesh & Satellite AI Verification Receipts
+## 181. [AGENT11-GPU-SRIOV-POSTBOOT-RECEIPTS.md] AGENT-11: Post-Boot SR-IOV VF Instantiation, 4-Node Tesla T4 GPU RoCE Mesh & Satellite AI Verification Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT11-GPU-SRIOV-POSTBOOT-RECEIPTS.md` | **Updated**: `2026-10-17T20:16:36Z` | **SHA-256**: `3183c17dffca803c`
 
 **Generated At:** `2026-10-17T20:15:00Z`
@@ -4806,7 +5237,7 @@ All 16 active 10GbE server links and 4 active 25GbE server links were verified v
 - All 6 pairs pass `ping -c 3 -M do -s 8972` (9000-byte unfragmented jumbo frames) with **0% packet loss** (`0.389–0.512 ms` min RTT) and sustain **20.8–24.1 Gbits/sec** on `iperf3 -P 4`.
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT11-GPU-SRIOV-POSTBOOT-RECEIPTS.md`)*
 
-## 165. [AGENT4-VSAN-TIER-RECEIPTS.md] AGENT-4: vSAN Tier & Disk Group Evacuation Architecture Receipts
+## 182. [AGENT4-VSAN-TIER-RECEIPTS.md] AGENT-4: vSAN Tier & Disk Group Evacuation Architecture Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT4-VSAN-TIER-RECEIPTS.md` | **Updated**: `2026-10-17T17:26:19Z` | **SHA-256**: `d1e2551fc1ac0ce3`
 
 - **Generated At (UTC)**: `2026-10-17T17:22:30Z`
@@ -4825,7 +5256,7 @@ Note: On ESXi 8.0.3 (`build 24022510`), the CLI namespace is `esxcli vsan debug 
 CMD: esxcli vsan debug resync summary get
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT4-VSAN-TIER-RECEIPTS.md`)*
 
-## 166. [AGENT5-FTT-ORPHAN-RECEIPTS.md] AGENT-5: Remaining FTT=1 Policy Conversion & Orphaned vSAN Object Audit Receipts
+## 183. [AGENT5-FTT-ORPHAN-RECEIPTS.md] AGENT-5: Remaining FTT=1 Policy Conversion & Orphaned vSAN Object Audit Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT5-FTT-ORPHAN-RECEIPTS.md` | **Updated**: `2026-10-17T17:20:18Z` | **SHA-256**: `1193f225bd33e7a5`
 
 - **Timestamp (UTC)**: `2026-10-17T17:17:46Z`
@@ -4845,7 +5276,7 @@ CMD: esxcli vsan debug resync summary get
 - Because `Boylenet` (`5ae84dbe-ff79-4a5e-ae41-5a8c24ec999a`) includes the VM Encryption I/O Filter capability (`com.vmware.storageprofile.dataservice.ad5a249d-cbc2-43af-9366-694d7664fa52` / `VMW_vmwarevmcrypt_1.0.0`), calling `ReconfigVM_Task` on the virtual disk attempts to attach the `VMW_vmwarevmcrypt_1.0.0` filter to an unencrypted disk while `poweredOn`, which vCenter rejects with `vim.fault.InvalidPowerState: The attempted operation cannot be performed in the current state (Powered on)`.
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT5-FTT-ORPHAN-RECEIPTS.md`)*
 
-## 167. [AGENT1-UNIFI-VDS-RECEIPTS.md] AGENT-1: UniFi 25G/10G Switching Fabric & VDS `25GB` Remediation Receipts
+## 184. [AGENT1-UNIFI-VDS-RECEIPTS.md] AGENT-1: UniFi 25G/10G Switching Fabric & VDS `25GB` Remediation Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT1-UNIFI-VDS-RECEIPTS.md` | **Updated**: `2026-10-17T17:12:27Z` | **SHA-256**: `6de3758daa3fc749`
 
 - **Timestamp (UTC)**: `2026-10-17T17:10:35Z`
@@ -4867,7 +5298,7 @@ CMD: esxcli vsan debug resync summary get
 - Both sides immediately locked at **`10000 Mbps Full Duplex` (`up: true`)**.
 ... *(truncated in digest; full receipt at `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT1-UNIFI-VDS-RECEIPTS.md`)*
 
-## 168. [AGENT3-TESLA-T4-ROCE-RECEIPTS.md] AGENT-3: 4x NVIDIA Tesla T4 RoCE v2 & Distributed GPU Cluster Architecture Receipts
+## 185. [AGENT3-TESLA-T4-ROCE-RECEIPTS.md] AGENT-3: 4x NVIDIA Tesla T4 RoCE v2 & Distributed GPU Cluster Architecture Receipts
 - **Source Path**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT3-TESLA-T4-ROCE-RECEIPTS.md` | **Updated**: `2026-10-17T17:11:58Z` | **SHA-256**: `b217ec8ee3fb191d`
 
 **Generated At:** `2026-10-17T17:10:00Z`

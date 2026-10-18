@@ -1,0 +1,1 @@
+{"name":"collect_gate","description":"Cut review facts from a fresh snapshot, or live files; stale snapshots are explicitly unavailable.","parameters":{"properties":{"cut":{"title":"Cut","type":"string"}},"required":["cut"],"title":"collect_gateArguments","type":"object"}}

@@ -1,8 +1,8 @@
 {
   "schema": "boylenet.bd-kb.manifest.v1",
-  "updated_at": "2026-10-18T20:54:12Z",
+  "updated_at": "2026-10-18T23:44:40Z",
   "campaign": "O1789",
-  "total_volumes": 7,
+  "total_volumes": 8,
   "qdrant_collection": {
     "url": "http://10.0.70.125:6333/collections/bd_master_kb",
     "dimensions": 1024,
@@ -25,6 +25,12 @@
       "lines": 105
     },
     {
+      "filename": "01-BOYLENET-27NODE-CLUSTER-AND-12U-RACK-BIBLE.md",
+      "size_bytes": 12367,
+      "sha256": "f4f9a6f21ae96dd5de0d1b1d3b4839c542c0932b4776bf22f9254cc013980f83",
+      "lines": 100
+    },
+    {
       "filename": "01-BULKDOWNLOADER-ARCHITECTURE-AND-CONTRACTS.md",
       "size_bytes": 6459,
       "sha256": "0c83b238046f7e02ad70296f5fb57f0f823b36c65ec3bb6c03522a2a53eebf08",
@@ -32,15 +38,15 @@
     },
     {
       "filename": "02-BOYLENET-27NODE-CLUSTER-12U-RACK-VSAN-25GBE.md",
-      "size_bytes": 7369,
-      "sha256": "610eb853c149b72326d030e7c1493fcb64705a20aaa7707b2f2e97870302e76b",
-      "lines": 67
+      "size_bytes": 12367,
+      "sha256": "f4f9a6f21ae96dd5de0d1b1d3b4839c542c0932b4776bf22f9254cc013980f83",
+      "lines": 100
     },
     {
       "filename": "03-86-MODEL-VAULT-BENCHMARKS-AND-AIRGAP.md",
-      "size_bytes": 10507,
-      "sha256": "36987413f6165cec84940dfd77ad01af27741620b3dc81efa43f8bf8dd978e5e",
-      "lines": 97
+      "size_bytes": 13267,
+      "sha256": "b0ef4577a1ce7404e28028104db0b246ae0c90c0f7bf90be2de53f2d0b09b3ae",
+      "lines": 115
     },
     {
       "filename": "04-FLEET-LAW-RULES-1-86-AND-O1740-ROUTING.md",
@@ -56,9 +62,9 @@
     },
     {
       "filename": "05-SWARM-OPERATIONS-RECEIPTS-AND-PLAYBOOKS.md",
-      "size_bytes": 488251,
-      "sha256": "e7cff30bdf3c786975e808439e853858f2efd7ca51b888c030ca57dca4ec62d4",
-      "lines": 4888
+      "size_bytes": 542522,
+      "sha256": "158a6a7dbfcf289f2bca5a2afff78a1e61df4213b4bf547ec2038b74f64fcfc7",
+      "lines": 5319
     }
   ]
 }

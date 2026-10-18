@@ -75,6 +75,24 @@ The Boylenet Local AI Vault stores **86 distinct local AI model families** (`10.
 | 49 | `qwen3.5-122b-a10b-abliterated` | `Qwen3.5-122B-A10B-abliterated-v1.i1-IQ4_XS.gguf` | `.83` | `60.76` | `22.08 tok/s` | `7.70 tok/s` |
 | 51 | `nemotron-3.5-super-vl-120b` | `NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-UD-Q4_K_XL` | `.83` | `82.55` | `19.03 tok/s` | `8.40 tok/s` |
 | 52 | `rvn-qwen3.8-flash-next-abliterated-177b` | `RVN-Qwen3.8-Flash-Next-IQ3_M` | `.83` | `83.39` | `22.87 tok/s` | `7.03 tok/s` |
+| 53 | `ling-3.0-flash-abliterated-128b` | `Ling-3.0-flash-abliterated-APEX-Balanced.gguf` | `.83` | `85.96` | `10.16 tok/s` | `6.21 tok/s` |
+| 54 | `hy3-295b-heretic` | `Hy3-heretic.i1-IQ2_M.gguf` | `.72` | `89.42` | `8.80 tok/s` | `3.78 tok/s` |
+| 55 | `glm-5.3-flash-uncensored` | `GLM-5.3-Flash-Uncensored-IQ2_XXS-00001-of-00003.gguf` | `.72` | `90.44` | `8.05 tok/s` | `1.88 tok/s` |
+| 56 | `command-a-plus-111b` | `command-a-plus-05-2026-Q4_K_M-00001-of-00004.gguf` | `.72` | `125.81` | `1.31 tok/s` | `2.40 tok/s` |
+| 57 | `minimax-m2.7-ultra-uncensored-heretic` | `MiniMax-M2.7-BF16-ultra-uncensored-heretic-Q4_K_M.gguf` | `.72` | `128.84` | `2.80 tok/s` | `4.39 tok/s` |
+| 58 | `glm-5.3-flash-abliterated` | `GLM-5.3-Flash-UD-IQ4_XS-00001-of-00005.gguf` | `.83` | `147.14` | `1.35 tok/s` | `0.73 tok/s` |
+| 59 | `mimo-v2.6-flash-rl-heretic-311b` | `MiMo-V2.6-Flash-RL-Uncensored-Heretic-MXFP4-00001-of-00002.gguf` | `.83` | `155.87` | `1.39 tok/s` | `4.20 tok/s` |
+| 60 | `beam-1.0-501b-a23b` | `Beam-1.0-501B-A23B-UD-Q2_K_XL-00001-of-00005.gguf` | `.72+.228` | `174.04` | `1.16 tok/s` | `3.05 tok/s` |
+| 61 | `nemotron-3-ultra-550b-a55b` | `NVIDIA-Nemotron-3-Ultra-550B-A55B-UD-Q2_K_XL-00001-of-00006.gguf` | `.72+.228` | `188.30` | `1.75 tok/s` | `1.37 tok/s` |
+| 62 | `minimax-m3-426b-uncensored` | `MiniMax-M3-uncensored-IQ4_XS-00001-of-00005.gguf` | `.72+.228` | `189.13` | `0.55 tok/s` | `1.59 tok/s` |
+| 63 | `ling-3.1-flash-564b` | `Ling-3.1-flash-AD-IQ2_M-00001-of-00005.gguf` | `.83` | `203.10` | `2.61 tok/s` | `1.34 tok/s` |
+| 64 | `muse-spark-816b-a42b` | `Muse-Spark-Open-816B-A42B-UD-IQ2_XXS-00001-of-00006.gguf` | `.83+.125` | `210.08` | `0.41 tok/s` | `0.13 tok/s` |
+| 65 | `deepseek-v3.2-685b` | `DeepSeek-V3.2-UD-Q2_K_XL-00001-of-00006.gguf` | `.72+.228` | `229.67` | `1.73 tok/s` | `2.47 tok/s` |
+| 66 | `glm-5.3-753b` | `GLM-5.3-UD-Q2_K_XL-00001-of-00007.gguf` | `.83+.125` | `236.44` | `1.95 tok/s` | `1.71 tok/s` |
+| 67 | `mimo-v2.6-pro-1024b` | `MiMo-V2.6-Pro-MOPD-BPW2.0-00001-of-00007.gguf` | `.83+.125` | `238.22` | `2.92 tok/s` | `2.42 tok/s` |
+
+- **Non-GGUF Flagship Validation (`Uniboshi--Kimi-K3-Abliterated-V1`)**: `.83` (`1,453.79 GiB`, `113` files, `96` `Safetensors` shards, `497,220` tensors, header scan `37,993.37 ms`).
+- **Always-Warm Production Champion on `.83:18080` (`& :8080/:8082`)**: Following completion of `mimo-v2.6-pro-1024b` (`#85/87`), `.83` is hot-pinned with `Qwen3.6-35B-A3B-Heretic` (`Q4_K_M`, `/mnt/ai-models/qwen3.6-35b-a3b-heretic/Qwen3.6-35B-A3B-Heretic-Q4_K_M.gguf`, `-ngl 99 -ot ".ffn_.*_exps.=CPU" -fa on -ctk q8_0 -ctv q8_0 -c 16384 --jinja -t 48`), delivering `0.159s` warm TTFT (`0.985s` cold TTFT) and `18.68 tok/s` (1xT4+AVX512) / `65.80 tok/s` (2xT4) with `enable_thinking: false`.
 
 ---
 

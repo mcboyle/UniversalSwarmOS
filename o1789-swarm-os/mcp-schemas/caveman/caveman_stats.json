@@ -1,0 +1,1 @@
+{"name":"caveman_stats","description":"Report this session's aggregate compression: tokens before/after, request count, and an inferred ratio. Local-only; never a verified figure.","parameters":{"properties":{},"type":"object"}}

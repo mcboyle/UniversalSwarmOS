@@ -1,0 +1,1 @@
+{"name":"ruff_format","description":"Run ruff format on a file or directory.","parameters":{"properties":{"check_only":{"default":true,"title":"Check Only","type":"boolean"},"path":{"default":".","title":"Path","type":"string"}},"title":"ruff_formatArguments","type":"object"}}

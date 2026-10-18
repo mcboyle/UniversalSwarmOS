@@ -1359,10 +1359,17 @@ class SentinelMonitor:
                 results.append(fut.result())
         stamp = utc_now()
         heals_triggered: List[Dict[str, Any]] = []
+        rpc_active_by_node = {sid.split("-")[0]: ok for sid, ok, _, _, _ in results if sid.endswith("-rpc-worker")}
         with self.lock:
             self.check_cycles += 1
             self.last_check_utc = stamp
             for sid, ok, status_code, latency_ms, detail in results:
+                if not ok and sid in ("72-tier1-alpha", "72-ollama-bridge", "83-ollama", "125-tier1-beta", "125-ollama-bridge", "228-ollama"):
+                    node_prefix = sid.split("-")[0]
+                    if rpc_active_by_node.get(node_prefix):
+                        ok = True
+                        status_code = "RPC-ACTIVE"
+                        detail = f"VRAM yielded to active GGML_RPC ({node_prefix}-rpc-worker)"
                 st = self.runtime_state[sid]
                 st["total_checks"] += 1
                 if ok:

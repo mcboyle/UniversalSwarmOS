@@ -1,0 +1,1 @@
+{"name":"bus_read","description":"","parameters":{"properties":{"seat":{"title":"Seat","type":"string"},"topic":{"title":"Topic","type":"string"},"unread_only":{"default":true,"title":"Unread Only","type":"boolean"}},"required":["seat","topic"],"title":"bus_readArguments","type":"object"}}

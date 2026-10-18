@@ -38,38 +38,7 @@ BLOBS_DIR = "/var/tmp/bd-blobs"
 HEADLESS_STREAMS_DIR = "/var/tmp/bd-headless-streams"
 AGY_BRAIN_DIR = "/home/mboyle/.gemini/antigravity-cli/brain"
 
-CLUSTER_NODES: Dict[str, Dict[str, str]] = {
-    ".164": {
-        "ip": "10.0.70.164",
-        "label": ".164 (Controller)",
-        "role": "Swarm Orchestrator, Traefik, GPU Router :4010",
-    },
-    ".72": {
-        "ip": "10.0.70.72",
-        "label": ".72 (AI Vault A)",
-        "role": "5.0 TB Vault A (44 Models) + Tesla T4 + Skylake AVX-512",
-    },
-    ".83": {
-        "ip": "10.0.70.83",
-        "label": ".83 (AI DEV Vault B)",
-        "role": "5.0 TB Vault B (42 Models) + Tesla T4 + Skylake AVX-512",
-    },
-    ".125": {
-        "ip": "10.0.70.125",
-        "label": ".125 (ai-infer01)",
-        "role": "Pool Beta Master + Tesla T4 + Qdrant :6333 + 576 GiB DDR4",
-    },
-    ".228": {
-        "ip": "10.0.70.228",
-        "label": ".228 (ai-ollama01)",
-        "role": "LiteLLM :4000 + Langfuse :3000 + Tesla T4 + 448 GiB DDR4",
-    },
-    ".82": {
-        "ip": "10.0.70.82",
-        "label": ".82 (64-Core CI)",
-        "role": "wrk-test04 64-vCPU /dev/shm Ramdisk CI & RAG Indexer",
-    },
-}
+CLUSTER_NODES: Dict[str, Dict[str, str]] = {".164": {"ip": "10.0.70.164", "label": ".164 (Controller)", "role": "Swarm Orchestrator, Traefik, GPU Router :4010"}, ".72": {"ip": "10.0.70.72", "label": ".72 (AI Vault A)", "role": "5.0 TB Vault A (44 Models) + Tesla T4 + Skylake AVX-512"}, ".83": {"ip": "10.0.70.83", "label": ".83 (AI DEV Vault B)", "role": "5.0 TB Vault B (42 Models) + Tesla T4 + Skylake AVX-512"}, ".125": {"ip": "10.0.70.125", "label": ".125 (ai-infer01)", "role": "Pool Beta Master + Tesla T4 + Qdrant :6333 + 576 GiB DDR4"}, ".228": {"ip": "10.0.70.228", "label": ".228 (ai-ollama01)", "role": "LiteLLM :4000 + Langfuse :3000 + Tesla T4 + 448 GiB DDR4"}, ".82": {"ip": "10.0.70.82", "label": ".82 (64-Core CI)", "role": "wrk-test04 64-vCPU /dev/shm Ramdisk CI & RAG Indexer"}, ".137": {"ip": "10.0.10.137", "label": ".137 (BattleStation)", "role": "RTX 2080 Ti 11GB + Ryzen 9 + Chrome CDP Oracle :9222"}, ".181": {"ip": "10.0.70.181", "label": ".181 (Bittorrent CDP)", "role": "Secondary Windows Chrome CDP Browser Oracle :9222"}, ".25": {"ip": "10.0.70.25", "label": ".25 (Gitea Runner 1)", "role": "Primary Gitea SCM & CI Runner Host"}, ".162": {"ip": "10.0.70.162", "label": ".162 (wrk-ci01)", "role": "Dedicated CI & Build Worker Node"}, ".107": {"ip": "10.0.70.107", "label": ".107 (wrk-ci02)", "role": "Dedicated CI & Verification Worker Node"}, ".182": {"ip": "10.0.70.182", "label": ".182 (wrk-ci03)", "role": "Dedicated CI & Test Shard Worker Node"}, ".50": {"ip": "10.0.70.50", "label": ".50 (esxi-01)", "role": "VMware ESXi 8.0 Hypervisor Blade 01 (vSAN 25GbE)"}, ".51": {"ip": "10.0.70.51", "label": ".51 (esxi-02)", "role": "VMware ESXi 8.0 Hypervisor Blade 02 (vSAN 25GbE)"}, ".52": {"ip": "10.0.70.52", "label": ".52 (esxi-03)", "role": "VMware ESXi 8.0 Hypervisor Blade 03 (vSAN 25GbE)"}, ".53": {"ip": "10.0.70.53", "label": ".53 (esxi-04)", "role": "VMware ESXi 8.0 Hypervisor Blade 04 (vSAN 25GbE)"}, ".54": {"ip": "10.0.70.54", "label": ".54 (vCenter 8)", "role": "VMware vCenter Server Appliance (VCSA)"}, ".194": {"ip": "10.0.70.194", "label": ".194 (TrueNAS Vault)", "role": "NFS & ZFS Shared Storage Appliance"}, ".95": {"ip": "10.0.70.95", "label": ".95 (Monitoring)", "role": "Prometheus, Grafana, Netdata & Telemetry Collector"}, ".80": {"ip": "10.0.70.80", "label": ".80 (wrk-test01)", "role": "Parallel Pytest & Harness Shard Worker 01"}, ".85": {"ip": "10.0.70.85", "label": ".85 (wrk-test02)", "role": "Parallel Pytest & Harness Shard Worker 02"}, ".249": {"ip": "10.0.70.249", "label": ".249 (wrk-test03)", "role": "Parallel Pytest & Harness Shard Worker 03"}, ".84": {"ip": "10.0.70.84", "label": ".84 (wrk-aux01)", "role": "Auxiliary Fleet Worker & Cache Mirror"}, ".120": {"ip": "10.0.70.120", "label": ".120 (spr-pool01)", "role": "Ephemeral Sandbox Clone Pool Node 01"}, ".183": {"ip": "10.0.70.183", "label": ".183 (spr-pool02)", "role": "Ephemeral Sandbox Clone Pool Node 02"}, ".149": {"ip": "10.0.70.149", "label": ".149 (spr-pool03)", "role": "Ephemeral Sandbox Clone Pool Node 03"}, ".185": {"ip": "10.0.70.185", "label": ".185 (spr-pool04)", "role": "Ephemeral Sandbox Clone Pool Node 04"}}
 
 SAFE_PRESETS: Dict[str, str] = {
     "gpu_vram": "nvidia-smi --query-gpu=name,memory.used,memory.total,utilization.gpu,temperature.gpu --format=csv,noheader 2>/dev/null || echo 'No local GPU on this node'",
@@ -598,17 +567,18 @@ def get_unified_tv_wall(lines: int = 35) -> Dict[str, Any]:
     active_tmux = [p for p in source_d if p["session"] not in IDLE_PROBE_SESSIONS]
     probe_tmux = [p for p in source_d if p["session"] in IDLE_PROBE_SESSIONS]
 
-    # Showcase active AGY Subagents, active Cross-Pool Worker tmux Seats (Claude ABCD, Codex, Kimi, Hermes),
-    # Cross-Pool Headless Streams, and GPU Benchmark Stream right at the top!
+    # Showcase live Headless CLI Streams (/var/tmp/bd-headless-streams/*.log: agent105..116, e2e-live-probe),
+    # active AGY Subagents, active Cross-Pool Worker tmux Seats, and GPU Benchmark Stream right at the top!
     combined: List[Dict[str, Any]] = []
-    combined.extend(source_a[:6])  # 1. Top 6 Active AGY Subagents (Agent-86..93)
     combined.extend(
-        active_tmux
-    )  # 2. All 20 Active Cross-Pool Worker tmux Seats (Claude ABCD, Codex 1-4, Kimi 1-3, 4xT4 1-2)
-    combined.extend(source_b)  # 3. All Individual Cross-Pool Headless CLI Streams
-    combined.extend(source_c)  # 4. GPU Benchmark & Inference Stream (.72/.83)
-    combined.extend(source_a[6:])  # 5. Remaining AGY Subagents
-    combined.extend(probe_tmux)  # 6. Background Quota Probes at the bottom
+        source_b[:6]
+    )  # 1. Top 6 Fresh Headless CLI Streams (e2e-live-probe, agent105..116)
+    combined.extend(source_a[:4])  # 2. Top 4 Active AGY Subagents
+    combined.extend(active_tmux)  # 3. All Active Cross-Pool Worker tmux Seats
+    combined.extend(source_b[6:])  # 4. Remaining Headless CLI Streams
+    combined.extend(source_c)  # 5. GPU Benchmark & Inference Stream (.72/.83)
+    combined.extend(source_a[4:])  # 6. Remaining AGY Subagents
+    combined.extend(probe_tmux)  # 7. Background Quota Probes at the bottom
 
     return {
         "status": "ok",
@@ -1351,15 +1321,36 @@ HTML_UI = r"""<!DOCTYPE html>
   <!-- TOOL 2: #UX-22 MULTI-NODE QUICK COMMAND CONSOLE -->
   <section id="tab-console" class="tool-section">
     <div class="console-panel">
-      <div style="font-size:13px;font-weight:700;margin-bottom:8px;color:var(--cyan);">1. Select Target Cluster Node(s):</div>
+      <div style="font-size:13px;font-weight:700;margin-bottom:8px;color:var(--cyan);">1. Select Target Cluster Node(s) (27-Node Boylenet Mesh):</div>
       <div class="node-selector-row" id="node-chips">
-        <button class="node-chip active" data-target="all">🌐 All 6 Core Nodes (Broadcast)</button>
-        <button class="node-chip" data-target=".164">.164 (Controller)</button>
+        <button class="node-chip" data-target="all">🌐 All 27 Nodes (Broadcast)</button>
+        <button class="node-chip active" data-target=".164">.164 (Controller)</button>
         <button class="node-chip" data-target=".72">.72 (AI Vault A • 4.7TB)</button>
         <button class="node-chip" data-target=".83">.83 (AI DEV Vault B • 4.2TB)</button>
         <button class="node-chip" data-target=".125">.125 (ai-infer01 • T4 + Qdrant)</button>
         <button class="node-chip" data-target=".228">.228 (ai-ollama01 • T4 + LiteLLM)</button>
         <button class="node-chip" data-target=".82">.82 (64-Core CI Turbo)</button>
+        <button class="node-chip" data-target=".137">.137 (BattleStation 2080Ti)</button>
+        <button class="node-chip" data-target=".181">.181 (Bittorrent CDP)</button>
+        <button class="node-chip" data-target=".25">.25 (Gitea SCM/CI)</button>
+        <button class="node-chip" data-target=".162">.162 (wrk-ci01)</button>
+        <button class="node-chip" data-target=".107">.107 (wrk-ci02)</button>
+        <button class="node-chip" data-target=".182">.182 (wrk-ci03)</button>
+        <button class="node-chip" data-target=".50">.50 (esxi-01)</button>
+        <button class="node-chip" data-target=".51">.51 (esxi-02)</button>
+        <button class="node-chip" data-target=".52">.52 (esxi-03)</button>
+        <button class="node-chip" data-target=".53">.53 (esxi-04)</button>
+        <button class="node-chip" data-target=".54">.54 (vCenter 8)</button>
+        <button class="node-chip" data-target=".194">.194 (TrueNAS Vault)</button>
+        <button class="node-chip" data-target=".95">.95 (Monitoring)</button>
+        <button class="node-chip" data-target=".80">.80 (wrk-test01)</button>
+        <button class="node-chip" data-target=".85">.85 (wrk-test02)</button>
+        <button class="node-chip" data-target=".249">.249 (wrk-test03)</button>
+        <button class="node-chip" data-target=".84">.84 (wrk-aux01)</button>
+        <button class="node-chip" data-target=".120">.120 (spr-pool01)</button>
+        <button class="node-chip" data-target=".183">.183 (spr-pool02)</button>
+        <button class="node-chip" data-target=".149">.149 (spr-pool03)</button>
+        <button class="node-chip" data-target=".185">.185 (spr-pool04)</button>
       </div>
       <div style="font-size:13px;font-weight:700;margin-bottom:8px;color:var(--cyan);">2. Quick Diagnostic Presets or Custom Safe Command:</div>
       <div class="preset-row">
@@ -1411,7 +1402,7 @@ HTML_UI = r"""<!DOCTYPE html>
 <script>
 let GRID_MODE = 'all';
 let TV_FILTER = 'all';
-let SELECTED_NODE = 'all';
+let SELECTED_NODE = '.164';
 let TV_DATA = [];
 let EXPANDED_PANE_ID = null;
 let AUTO_SCROLL_LATEST = true;
@@ -1453,8 +1444,10 @@ function scrollAllToBottom() {
 function switchTab(tabId, btn) {
   document.querySelectorAll('.tool-section').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('tab-' + tabId).classList.add('active');
-  btn.classList.add('active');
+  const sec = document.getElementById('tab-' + tabId);
+  if (sec) sec.classList.add('active');
+  const targetBtn = btn || document.querySelector(`.mode-btn[onclick*="'${tabId}'"]`);
+  if (targetBtn) targetBtn.classList.add('active');
   if (tabId === 'console' && !document.getElementById('console-output-grid').innerHTML) {
     runPreset('uptime_memory');
   }
@@ -1467,7 +1460,8 @@ function setTvFilter(flt, btn) {
   TV_FILTER = flt;
   LAST_RENDERED_IDS = '';
   document.querySelectorAll('.filter-pill').forEach(p => p.classList.remove('active'));
-  btn.classList.add('active');
+  const targetBtn = btn || document.querySelector(`.filter-pill[data-filter="${flt}"]`);
+  if (targetBtn) targetBtn.classList.add('active');
   renderTvWall();
 }
 
@@ -1544,11 +1538,18 @@ function renderTvWall() {
     return;
   }
 
+  const prevStates = {};
+  g.querySelectorAll('.tv-screen').forEach(el => {
+    prevStates[el.id] = { top: el.scrollTop, pinned: el.dataset.pinnedBottom };
+  });
+
   LAST_RENDERED_IDS = currentIds;
   g.innerHTML = slice.map(p => {
     const isHeadless = p.source_type !== 'tmux';
     const badgeClass = isHeadless ? 'headless-badge' : 'tmux-badge';
     const badgeText = p.badge || (isHeadless ? '⚡ HEADLESS LIVE • 0 EXTRA TOKENS' : '🖥️ INTERACTIVE TMUX');
+    const prev = prevStates['screen-' + p.id];
+    const initPinned = prev ? (prev.pinned || '1') : (AUTO_SCROLL_LATEST ? '1' : '0');
     const inputFooter = p.interactive ? `
       <div class="tv-input-row">
         <input type="text" class="tv-input" id="input-${p.session}" placeholder="Send keys / command to ${p.session}..." onkeydown="if(event.key==='Enter') sendKeys('${p.session}')"/>
@@ -1573,15 +1574,22 @@ function renderTvWall() {
             <button class="expand-btn" onclick="expandPane('${p.id}')">🔍 Expand</button>
           </div>
         </div>
-        <pre class="tv-screen" id="screen-${p.id}" data-pinned-bottom="1" onscroll="handleScreenScroll(this)">${escapeHtml(p.output)}</pre>
+        <pre class="tv-screen" id="screen-${p.id}" data-pinned-bottom="${initPinned}" onscroll="handleScreenScroll(this)">${escapeHtml(p.output)}</pre>
         ${inputFooter}
       </div>
     `;
   }).join('');
 
-  // Immediately scroll all newly rendered panes to the bottom so the latest message is visible right away
   requestAnimationFrame(() => {
-    scrollAllToBottom();
+    g.querySelectorAll('.tv-screen').forEach(el => {
+      const prev = prevStates[el.id];
+      const wasPinned = el.dataset.pinnedBottom !== '0';
+      if (AUTO_SCROLL_LATEST && wasPinned) {
+        el.scrollTop = el.scrollHeight;
+      } else if (prev) {
+        el.scrollTop = prev.top;
+      }
+    });
   });
 }
 
@@ -1736,7 +1744,7 @@ document.getElementById('doc-search').addEventListener('input', e => {
 });
 
 refreshTvWall();
-setInterval(refreshTvWall, 3000);
+setInterval(refreshTvWall, 1000);
 </script>
 </body>
 </html>
@@ -1803,7 +1811,7 @@ class TerminalDrawerHandler(BaseHTTPRequestHandler):
             )
             return
 
-        if path in ("/api/tv-wall", "/api/tmux/wall", "/api/sessions"):
+        if path in ("/api/tv-wall", "/api/tmux/wall", "/api/sessions", "/api/streams"):
             self._send_json(200, get_unified_tv_wall())
             return
 

@@ -1,0 +1,1 @@
+{"name":"claims","description":"Live object claims, or a labelled fresh fact snapshot; middle-aged snapshots return COULD NOT LOOK.","parameters":{"properties":{},"title":"claimsArguments","type":"object"}}

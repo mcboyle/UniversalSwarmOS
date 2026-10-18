@@ -151,7 +151,7 @@ http:
       entryPoints:
       - web
     boylenet-prereview:
-      rule: Host(`prereview.boylenet.themfboyles.com`) || Host(`prereview`)
+      rule: Host(`prereview.boylenet.themfboyles.com`) || Host(`prereview`) || Host(`offsec.boylenet.themfboyles.com`) || Host(`offsec`)
       service: boylenet-prereview-svc
       entryPoints:
       - web
@@ -171,12 +171,12 @@ http:
       entryPoints:
       - web
     boylenet-cloud:
-      rule: Host(`cloud.boylenet.themfboyles.com`) || Host(`cloud`)
+      rule: Host(`cloud.boylenet.themfboyles.com`) || Host(`cloud`) || Host(`burst.boylenet.themfboyles.com`) || Host(`burst`)
       service: boylenet-cloud-svc
       entryPoints:
       - web
     boylenet-vault:
-      rule: Host(`vault.boylenet.themfboyles.com`) || Host(`vault`)
+      rule: Host(`vault.boylenet.themfboyles.com`) || Host(`vault`) || Host(`credentials.boylenet.themfboyles.com`) || Host(`credentials`)
       service: boylenet-vault-svc
       entryPoints:
       - web
@@ -186,7 +186,7 @@ http:
       entryPoints:
       - web
     boylenet-mobile:
-      rule: Host(`mobile.boylenet.themfboyles.com`) || Host(`mobile`)
+      rule: Host(`mobile.boylenet.themfboyles.com`) || Host(`mobile`) || Host(`pwa.boylenet.themfboyles.com`) || Host(`pwa`)
       service: boylenet-mobile-svc
       entryPoints:
       - web
@@ -316,7 +316,7 @@ http:
     boylenet-ai-webui-svc:
       loadBalancer:
         servers:
-        - url: http://10.0.70.72:8080
+        - url: http://10.0.70.164:8090
     boylenet-opencode-svc:
       loadBalancer:
         servers:

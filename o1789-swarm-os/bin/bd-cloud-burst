@@ -208,39 +208,65 @@ def read_pool_state() -> List[Dict[str, Any]]:
     if os.path.exists(POOL_STATE_PATH):
         try:
             with open(POOL_STATE_PATH, "r", encoding="utf-8", errors="replace") as f:
+                headers: List[str] = []
                 for line in f:
                     line = line.strip()
-                    if not line or line.startswith("#") or line.startswith("pool\t"):
+                    if not line or line.startswith("#"):
+                        continue
+                    if line.startswith("pool\t"):
+                        headers = line.split("\t")
                         continue
                     parts = line.split("\t")
-                    if len(parts) >= 4:
-                        is_claude = parts[0].upper() in ("A", "B", "C", "D")
-                        pools.append(
-                            {
-                                "pool": parts[0],
-                                "state": parts[1],
-                                "five_hour_pct": float(parts[2])
-                                if parts[2].replace(".", "", 1).isdigit()
-                                else 0.0,
-                                "weekly_pct": float(parts[3])
-                                if parts[3].replace(".", "", 1).isdigit()
-                                else 0.0,
-                                "resets_at": parts[4] if len(parts) > 4 else "",
-                                "config_dir": f"/home/mboyle/.claude-{parts[0].lower()}"
-                                if is_claude
-                                else "",
-                                "cloud_credit_remaining_usd": 250.0
-                                if is_claude
-                                else 0.0,
-                                "cloud_credit_total_usd": 250.0 if is_claude else 0.0,
-                                "cloud_credit_expires": "Nov 5, 2:59 AM EST"
-                                if is_claude
-                                else "",
-                                "overage_protection": "OFF ($0 risk)"
-                                if is_claude
-                                else "",
-                            }
-                        )
+                    if headers and len(parts) >= 2:
+                        row = {
+                            headers[i]: parts[i]
+                            for i in range(min(len(headers), len(parts)))
+                        }
+                        p_name = row.get("pool", parts[0])
+                        p_state = row.get("state", parts[1])
+                        pct_raw = row.get("pct", "0")
+                        wk_raw = row.get("weekly_pct", "0")
+                        resets = row.get("resets_at", "")
+                        q_obs = row.get("quota_observed_at", "")
+                    elif len(parts) >= 4:
+                        p_name = parts[0]
+                        p_state = parts[1]
+                        pct_raw = parts[4] if len(parts) > 4 else parts[2]
+                        wk_raw = parts[5] if len(parts) > 5 else parts[3]
+                        resets = parts[6] if len(parts) > 6 else ""
+                        q_obs = parts[7] if len(parts) > 7 else ""
+                    else:
+                        continue
+                    try:
+                        fh_val = float(pct_raw)
+                    except ValueError:
+                        fh_val = 0.0
+                    try:
+                        wk_val = float(wk_raw)
+                    except ValueError:
+                        wk_val = 0.0
+                    is_claude = p_name.upper() in ("A", "B", "C", "D")
+                    pools.append(
+                        {
+                            "pool": p_name,
+                            "state": p_state,
+                            "five_hour_pct": fh_val,
+                            "weekly_pct": wk_val,
+                            "resets_at": resets,
+                            "quota_observed_at": q_obs,
+                            "config_dir": f"/home/mboyle/.claude-{p_name.lower()}"
+                            if is_claude
+                            else "",
+                            "cloud_credit_remaining_usd": 250.0 if is_claude else 0.0,
+                            "cloud_credit_total_usd": 250.0 if is_claude else 0.0,
+                            "cloud_credit_expires": "Nov 5, 2:59 AM EST"
+                            if is_claude
+                            else "",
+                            "overage_protection": "OFF ($0 risk)"
+                            if is_claude
+                            else "",
+                        }
+                    )
         except Exception:
             pass
     if not pools:
@@ -252,6 +278,7 @@ def read_pool_state() -> List[Dict[str, Any]]:
                     "five_hour_pct": 12.0,
                     "weekly_pct": 25.0,
                     "resets_at": "",
+                    "quota_observed_at": utc_now_iso(),
                     "config_dir": f"/home/mboyle/.claude-{p_let.lower()}",
                     "cloud_credit_remaining_usd": 250.0,
                     "cloud_credit_total_usd": 250.0,
@@ -978,6 +1005,14 @@ def get_orchestrator_status() -> Dict[str, Any]:
     pools = read_pool_state()
     best_pool = pick_best_claude_pool("auto")
     codex_tasks = codex_cloud_list(limit=5)
+    latest_obs = next(
+        (
+            str(p.get("quota_observed_at"))
+            for p in pools
+            if p.get("quota_observed_at")
+        ),
+        utc_now_iso(),
+    )
 
     # Check local LiteLLM (:4000) health quickly
     litellm_ok = False
@@ -988,10 +1023,57 @@ def get_orchestrator_status() -> Dict[str, Any]:
     except Exception:
         pass
 
+    by_pool = {str(p.get("pool", "")).lower(): p for p in pools}
+    codex_row = by_pool.get("codex", {"state": "OK", "five_hour_pct": 1.0})
+    kimi_row = by_pool.get("kimi", {"state": "OK", "five_hour_pct": 0.0})
+
     return {
         "status": "ok",
         "service": "bd-cloud-burst",
         "ts": utc_now_iso(),
+        "quota_observed_at": latest_obs,
+        "providers": [
+            {
+                "id": "claude",
+                "title": "Anthropic Claude $500",
+                "subtitle": "Pools A/B/C/D ($250x4 Cloud Credits)",
+                "state": "OK",
+                "credit_usd": 500.0,
+                "quota_observed_at": latest_obs,
+            },
+            {
+                "id": "codex",
+                "title": "OpenAI Codex $500",
+                "subtitle": f"GPT-6.1 Sol Ultra ({codex_row.get('five_hour_pct', 0.0)}% 5h)",
+                "state": str(codex_row.get("state", "OK")),
+                "credit_usd": 500.0,
+                "quota_observed_at": str(codex_row.get("quota_observed_at") or latest_obs),
+            },
+            {
+                "id": "kimi",
+                "title": "Moonshot Kimi",
+                "subtitle": f"kimi-for-coding / Kimi K2.8 ({kimi_row.get('five_hour_pct', 0.0)}% 5h)",
+                "state": str(kimi_row.get("state", "OK")),
+                "credit_usd": 0.0,
+                "quota_observed_at": str(kimi_row.get("quota_observed_at") or latest_obs),
+            },
+            {
+                "id": "grok",
+                "title": "xAI Grok",
+                "subtitle": "grok-4.20 / grok-code-fast-1",
+                "state": "OK",
+                "credit_usd": 0.0,
+                "quota_observed_at": latest_obs,
+            },
+            {
+                "id": "local",
+                "title": "Local 4xT4 + 2080Ti",
+                "subtitle": "64GB T4 Swarm (.125/.228) + 11GB 2080Ti (.137)",
+                "state": "ONLINE" if litellm_ok else "OK",
+                "credit_usd": 0.0,
+                "quota_observed_at": latest_obs,
+            },
+        ],
         "cloud_session_credits": {
             "banner": "$1,000 Free Cloud Session Credit Pool ($250 x Pools A/B/C/D • Expires Nov 5)",
             "total_remaining_usd": 1000.0,

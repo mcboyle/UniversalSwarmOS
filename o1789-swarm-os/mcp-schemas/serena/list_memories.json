@@ -1,0 +1,1 @@
+{"name":"list_memories","description":"Lists available memories, optionally filtered by topic.","parameters":{"properties":{"topic":{"default":"","title":"Topic","type":"string"}},"title":"applyArguments","type":"object"}}

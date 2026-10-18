@@ -1,0 +1,1 @@
+{"name":"sentinel_doctor_autoheal","description":"Run :4081/api/doctor-run and :4099/api/status across all Boylenet services.","parameters":{"properties":{"action":{"default":"status","enum":["status","heal"],"type":"string"}},"type":"object"}}

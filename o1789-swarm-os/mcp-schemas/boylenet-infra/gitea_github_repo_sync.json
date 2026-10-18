@@ -1,0 +1,1 @@
+{"name":"gitea_github_repo_sync","description":"Check status or sync the 5 Boylenet repos on local Gitea (10.0.70.164:3000/mboyle/*) and GitHub (github.com/mcboyle/*).","parameters":{"properties":{"action":{"default":"status","enum":["status","sync"],"type":"string"},"repo":{"default":"all","description":"Repo name filter or 'all'","type":"string"}},"type":"object"}}

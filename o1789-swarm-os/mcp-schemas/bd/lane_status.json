@@ -1,0 +1,1 @@
+{"name":"lane_status","description":"Parse fleet-run-artifacts/verify-\u003ctag\u003e.log: phase RCs, start/end, VERDICT line, last lines. Bounded.","parameters":{"properties":{"max_lines":{"default":12,"title":"Max Lines","type":"integer"},"tag":{"title":"Tag","type":"string"}},"required":["tag"],"title":"lane_statusArguments","type":"object"}}

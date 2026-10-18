@@ -1,0 +1,1 @@
+{"name":"mypy_check","description":"Run mypy type checking on a file or directory.","parameters":{"properties":{"path":{"default":".","title":"Path","type":"string"},"strict":{"default":false,"title":"Strict","type":"boolean"}},"title":"mypy_checkArguments","type":"object"}}

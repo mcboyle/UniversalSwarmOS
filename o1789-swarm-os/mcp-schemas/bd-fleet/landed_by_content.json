@@ -1,0 +1,1 @@
+{"name":"landed_by_content","description":"Wrap the harness TSV measurement, preserving OPEN and UNKNOWN independently of percentage.","parameters":{"properties":{"cut_dir":{"title":"Cut Dir","type":"string"}},"required":["cut_dir"],"title":"landed_by_contentArguments","type":"object"}}

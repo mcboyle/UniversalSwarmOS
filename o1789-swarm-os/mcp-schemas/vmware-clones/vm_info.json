@@ -1,0 +1,1 @@
+{"name":"vm_info","description":"Get detailed information about a specific VM.","parameters":{"properties":{"vm_name":{"title":"Vm Name","type":"string"}},"required":["vm_name"],"title":"vm_infoArguments","type":"object"}}

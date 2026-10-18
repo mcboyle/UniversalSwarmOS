@@ -1,0 +1,1 @@
+{"name":"airgap_control","description":"Check or verify /home/mboyle/bin/bd-airgap status|verify kernel-level WAN airgap \u0026 LAN preservation.","parameters":{"properties":{"action":{"default":"status","enum":["status","verify"],"type":"string"}},"type":"object"}}

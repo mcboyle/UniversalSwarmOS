@@ -928,9 +928,13 @@ def tool_guarded_edit(args: dict[str, Any]) -> dict[str, Any]:
     with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
         orig_text = f.read()
 
+    indentation_normalized = False
+    match_mode = "exact"
+
     if not old_string:
         if create_if_missing:
             updated_text = new_string
+            match_mode = "overwrite"
         else:
             return {
                 "rc": 1,
@@ -939,26 +943,23 @@ def tool_guarded_edit(args: dict[str, Any]) -> dict[str, Any]:
                 "error": "old_string is required when editing an existing file",
             }
     else:
-        count = orig_text.count(old_string)
-        if count == 0:
-            return {
-                "rc": 1,
-                "tool": "guarded_edit",
-                "file_path": abs_path,
-                "error": "old_string not found in file",
-            }
-        if count > 1 and not allow_multiple:
-            return {
-                "rc": 1,
-                "tool": "guarded_edit",
-                "file_path": abs_path,
-                "error": f"old_string matched {count} locations; provide more context or set allow_multiple=True",
-            }
-        updated_text = (
-            orig_text.replace(old_string, new_string)
-            if allow_multiple
-            else orig_text.replace(old_string, new_string, 1)
+        norm_res = normalize_and_apply_edit(
+            orig_text=orig_text,
+            old_string=old_string,
+            new_string=new_string,
+            allow_multiple=allow_multiple,
+            is_python=abs_path.endswith(".py"),
         )
+        if not norm_res["matched"]:
+            return {
+                "rc": 1,
+                "tool": "guarded_edit",
+                "file_path": abs_path,
+                "error": norm_res["error"],
+            }
+        updated_text = norm_res["updated_text"]
+        indentation_normalized = bool(norm_res.get("indentation_normalized", False))
+        match_mode = str(norm_res.get("match_mode", "exact"))
 
     with open(abs_path, "w", encoding="utf-8") as f:
         f.write(updated_text)
@@ -977,10 +978,171 @@ def tool_guarded_edit(args: dict[str, Any]) -> dict[str, Any]:
         "rc": 0,
         "tool": "guarded_edit",
         "status": "edited",
+        "match_mode": match_mode,
+        "indentation_normalized": indentation_normalized,
         "file_path": abs_path,
         "shield_py": f"PASS (rc=0 via {get_active_shield_path()})",
         "diff": cap_with_blob_ptr(diff_text, 0),
     }
+
+
+def _rebase_new_lines_to_orig_indent(
+    matched_orig_lines: list[str],
+    old_lines: list[str],
+    new_lines: list[str],
+) -> list[str]:
+    """Rebase new_lines to the exact per-section indentation of matched_orig_lines using anchor deltas."""
+    anchors: dict[int, tuple[int, int]] = {}
+    orig_cursor = 0
+    for idx, nl in enumerate(new_lines):
+        s = nl.strip()
+        if not s:
+            continue
+        nl_ind = len(nl) - len(nl.lstrip(" "))
+        for m_idx in range(orig_cursor, len(matched_orig_lines)):
+            if matched_orig_lines[m_idx].strip() == s:
+                orig_ind = len(matched_orig_lines[m_idx]) - len(
+                    matched_orig_lines[m_idx].lstrip(" ")
+                )
+                anchors[idx] = (orig_ind, orig_ind - nl_ind)
+                orig_cursor = m_idx + 1
+                break
+
+    active_delta = 0
+    if anchors:
+        first_anchor_idx = min(anchors.keys())
+        active_delta = anchors[first_anchor_idx][1]
+    else:
+        for orig_ln, old_ln in zip(matched_orig_lines, old_lines):
+            if orig_ln.strip() and old_ln.strip():
+                orig_ind = len(orig_ln) - len(orig_ln.lstrip(" "))
+                old_ind = len(old_ln) - len(old_ln.lstrip(" "))
+                active_delta = orig_ind - old_ind
+                break
+
+    rebased_new: list[str] = []
+    for idx, nl in enumerate(new_lines):
+        s = nl.strip()
+        if not s:
+            rebased_new.append("")
+            continue
+        nl_ind = len(nl) - len(nl.lstrip(" "))
+        if idx in anchors:
+            exact_orig_ind, active_delta = anchors[idx]
+            rebased_new.append((" " * exact_orig_ind) + s)
+        else:
+            target_ind = max(0, nl_ind + active_delta)
+            rebased_new.append((" " * target_ind) + s)
+    return rebased_new
+
+
+def normalize_and_apply_edit(
+    orig_text: str,
+    old_string: str,
+    new_string: str,
+    allow_multiple: bool = False,
+    is_python: bool = True,
+) -> dict[str, Any]:
+    """
+    Pass 1: Exact substring match (verified with compile() on Python files).
+    Pass 2: Indentation-normalized line-stripped block match with anchor-delta rebasing.
+    """
+    count = orig_text.count(old_string)
+    if count > 1 and not allow_multiple:
+        return {
+            "matched": False,
+            "error": f"old_string matched {count} locations; provide more context or set allow_multiple=True",
+        }
+    if count >= 1:
+        candidate = (
+            orig_text.replace(old_string, new_string)
+            if allow_multiple
+            else orig_text.replace(old_string, new_string, 1)
+        )
+        syntax_ok = True
+        if is_python:
+            try:
+                compile(candidate, "<guarded_edit>", "exec")
+            except SyntaxError:
+                syntax_ok = False
+        if syntax_ok:
+            return {
+                "matched": True,
+                "updated_text": candidate,
+                "indentation_normalized": False,
+                "match_mode": "exact",
+            }
+
+    # Pass 2: Line-stripped block matching + anchor-delta indentation rebasing
+    orig_lines = orig_text.splitlines()
+    old_lines = old_string.splitlines()
+    new_lines = new_string.splitlines()
+
+    while old_lines and not old_lines[0].strip():
+        old_lines.pop(0)
+    while old_lines and not old_lines[-1].strip():
+        old_lines.pop()
+
+    if not old_lines:
+        return {"matched": False, "error": "old_string is empty"}
+
+    matches: list[tuple[int, int]] = []
+    n_old = len(old_lines)
+    for i in range(len(orig_lines) - n_old + 1):
+        if all(orig_lines[i + k].strip() == old_lines[k].strip() for k in range(n_old)):
+            matches.append((i, i + n_old))
+
+    # Subsequence fallback when original file has inline comment/blank lines omitted by the model
+    if not matches:
+        for i in range(len(orig_lines)):
+            if orig_lines[i].strip() != old_lines[0].strip():
+                continue
+            k = 0
+            j = i
+            while j < len(orig_lines) and k < n_old:
+                s_orig = orig_lines[j].strip()
+                s_old = old_lines[k].strip()
+                if s_orig == s_old:
+                    k += 1
+                    j += 1
+                elif not s_orig or s_orig.startswith("#"):
+                    j += 1
+                else:
+                    break
+            if k == n_old:
+                matches.append((i, j))
+
+    if not matches:
+        return {"matched": False, "error": "old_string not found in file"}
+    if len(matches) > 1 and not allow_multiple:
+        return {
+            "matched": False,
+            "error": f"old_string matched {len(matches)} locations; provide more context or set allow_multiple=True",
+        }
+
+    target_matches = matches if allow_multiple else [matches[0]]
+    updated_lines = list(orig_lines)
+    for start_idx, end_idx in reversed(target_matches):
+        matched_orig = orig_lines[start_idx:end_idx]
+        rebased_new = _rebase_new_lines_to_orig_indent(
+            matched_orig, old_lines, new_lines
+        )
+        updated_lines[start_idx:end_idx] = rebased_new
+
+    updated_text = "\n".join(updated_lines)
+    if orig_text.endswith("\n") and not updated_text.endswith("\n"):
+        updated_text += "\n"
+    return {
+        "matched": True,
+        "updated_text": updated_text,
+        "indentation_normalized": True,
+        "match_mode": "indentation_normalized",
+    }
+
+
+def apply_guarded_edit(args: dict[str, Any]) -> dict[str, Any]:
+    """Alias for tool_guarded_edit with indentation-normalized block matching."""
+    return tool_guarded_edit(args)
 
 
 def tool_cluster_tier_status() -> dict[str, Any]:

@@ -1,0 +1,1 @@
+{"name":"bus_summarize","description":"Uses caveman-style compression to return a 1-line diff of state for the given topic.","parameters":{"properties":{"topic":{"title":"Topic","type":"string"}},"required":["topic"],"title":"bus_summarizeArguments","type":"object"}}

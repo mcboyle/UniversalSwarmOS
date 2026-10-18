@@ -1099,8 +1099,10 @@ def render_portal_html() -> str:
     --muted: #94a3b8;
   }}
   * {{ box-sizing: border-box; }}
-  body {{
+  html, body {{
     margin: 0;
+    max-width: 100%;
+    overflow-x: hidden;
     background: radial-gradient(circle at 15% 0%, #0f172a 0%, #050811 65%);
     color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', system-ui, sans-serif;
@@ -1132,6 +1134,7 @@ def render_portal_html() -> str:
   .nav-pills a:hover {{ border-color: var(--cyan); color: var(--cyan); }}
   .container {{ max-width: 1440px; margin: 0 auto; padding: 24px 28px; }}
   .section {{
+    min-width: 0;
     margin-bottom: 36px; background: var(--panel);
     border: 1px solid var(--border); border-radius: 20px; padding: 24px;
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
@@ -1147,9 +1150,10 @@ def render_portal_html() -> str:
     background: rgba(0, 229, 255, 0.15); color: var(--cyan); border: 1px solid rgba(0, 229, 255, 0.35);
   }}
   .sso-grid {{
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 16px;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 310px), 1fr)); gap: 16px;
   }}
   .sso-card {{
+    min-width: 0;
     background: var(--card); border: 1px solid rgba(148, 163, 184, 0.2);
     border-top: 3px solid var(--accent, var(--cyan));
     border-radius: 14px; padding: 18px; display: flex; flex-direction: column; justify-content: space-between;
@@ -1162,9 +1166,10 @@ def render_portal_html() -> str:
   .sso-card h3 {{ margin: 0 0 6px; font-size: 15px; }}
   .sso-card p {{ margin: 0 0 12px; font-size: 12px; color: var(--muted); flex-grow: 1; }}
   .cred-pill {{
-    display: flex; justify-content: space-between; align-items: center;
+    display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;
     background: rgba(5, 8, 17, 0.7); padding: 7px 10px; border-radius: 8px;
     font-size: 11px; margin-bottom: 12px; border: 1px solid rgba(148, 163, 184, 0.14);
+    word-break: break-all;
   }}
   .mini-btn {{
     background: rgba(56, 189, 248, 0.15); color: var(--cyan); border: 1px solid rgba(56, 189, 248, 0.3);
@@ -1191,9 +1196,10 @@ def render_portal_html() -> str:
 
   /* QR Grid (#UX-9) */
   .qr-grid {{
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); gap: 16px;
   }}
   .qr-card {{
+    min-width: 0;
     background: var(--card); border: 1px solid rgba(148, 163, 184, 0.2);
     border-top: 3px solid var(--accent, var(--cyan));
     border-radius: 14px; padding: 16px; text-align: center;
@@ -1216,7 +1222,7 @@ def render_portal_html() -> str:
     display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
   }}
   .custom-qr-bar input {{
-    flex: 1; min-width: 260px; padding: 10px 14px; border-radius: 8px;
+    flex: 1; min-width: 220px; padding: 10px 14px; border-radius: 8px;
     background: #0f172a; border: 1px solid rgba(148, 163, 184, 0.3); color: #fff; font-size: 13px;
   }}
   .custom-qr-bar button {{
@@ -1225,7 +1231,7 @@ def render_portal_html() -> str:
   }}
 
   /* Root CA & Bookmarklet (#UX-8 & #UX-10) */
-  .two-col {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 20px; }}
+  .two-col {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr)); gap: 20px; }}
   .dl-btn {{
     display: inline-flex; align-items: center; gap: 8px; padding: 12px 18px;
     border-radius: 12px; font-size: 13px; font-weight: 700; text-decoration: none;
@@ -1241,9 +1247,10 @@ def render_portal_html() -> str:
     box-shadow: 0 8px 25px rgba(245, 158, 11, 0.35); cursor: grab;
   }}
   pre.cmd-box {{
+    max-width: 100%;
     background: #050811; border: 1px solid rgba(148, 163, 184, 0.22);
     border-radius: 10px; padding: 12px; font-size: 11.5px; color: #38bdf8;
-    overflow-x: auto; margin: 8px 0 14px;
+    overflow-x: auto; white-space: pre-wrap; word-break: break-all; margin: 8px 0 14px;
   }}
 </style>
 </head>
@@ -1305,32 +1312,67 @@ def render_portal_html() -> str:
       <p style="font-size:13px;color:var(--muted);margin-top:0;">
         Eliminates browser TLS warnings across <code>*.boylenet.themfboyles.com</code>, <code>*.local</code>, and cluster nodes (<code>.164</code>, <code>.72</code>, <code>.83</code>, <code>.125</code>, <code>.228</code>).
       </p>
-      <div style="margin:14px 0;">
-        <a class="dl-btn dl-primary" href="/download/boylenet-root-ca.crt">⬇️ Download Root CA (.crt)</a>
-        <a class="dl-btn dl-ios" href="/download/boylenet-root-ca.mobileconfig">📱 1-Tap iOS/iPadOS Profile (.mobileconfig)</a>
-        <a class="dl-btn dl-ext" href="/download/boylenet-wildcard.crt">🌐 Wildcard Cert (.crt)</a>
+      <div style="margin:14px 0;display:flex;flex-wrap:wrap;gap:8px;">
+        <a class="dl-btn dl-primary" id="dl-ca-crt" href="/ca.crt">⬇️ Download Root CA (/ca.crt)</a>
+        <a class="dl-btn dl-ios" id="dl-mobileconfig" href="/boylenet-ca.mobileconfig">📱 1-Tap iOS/iPadOS Profile (/boylenet-ca.mobileconfig)</a>
+        <a class="dl-btn dl-ext" id="dl-wildcard-crt" href="/download/boylenet-wildcard.crt">🌐 Wildcard Cert (.crt)</a>
       </div>
       <div class="cred-pill">
         <span>SHA-256 Fingerprint: <code>{html.escape(ca_meta["root_ca_fingerprint"][:47])}…</code></span>
         <span style="color:var(--emerald);font-weight:700;">Ubuntu .164 Trust: {"INSTALLED ✔" if ca_meta["ubuntu_trust_installed"] else "PENDING"}</span>
       </div>
-      <div style="font-size:12px;font-weight:700;margin-top:12px;display:flex;justify-content:space-between;">
-        <span>🪟 Windows PowerShell 1-Liner (BattleStation .137 & Bittorrent .181):</span>
-        <button class="mini-btn" onclick="copyText({json.dumps(ps_oneliner)}, this)">Copy PowerShell</button>
-      </div>
-      <pre class="cmd-box">{html.escape(ps_oneliner)}</pre>
 
-      <div style="font-size:12px;font-weight:700;display:flex;justify-content:space-between;">
-        <span>🐧 Ubuntu / Debian 1-Liner:</span>
-        <button class="mini-btn" onclick="copyText({json.dumps(linux_oneliner)}, this)">Copy Linux</button>
+      <div class="ca-platform-tabs" style="display:flex;gap:6px;flex-wrap:wrap;margin:14px 0 10px;">
+        <button type="button" class="mini-btn ca-tab-btn active" id="ca-tab-ios" data-platform="ios" onclick="switchCaTab('ios')" style="background:rgba(56,189,248,0.22);border-color:#38bdf8;color:#fff;">📱 iOS/iPadOS</button>
+        <button type="button" class="mini-btn ca-tab-btn" id="ca-tab-macos" data-platform="macos" onclick="switchCaTab('macos')">🍎 macOS</button>
+        <button type="button" class="mini-btn ca-tab-btn" id="ca-tab-windows" data-platform="windows" onclick="switchCaTab('windows')">🪟 Windows</button>
+        <button type="button" class="mini-btn ca-tab-btn" id="ca-tab-linux" data-platform="linux" onclick="switchCaTab('linux')">🐧 Linux</button>
+        <button type="button" class="mini-btn ca-tab-btn" id="ca-tab-android" data-platform="android" onclick="switchCaTab('android')">🤖 Android</button>
       </div>
-      <pre class="cmd-box">{html.escape(linux_oneliner)}</pre>
 
-      <div style="font-size:12px;font-weight:700;display:flex;justify-content:space-between;">
-        <span>🍎 macOS Keychain 1-Liner:</span>
-        <button class="mini-btn" onclick="copyText({json.dumps(macos_oneliner)}, this)">Copy macOS</button>
+      <div id="ca-panel-ios" class="ca-platform-panel" style="display:block;">
+        <div style="font-size:12px;font-weight:700;display:flex;justify-content:space-between;align-items:center;">
+          <span>📱 iOS / iPadOS 1-Tap Configuration Profile (<code>/boylenet-ca.mobileconfig</code>):</span>
+          <a class="mini-btn" href="/boylenet-ca.mobileconfig" style="text-decoration:none;">Install Profile</a>
+        </div>
+        <pre class="cmd-box">1. Tap /boylenet-ca.mobileconfig above in Safari on iPhone or iPad.
+2. Open Settings → Profile Downloaded → Install "Boylenet Swarm OS Root CA".
+3. Go to Settings → General → About → Certificate Trust Settings → Enable Full Trust for Root Certificates.</pre>
       </div>
-      <pre class="cmd-box">{html.escape(macos_oneliner)}</pre>
+
+      <div id="ca-panel-macos" class="ca-platform-panel" style="display:none;">
+        <div style="font-size:12px;font-weight:700;display:flex;justify-content:space-between;">
+          <span>🍎 macOS System Keychain 1-Liner:</span>
+          <button class="mini-btn" onclick="copyText({html.escape(json.dumps(macos_oneliner))}, this)">Copy macOS</button>
+        </div>
+        <pre class="cmd-box">{html.escape(macos_oneliner)}</pre>
+      </div>
+
+      <div id="ca-panel-windows" class="ca-platform-panel" style="display:none;">
+        <div style="font-size:12px;font-weight:700;display:flex;justify-content:space-between;">
+          <span>🪟 Windows PowerShell 1-Liner (BattleStation .137 &amp; Bittorrent .181):</span>
+          <button class="mini-btn" onclick="copyText({html.escape(json.dumps(ps_oneliner))}, this)">Copy PowerShell</button>
+        </div>
+        <pre class="cmd-box">{html.escape(ps_oneliner)}</pre>
+      </div>
+
+      <div id="ca-panel-linux" class="ca-platform-panel" style="display:none;">
+        <div style="font-size:12px;font-weight:700;display:flex;justify-content:space-between;">
+          <span>🐧 Ubuntu / Debian / Arch 1-Liner:</span>
+          <button class="mini-btn" onclick="copyText({html.escape(json.dumps(linux_oneliner))}, this)">Copy Linux</button>
+        </div>
+        <pre class="cmd-box">{html.escape(linux_oneliner)}</pre>
+      </div>
+
+      <div id="ca-panel-android" class="ca-platform-panel" style="display:none;">
+        <div style="font-size:12px;font-weight:700;display:flex;justify-content:space-between;align-items:center;">
+          <span>🤖 Android Wi-Fi &amp; Browser Root CA Trust (<code>/ca.crt</code>):</span>
+          <a class="mini-btn" href="/ca.crt" style="text-decoration:none;">Download /ca.crt</a>
+        </div>
+        <pre class="cmd-box">1. Download http://10.0.70.164:4082/ca.crt on your Android device.
+2. Open Settings → Security &amp; Privacy → More Security Settings → Encryption &amp; Credentials.
+3. Tap "Install a certificate" → "CA certificate" → "Install anyway" and select boylenet-root-ca.crt.</pre>
+      </div>
     </section>
 
     <!-- #UX-8: Boylenet Companion Bookmarklet & Chrome Extension -->
@@ -1351,7 +1393,7 @@ def render_portal_html() -> str:
       </div>
       <div style="font-size:12px;font-weight:700;margin-top:14px;display:flex;justify-content:space-between;">
         <span>Bookmarklet Source (Auto-detects LiteLLM, OpenWebUI, Gitea, Grafana, MinIO, Langfuse, OpenClaw):</span>
-        <button class="mini-btn" onclick="copyText({json.dumps(BOOKMARKLET_JS)}, this)">Copy Bookmarklet</button>
+        <button class="mini-btn" onclick="copyText({html.escape(json.dumps(BOOKMARKLET_JS))}, this)">Copy Bookmarklet</button>
       </div>
       <pre class="cmd-box">{html.escape(BOOKMARKLET_JS)}</pre>
       <div style="font-size:12px;color:var(--muted);background:rgba(5,8,17,0.65);padding:12px;border-radius:10px;border:1px solid rgba(148,163,184,0.15);">
@@ -1366,11 +1408,41 @@ def render_portal_html() -> str:
 </div>
 
 <script>
+function switchCaTab(platform) {{
+  const platforms = ['ios', 'macos', 'windows', 'linux', 'android'];
+  platforms.forEach(p => {{
+    const panel = document.getElementById('ca-panel-' + p);
+    const btn = document.getElementById('ca-tab-' + p);
+    if (panel) panel.style.display = (p === platform) ? 'block' : 'none';
+    if (btn) {{
+      btn.classList.toggle('active', p === platform);
+      btn.style.background = (p === platform) ? 'rgba(56,189,248,0.22)' : '';
+      btn.style.borderColor = (p === platform) ? '#38bdf8' : '';
+      btn.style.color = (p === platform) ? '#fff' : '';
+    }}
+  }});
+}}
+
 function copyText(txt, btn) {{
-  navigator.clipboard.writeText(txt);
-  const old = btn.textContent;
-  btn.textContent = 'Copied ✔';
-  setTimeout(() => btn.textContent = old, 1400);
+  try {{
+    if (navigator.clipboard && navigator.clipboard.writeText) {{
+      navigator.clipboard.writeText(txt).catch(() => {{}});
+    }} else {{
+      const ta = document.createElement('textarea');
+      ta.value = txt;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }}
+  }} catch (e) {{}}
+  if (btn) {{
+    const old = btn.textContent;
+    btn.textContent = 'Copied ✔';
+    setTimeout(() => btn.textContent = old, 1400);
+  }}
 }}
 
 async function verifyHandshake(tid, btn) {{
@@ -1465,6 +1537,8 @@ class TrustAndSSOPortalHandler(BaseHTTPRequestHandler):
                     "sso_targets": list(SSO_TARGETS.keys()),
                     "qr_endpoints": [c["url"] for c in get_qr_handoff_cards()],
                     "downloads": [
+                        "/ca.crt",
+                        "/boylenet-ca.mobileconfig",
                         "/download/boylenet-root-ca.crt",
                         "/download/boylenet-root-ca.mobileconfig",
                         "/download/boylenet-wildcard.crt",
@@ -1510,7 +1584,7 @@ class TrustAndSSOPortalHandler(BaseHTTPRequestHandler):
             )
             return
 
-        if path == "/download/boylenet-root-ca.crt":
+        if path in ("/download/boylenet-root-ca.crt", "/ca.crt"):
             if os.path.exists(ROOT_CA_CRT):
                 with open(ROOT_CA_CRT, "rb") as f:
                     data = f.read()
@@ -1546,7 +1620,7 @@ class TrustAndSSOPortalHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": "Wildcard certificate not found"}, status=404)
             return
 
-        if path == "/download/boylenet-root-ca.mobileconfig":
+        if path in ("/download/boylenet-root-ca.mobileconfig", "/boylenet-ca.mobileconfig"):
             if os.path.exists(MOBILECONFIG_PATH):
                 with open(MOBILECONFIG_PATH, "rb") as f:
                     data = f.read()

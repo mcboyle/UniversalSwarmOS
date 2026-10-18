@@ -718,34 +718,39 @@ def _extract_last_user_prompt(messages: list[dict[str, Any]]) -> str:
 
 
 def _call_local_litellm_or_bdkb(model_id: str, prompt: str, bdkb_context: str = "") -> str:
-    try:
-        msgs = []
-        if bdkb_context:
-            msgs.append(
-                {
-                    "role": "system",
-                    "content": f"You are a Boylenet Sovereign AI assistant grounded in the official BD KB:\n\n{bdkb_context[:4000]}",
-                }
-            )
-        msgs.append({"role": "user", "content": prompt})
-        req = urllib.request.Request(
-            f"{LITELLM_BASE_URL}/chat/completions",
-            data=json.dumps(
-                {"model": model_id, "messages": msgs, "max_tokens": 900, "temperature": 0.2}
-            ).encode("utf-8"),
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {LITELLM_API_KEY}",
-            },
-            method="POST",
+    """
+    Uses BattleStation .137:11434 (RTX 2080 Ti) or .228:11434 (qwen2.5-coder:7b) for fast live
+    LLM synthesis so we never contend with .72 or .83 heavy model benchmarking.
+    """
+    msgs = []
+    if bdkb_context:
+        msgs.append(
+            {
+                "role": "system",
+                "content": f"You are a Boylenet Sovereign AI assistant grounded in the official BD KB:\n\n{bdkb_context[:4000]}",
+            }
         )
-        with urllib.request.urlopen(req, timeout=14) as resp:
-            data = json.loads(resp.read().decode("utf-8", errors="replace"))
-        content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-        if content:
-            return content
-    except Exception:
-        pass
+    msgs.append({"role": "user", "content": prompt})
+    for endpoint, fast_model in (
+        ("http://10.0.10.137:11434/v1/chat/completions", "qwen2.5-coder:7b"),
+        ("http://10.0.70.228:11434/v1/chat/completions", "qwen2.5-coder:7b"),
+    ):
+        try:
+            req = urllib.request.Request(
+                endpoint,
+                data=json.dumps(
+                    {"model": fast_model, "messages": msgs, "max_tokens": 500, "temperature": 0.2}
+                ).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=12) as resp:
+                data = json.loads(resp.read().decode("utf-8", errors="replace"))
+            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            if content:
+                return content
+        except Exception:
+            continue
     return ""
 
 
@@ -824,7 +829,28 @@ def execute_v1_chat_completion(
         dr = tool_deep_research_multi_engine({"query": prompt, "max_results": 4})
         return is_stream, model_id, dr.get("markdown_report", json.dumps(dr, indent=2))
 
-    # 5. 4-Model Parallel Consensus Council Pipeline
+    # 5. BD KB RAG Citation Engine Pipeline
+    if model_id in ("pipe-boylenet-bdkb-rag-citation-engine", "bd_kb_auto_grounding_pipeline"):
+        kb_res = tool_bd_kb_search({"query": prompt, "top_k": 4})
+        kb_chunks = kb_res.get("results", [])
+        kb_context = "\n\n".join(
+            f"[{c['book_name']} | {c['section_title']} | {c['file_path']}]\n{c['content'][:900]}"
+            for c in kb_chunks
+        )
+        llm_ans = _call_local_litellm_or_bdkb("qwen2.5-coder:7b", prompt, kb_context)
+        citations_md = "\n".join(
+            f"- **[{idx}] `{c['book_name']}`** — `{c['section_title']}` (`{c['file_path']}`, score `{c['score']}`)"
+            for idx, c in enumerate(kb_chunks, 1)
+        )
+        md = (
+            f"### 📚 Boylenet BD KB RAG Citation Engine (`{model_id}`)\n"
+            f"- **6-Volume BD KB Search Latency**: `{kb_res.get('latency_ms', 0)} ms` (`{len(kb_chunks)}` citations retrieved)\n\n"
+            + (f"#### 🧠 Grounded Synthesis (`.137:11434 qwen2.5-coder:7b`)\n{llm_ans}\n\n" if llm_ans else "")
+            + f"#### 📖 Authoritative BD KB Citations\n{citations_md}\n"
+        )
+        return is_stream, model_id, md
+
+    # 6. 4-Model Parallel Consensus Council Pipeline
     if model_id == "bd_4model_consensus_council_pipeline":
         kb_res = tool_bd_kb_search({"query": prompt, "top_k": 3})
         kb_chunks = kb_res.get("results", [])
@@ -847,7 +873,7 @@ def execute_v1_chat_completion(
         )
         return is_stream, model_id, md
 
-    # 6. Default: O1740 Smart Intent Router or Filter Pipeline invoked directly
+    # 7. Default: O1740 Smart Intent Router (`pipe-boylenet-smart-intent-router` / `bd_smart_o1740_intent_router_pipeline`)
     p_low = prompt.lower()
     if any(k in p_low for k in ("cve", "exploit", "security", "airgap", "firewall", "pentest", "red team")):
         chosen_model = "local/cyberstrike-35b"
@@ -1648,8 +1674,9 @@ EXTRA_TOOL_HANDLERS: dict[str, tuple[Any, str, dict[str, Any]]] = {
 # ---------------------------------------------------------------------------
 
 
+_PIPELINE_ID_ALIASES = {"pipe-boylenet-bdkb-rag-citation-engine": "bd_kb_auto_grounding_pipeline", "pipe-boylenet-smart-intent-router": "bd_smart_o1740_intent_router_pipeline", "pipe_boylenet_deep_research": "bd_deep_research_multi_engine_pipeline", "pipe_boylenet_4model_council": "bd_4model_consensus_council_pipeline", "pipe_boylenet_smart_router": "bd_smart_o1740_intent_router_pipeline"}
+
 def handle_ext_get(handler: Any, path: str, qs: dict[str, list[str]]) -> bool:
-    # Static generated images & audio
     if path.startswith("/static/generated/"):
         fname = Path(path.split("/static/generated/", 1)[1]).name
         fpath = GENERATED_IMG_DIR / fname
@@ -1658,7 +1685,6 @@ def handle_ext_get(handler: Any, path: str, qs: dict[str, list[str]]) -> bool:
             return True
         handler._send_json(404, {"error": f"Image not found: {fname}"})
         return True
-
     if path.startswith("/static/audio/"):
         fname = Path(path.split("/static/audio/", 1)[1]).name
         fpath = GENERATED_AUDIO_DIR / fname
@@ -1667,74 +1693,50 @@ def handle_ext_get(handler: Any, path: str, qs: dict[str, list[str]]) -> bool:
             return True
         handler._send_json(404, {"error": f"Audio not found: {fname}"})
         return True
-
-    # OpenWebUI Pipelines Server Protocol GET endpoints
     if path in ("/v1/models", "/models"):
         handler._send_json(200, get_v1_models_response())
         return True
-
     if path in ("/v1/pipelines", "/pipelines", "/v1/pipelines/list", "/pipelines/list"):
         handler._send_json(200, get_v1_pipelines_list())
         return True
-
-    # /v1/{pipeline_id}/valves and /v1/{pipeline_id}/valves/spec
     m_valves = re.match(r"^(?:/v1)?/([a-zA-Z0-9_.-]+)/valves(?:/(spec))?$", path)
     if m_valves:
-        pid = m_valves.group(1)
+        raw_pid = m_valves.group(1)
+        pid = _PIPELINE_ID_ALIASES.get(raw_pid, raw_pid)
         is_spec = m_valves.group(2) == "spec"
         p_obj = next((p for p in PIPELINES_CATALOG if p["id"] == pid), None)
         if not p_obj:
-            handler._send_json(404, {"detail": f"Pipeline {pid} not found"})
+            handler._send_json(404, {"detail": f"Pipeline {raw_pid} not found"})
             return True
         if is_spec:
-            handler._send_json(
-                200,
-                {
-                    "title": f"{p_obj['name']} Valves",
-                    "type": "object",
-                    "properties": p_obj["valves_spec"],
-                },
-            )
+            handler._send_json(200, {"title": f"{p_obj['name']} Valves", "type": "object", "properties": p_obj["valves_spec"]})
             return True
         all_v = _load_all_valves()
         handler._send_json(200, all_v.get(pid, p_obj["default_valves"]))
         return True
-
     return False
 
-
-def handle_ext_post(
-    handler: Any, path: str, payload: dict[str, Any], render_png_fn: Any
-) -> bool:
-    # 1. /v1/{pipeline_id}/valves/update
+def handle_ext_post(handler: Any, path: str, payload: dict[str, Any], render_png_fn: Any) -> bool:
     m_vupd = re.match(r"^(?:/v1)?/([a-zA-Z0-9_.-]+)/valves/update$", path)
     if m_vupd:
-        pid = m_vupd.group(1)
+        raw_pid = m_vupd.group(1)
+        pid = _PIPELINE_ID_ALIASES.get(raw_pid, raw_pid)
         updated = _save_pipeline_valves(pid, payload)
         handler._send_json(200, updated)
         return True
-
-    # 2. /v1/{pipeline_id}/filter/inlet & /v1/{pipeline_id}/filter/outlet
     m_flt = re.match(r"^(?:/v1)?/([a-zA-Z0-9_.-]+)/filter/(inlet|outlet)$", path)
     if m_flt:
-        pid = m_flt.group(1)
+        raw_pid = m_flt.group(1)
+        pid = _PIPELINE_ID_ALIASES.get(raw_pid, raw_pid)
         stage = m_flt.group(2)
         body = payload.get("body") if isinstance(payload.get("body"), dict) else payload
         valves = _load_all_valves().get(pid, {})
-        if (
-            pid == "bd_kb_auto_grounding_pipeline"
-            and stage == "inlet"
-            and valves.get("enable_inlet_grounding")
-            and isinstance(body.get("messages"), list)
-        ):
+        if pid == "bd_kb_auto_grounding_pipeline" and stage == "inlet" and valves.get("enable_inlet_grounding") and isinstance(body.get("messages"), list):
             user_q = _extract_last_user_prompt(body["messages"])
             hits = tool_bd_kb_search({"query": user_q, "top_k": int(valves.get("top_k_chunks", 2))}).get("results", [])
             if hits:
-                ctx_str = "\n".join(f"- [{h['book_name']} | {h['section_title']}]: {h['content'][:400]}" for h in hits)
-                body["messages"] = [
-                    {"role": "system", "content": f"[BD KB Grounding Context]\n{ctx_str}"},
-                    *body["messages"],
-                ]
+                ctx_str = "\n".join((f"- [{h['book_name']} | {h['section_title']}]: {h['content'][:400]}" for h in hits))
+                body["messages"] = [{"role": "system", "content": f"[BD KB Grounding Context]\n{ctx_str}"}, *body["messages"]]
         handler._send_json(200, body)
         return True
 

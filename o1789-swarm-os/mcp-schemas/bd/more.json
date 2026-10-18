@@ -1,0 +1,1 @@
+{"name":"more","description":"The chunk named by an ask()/law() hit, whole, with its neighbours in the same path (\u003c=3 chunks).","parameters":{"properties":{"chunk_id":{"title":"Chunk Id","type":"integer"}},"required":["chunk_id"],"title":"moreArguments","type":"object"}}

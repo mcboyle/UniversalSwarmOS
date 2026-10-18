@@ -1,5 +1,170 @@
 [
   {
+    "version_id": "63ba9ca3-a978-46dc-9f0d-d0e4e0cd7953",
+    "id": "codex-agent-boylenet-xplat-commander",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: boylenet-xplat-commander",
+    "description": "Boylenet 4-Platform Cross-Swarm Commander. Orchestrates parallel assistants across Claude Code, OpenAI Codex, Kimi K2.8, Local GPU & AGY via O1740 Dynamic Capability Routing.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "d3cf6130-a8eb-4d4f-bc05-df206507e57d",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-boylenet-xplat-commander",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792366444
+      }
+    ],
+    "updated_at": 1792366444,
+    "created_at": 1792366444,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "53cc897c-fbb5-44df-8fac-103a66729be8",
+    "id": "codex-agent-boylenet-oracle-tester",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: boylenet-oracle-tester",
+    "description": "Boylenet Dual-Node Browser Oracle & CDP UI Tester (.137:9222 BattleStation & .181:9222 Bittorrent). Runs 60-FPS CDP UI verification and $0 multi-model AI consensus.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "2644b356-0f84-4f15-a6a0-777a14ee71e5",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-boylenet-oracle-tester",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792366444
+      }
+    ],
+    "updated_at": 1792366444,
+    "created_at": 1792366444,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "1273901b-c86e-4d41-9287-01ec3cd03a24",
+    "id": "codex-agent-boylenet-local-coder",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: boylenet-local-coder",
+    "description": "Boylenet $0 Local GPU Coding Agent Dispatcher. Routes sandboxed code edits to .137 RTX 2080 Ti or .83 Dual T4 Qwen3.6-Heretic with .82 64-core ramdisk pytest self-healing.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "0b0917a9-b20b-422e-8507-37389ff03933",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-boylenet-local-coder",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792366444
+      }
+    ],
+    "updated_at": 1792366444,
+    "created_at": 1792366444,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "3a4e964d-0caf-4b90-987f-03a8c4359277",
+    "id": "codex-agent-boylenet-infra-commander",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: boylenet-infra-commander",
+    "description": "Autonomous Boylenet 27-Node Infrastructure Commander with native boylenet_infra MCP access (20 tools: VM exec/browse, $0 local coding agent, .82 ramdisk pytest, dual CDP browser oracles, Master BD KB, Qdrant Hivemind, 86-Model Vault, O1740 pool router, vSAN/ESXi, UniFi/Traefik, and 6-queue backlog).",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "e476bd3c-810b-468f-9685-be4ef16a14c1",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-boylenet-infra-commander",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792366444
+      }
+    ],
+    "updated_at": 1792366444,
+    "created_at": 1792366444,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "80cc1d52-e746-4a29-9245-0d97848ec200",
+    "id": "codex-agent-boylenet-e2e-verifier",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Codex Agent: boylenet-e2e-verifier",
+    "description": "Boylenet 27-VM End-to-End Verifier Agent. Executes bd-full-suite-e2e-test.py, bd-openwebui-e2e-test.py, and bd-oracle-suite-verifier.py across all portals, tool servers, and Dual Browser Oracles.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "codex-agent-profile"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "4cb0e33d-d2f1-4e33-bd8b-3f8bfc1ceada",
+        "resource_type": "skill",
+        "resource_id": "codex-agent-boylenet-e2e-verifier",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792366444
+      }
+    ],
+    "updated_at": 1792366444,
+    "created_at": 1792366444,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
     "version_id": "fd80393a-ec73-4a25-bf1b-13dd6e9d6bd0",
     "id": "codex-agent-bd-worker",
     "user_id": "a12463df-370f-4948-b488-9437da254b15",
@@ -14,16 +179,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "1fd91ff1-82c4-4879-ac6a-88bf6dee9593",
+        "id": "8a75d535-8fdb-4db7-a5a3-11696d561342",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-worker",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356278
+        "created_at": 1792366444
       }
     ],
-    "updated_at": 1792356278,
+    "updated_at": 1792366444,
     "created_at": 1792353115,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -47,16 +212,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "1be24c6c-e06d-4983-b701-c1f0f4f7abf6",
+        "id": "3c1dfaed-2850-4129-8d56-8fd85b46f3fe",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-worker-b",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356278
+        "created_at": 1792366444
       }
     ],
-    "updated_at": 1792356278,
+    "updated_at": 1792366444,
     "created_at": 1792353115,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -80,16 +245,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "f04d22c9-b781-4f45-a66f-28a73d072af1",
+        "id": "4c8bd142-8d12-46df-bc80-acce48b68e47",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-verify",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356278
+        "created_at": 1792366444
       }
     ],
-    "updated_at": 1792356278,
+    "updated_at": 1792366444,
     "created_at": 1792353115,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -113,16 +278,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "c4a9416c-7940-46eb-90d9-bca584199569",
+        "id": "14f3a153-cd04-43e2-a81a-7cff4810bda2",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-usage",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356278
+        "created_at": 1792366444
       }
     ],
-    "updated_at": 1792356278,
+    "updated_at": 1792366444,
     "created_at": 1792353115,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -146,16 +311,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "c534afe5-4d18-4669-b4e0-cfe91d7ec88c",
+        "id": "bafdaf77-47b5-4626-a54e-dc68397bc2f9",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-usage-d",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356278
+        "created_at": 1792366444
       }
     ],
-    "updated_at": 1792356278,
+    "updated_at": 1792366444,
     "created_at": 1792353115,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -179,16 +344,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "4437f07f-647a-4ddc-ae3c-ca3ac371efce",
+        "id": "4e684edd-d99d-456d-bbe0-7816dfdb2ce8",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-usage-c",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356278
+        "created_at": 1792366444
       }
     ],
-    "updated_at": 1792356278,
+    "updated_at": 1792366444,
     "created_at": 1792353115,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -212,16 +377,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "d41536ac-8d13-4666-871e-1254a4eacad7",
+        "id": "92c1173f-64ad-462f-8b47-7759c280c745",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-usage-b",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356278
+        "created_at": 1792366443
       }
     ],
-    "updated_at": 1792356278,
+    "updated_at": 1792366443,
     "created_at": 1792353115,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -245,16 +410,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "ce99e8bf-d0a5-4288-b901-38cbc05c01ea",
+        "id": "ce22de0d-906c-4c35-b5e9-66db9b1a030d",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-usage-a",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356278
+        "created_at": 1792366443
       }
     ],
-    "updated_at": 1792356278,
+    "updated_at": 1792366443,
     "created_at": 1792353115,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -278,16 +443,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "d7e99bc8-0b36-413e-af6a-4f364c6165f0",
+        "id": "f9a96f91-7900-4dd5-a750-081cec060dfb",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-triage",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356278
+        "created_at": 1792366442
       }
     ],
-    "updated_at": 1792356278,
+    "updated_at": 1792366442,
     "created_at": 1792353115,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -311,16 +476,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "612fd6fe-2620-4162-9af1-3b0dca429737",
+        "id": "205eccba-cecf-46ae-81b1-9082c19aead0",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-trainer",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356278
+        "created_at": 1792366442
       }
     ],
-    "updated_at": 1792356278,
+    "updated_at": 1792366442,
     "created_at": 1792353115,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -344,16 +509,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "3cf87389-39e3-4040-9539-d43b04b09f24",
+        "id": "b36603d1-490b-4c22-b7f6-d1ed32414f1c",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-synthetic_test",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356278
+        "created_at": 1792366442
       }
     ],
-    "updated_at": 1792356278,
+    "updated_at": 1792366442,
     "created_at": 1792353115,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -377,16 +542,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "c00643b5-0e9b-4e61-8ce6-e79e2651a8c2",
+        "id": "3b9d2387-430f-4712-9367-20103ec454d0",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-status",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356278
+        "created_at": 1792366442
       }
     ],
-    "updated_at": 1792356278,
+    "updated_at": 1792366442,
     "created_at": 1792353115,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -410,16 +575,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "625b4212-cc98-4e3a-96b3-b9bd7a1a75ff",
+        "id": "edc2ccb6-af50-48fe-b4a3-384557ced192",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-smoketest",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356278
+        "created_at": 1792366442
       }
     ],
-    "updated_at": 1792356278,
+    "updated_at": 1792366442,
     "created_at": 1792353115,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -443,16 +608,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "01456e2b-851a-420d-83c6-a1a233492f60",
+        "id": "b966a179-9830-4494-9912-7888656a2ad1",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-sentinel",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356278
+        "created_at": 1792366442
       }
     ],
-    "updated_at": 1792356278,
+    "updated_at": 1792366442,
     "created_at": 1792353115,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -476,16 +641,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "6813b7e6-1c10-4c94-bf08-6f10815a57dd",
+        "id": "88a2d73d-1996-411c-9f85-27f7f07fae6c",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-scribe",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356278
+        "created_at": 1792366442
       }
     ],
-    "updated_at": 1792356278,
+    "updated_at": 1792366442,
     "created_at": 1792353115,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -509,16 +674,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "ef8735e5-67b6-4fdf-9c6e-97078906047b",
+        "id": "e0a5981a-3341-497d-a459-cf7f1b9e8d82",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-scout648",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356278
+        "created_at": 1792366442
       }
     ],
-    "updated_at": 1792356278,
+    "updated_at": 1792366442,
     "created_at": 1792353115,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -542,16 +707,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "90dae8ad-9a98-416e-83a3-03ed2e20c9f9",
+        "id": "baa5f2f8-2b58-4a5c-b54f-3d63f0be99a6",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-review-shape",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356278
+        "created_at": 1792366442
       }
     ],
-    "updated_at": 1792356278,
+    "updated_at": 1792366442,
     "created_at": 1792353115,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -575,16 +740,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "3077b5e2-3835-44a3-85aa-dfb72f5c2223",
+        "id": "77555860-d2ea-4ec4-aa9b-0f5cebbf3b85",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-review-lite",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356277
+        "created_at": 1792366442
       }
     ],
-    "updated_at": 1792356277,
+    "updated_at": 1792366442,
     "created_at": 1792353115,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -608,16 +773,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "e36d5b22-759a-4ce5-a36d-6bd154b3075a",
+        "id": "11ec7dfb-2fdb-4c05-b495-30cb45a7a854",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-review-lite-b",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356277
+        "created_at": 1792366442
       }
     ],
-    "updated_at": 1792356277,
+    "updated_at": 1792366442,
     "created_at": 1792353115,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -641,16 +806,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "4c66181e-ff53-43b7-8973-a9c555b9cb6c",
+        "id": "b135c548-750c-4ba1-bf23-fa7704eda275",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-review-correctness",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356277
+        "created_at": 1792366441
       }
     ],
-    "updated_at": 1792356277,
+    "updated_at": 1792366441,
     "created_at": 1792353114,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -674,16 +839,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "f3584e32-ab7b-4283-aa23-e6645a3c1dd2",
+        "id": "f8212f00-e290-4b37-b3f0-76776f49c577",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-resource-monitor",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356277
+        "created_at": 1792366441
       }
     ],
-    "updated_at": 1792356277,
+    "updated_at": 1792366441,
     "created_at": 1792353114,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -707,16 +872,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "eff1c800-7236-4ac8-93da-d08008f87b16",
+        "id": "f15c5f8c-6228-4c23-9c46-4ccb6488045d",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-registrar",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356277
+        "created_at": 1792366441
       }
     ],
-    "updated_at": 1792356277,
+    "updated_at": 1792366441,
     "created_at": 1792353114,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -740,16 +905,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "9f46be3f-9471-4c89-8d43-15646b35f109",
+        "id": "836de71d-a616-4ea5-bd23-a26f42db37f9",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-prereview",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356277
+        "created_at": 1792366441
       }
     ],
-    "updated_at": 1792356277,
+    "updated_at": 1792366441,
     "created_at": 1792353114,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -773,16 +938,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "cb33ec96-2b14-4311-ae23-0e69324a40e4",
+        "id": "8c706e66-7805-4716-abda-2ac00748c641",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-preflight",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356277
+        "created_at": 1792366441
       }
     ],
-    "updated_at": 1792356277,
+    "updated_at": 1792366441,
     "created_at": 1792353114,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -806,16 +971,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "a2ea22b2-5cd0-435b-9c0a-78cade6d356a",
+        "id": "6fe8a71b-3f1a-4fe9-9f9f-1bd6605e27b4",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-pm",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356277
+        "created_at": 1792366440
       }
     ],
-    "updated_at": 1792356277,
+    "updated_at": 1792366440,
     "created_at": 1792353114,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -839,16 +1004,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "b1aea307-185e-4eef-9cdb-dca3b36e1963",
+        "id": "660ca6b7-2a81-4bb3-825c-387d2e6a7356",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-pm-b",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356277
+        "created_at": 1792366440
       }
     ],
-    "updated_at": 1792356277,
+    "updated_at": 1792366440,
     "created_at": 1792353114,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -872,16 +1037,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "08751845-a199-4e63-bdb0-8c1cf19b3f7f",
+        "id": "afa74750-f165-4a78-a0a7-1cdf9a04958a",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-pgops",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356277
+        "created_at": 1792366440
       }
     ],
-    "updated_at": 1792356277,
+    "updated_at": 1792366440,
     "created_at": 1792353114,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -905,16 +1070,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "3d168c0b-7667-4970-94fe-166c8498b48f",
+        "id": "b063095b-a6fb-4de0-b2b7-fc3186b971d5",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-panel",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356277
+        "created_at": 1792366440
       }
     ],
-    "updated_at": 1792356277,
+    "updated_at": 1792366440,
     "created_at": 1792353114,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -938,16 +1103,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "bab8ae3b-a20e-4ea9-9c18-c386799f09d6",
+        "id": "e7cd3fc3-c61c-4ab4-986b-1e998f7041e0",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-panel-b",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356277
+        "created_at": 1792366440
       }
     ],
-    "updated_at": 1792356277,
+    "updated_at": 1792366440,
     "created_at": 1792353114,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -971,16 +1136,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "43ff5a23-f27a-4e3c-aeaf-6a37aaf16550",
+        "id": "2201f7f3-ffdc-465a-b0eb-37eb934b7569",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-nurse",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356277
+        "created_at": 1792366440
       }
     ],
-    "updated_at": 1792356277,
+    "updated_at": 1792366440,
     "created_at": 1792353114,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -1004,16 +1169,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "530b31b9-20fa-4e79-9046-fad3cdb96c95",
+        "id": "6bdc923e-0bec-4bbf-b23d-d20fdf9d6845",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-notes",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356277
+        "created_at": 1792366440
       }
     ],
-    "updated_at": 1792356277,
+    "updated_at": 1792366440,
     "created_at": 1792353114,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -1037,16 +1202,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "47f899fb-7765-4289-8209-63fe5a5f50db",
+        "id": "e41164f4-3b97-4f88-869a-0c43aab0eec0",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-login",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356277
+        "created_at": 1792366440
       }
     ],
-    "updated_at": 1792356277,
+    "updated_at": 1792366440,
     "created_at": 1792353114,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -1070,16 +1235,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "ce8dc313-635c-4b9a-b55c-24c649e1906e",
+        "id": "77368bb6-c5db-453f-93db-c1f27324ab97",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-local-runner",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356277
+        "created_at": 1792366440
       }
     ],
-    "updated_at": 1792356277,
+    "updated_at": 1792366440,
     "created_at": 1792353114,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -1103,16 +1268,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "04d0ef7a-07fe-4d0a-9d7d-0e338eb4d68d",
+        "id": "278808f8-6de0-4d34-8ee7-bde1819f6fce",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-local-a",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356277
+        "created_at": 1792366440
       }
     ],
-    "updated_at": 1792356277,
+    "updated_at": 1792366440,
     "created_at": 1792353114,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -1136,16 +1301,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "5165ff9b-c1d4-45de-8028-bbf809c29819",
+        "id": "fff76e89-3a5e-4616-9740-df41cf8cabff",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-landverify",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356277
+        "created_at": 1792366440
       }
     ],
-    "updated_at": 1792356277,
+    "updated_at": 1792366440,
     "created_at": 1792353114,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -1169,16 +1334,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "fd3846b6-fa30-4151-aa7e-2694b13553fd",
+        "id": "08d47d39-99ff-4f43-95e8-21b1a2d2fcb6",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-landverify-a",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356277
+        "created_at": 1792366440
       }
     ],
-    "updated_at": 1792356277,
+    "updated_at": 1792366440,
     "created_at": 1792353114,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -1202,16 +1367,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "ad8b6608-6fcd-4e31-878f-861133241049",
+        "id": "f4395ff8-e9ca-4e9f-bb03-ad04234399a0",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-landing",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356277
+        "created_at": 1792366440
       }
     ],
-    "updated_at": 1792356277,
+    "updated_at": 1792366440,
     "created_at": 1792353114,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -1235,16 +1400,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "fac49077-c5cd-4806-a306-729cc3137d45",
+        "id": "3c676c49-5f2b-4bbb-bbae-a3cc54735662",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-integrator",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356277
+        "created_at": 1792366440
       }
     ],
-    "updated_at": 1792356277,
+    "updated_at": 1792366440,
     "created_at": 1792353114,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -1268,16 +1433,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "7eb68a1b-fe47-4dc3-983f-898ab391f6d1",
+        "id": "e526e199-25eb-4b46-b4d7-60f8cc8a0ca1",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-integrator-d",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356277
+        "created_at": 1792366440
       }
     ],
-    "updated_at": 1792356277,
+    "updated_at": 1792366440,
     "created_at": 1792353114,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -1301,16 +1466,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "f93bf3f8-188b-4703-b926-11a3f0f6cb7a",
+        "id": "46d08f4c-abab-4929-b25b-9ad7bb279524",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-integrator-c",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356276
+        "created_at": 1792366440
       }
     ],
-    "updated_at": 1792356276,
+    "updated_at": 1792366440,
     "created_at": 1792353114,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -1334,16 +1499,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "f08166dc-382e-46c9-931c-050eb5d4cca5",
+        "id": "7e39699f-4d8a-4cd7-aca4-47448829475f",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-integrator-b",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356276
+        "created_at": 1792366440
       }
     ],
-    "updated_at": 1792356276,
+    "updated_at": 1792366440,
     "created_at": 1792353114,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -1367,16 +1532,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "c677b50d-7fcc-48e9-aa22-0bac9a5b8e10",
+        "id": "c8a65401-b338-4553-9820-26db1dd07230",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-ideas",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356276
+        "created_at": 1792366440
       }
     ],
-    "updated_at": 1792356276,
+    "updated_at": 1792366440,
     "created_at": 1792353114,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -1400,16 +1565,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "ccfcb318-afec-43e6-8142-5aa6b5608116",
+        "id": "04b60da8-0e8c-43a9-adaa-751e9c576ad0",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-flow",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356276
+        "created_at": 1792366440
       }
     ],
-    "updated_at": 1792356276,
+    "updated_at": 1792366440,
     "created_at": 1792353114,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -1433,16 +1598,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "2701a682-8394-4f3b-9b37-d3cbe6607352",
+        "id": "7ce9617a-764b-469e-943c-543d94267798",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-flakecourt",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356276
+        "created_at": 1792366440
       }
     ],
-    "updated_at": 1792356276,
+    "updated_at": 1792366440,
     "created_at": 1792353114,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -1466,16 +1631,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "d6eed62a-3cde-4882-af61-f4969333a424",
+        "id": "74f90bb1-c1a4-4c99-83bf-40957b306b0e",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-flakecourt-b",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356276
+        "created_at": 1792366439
       }
     ],
-    "updated_at": 1792356276,
+    "updated_at": 1792366439,
     "created_at": 1792353114,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -1499,16 +1664,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "141e5384-d9ce-44e9-8c12-1616842230d2",
+        "id": "a4725281-efc4-411b-9e42-02c99874e443",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-flakecourt-a",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356276
+        "created_at": 1792366439
       }
     ],
-    "updated_at": 1792356276,
+    "updated_at": 1792366439,
     "created_at": 1792353114,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -1532,16 +1697,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "79bec142-f388-472d-9a15-48bdfa242fa3",
+        "id": "274e69bc-f3aa-467f-8d61-5563db69bbac",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-fixer",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356276
+        "created_at": 1792366439
       }
     ],
-    "updated_at": 1792356276,
+    "updated_at": 1792366439,
     "created_at": 1792353114,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -1565,16 +1730,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "27c8d3a5-5778-4646-93ab-c2bd3a546ca4",
+        "id": "72094dcd-68f1-404c-9ce9-4736156073cd",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-fable",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356276
+        "created_at": 1792366438
       }
     ],
-    "updated_at": 1792356276,
+    "updated_at": 1792366438,
     "created_at": 1792353114,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -1598,16 +1763,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "07435545-b713-462a-ab6f-86588a25f822",
+        "id": "1a89abf2-f083-4c23-a6eb-e751bc4aa92b",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-fable-b",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356276
+        "created_at": 1792366438
       }
     ],
-    "updated_at": 1792356276,
+    "updated_at": 1792366438,
     "created_at": 1792353114,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -1631,16 +1796,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "a45b3745-9bb0-44f6-a83c-9300a2abc3f2",
+        "id": "23d1a4ab-423a-4d4c-9571-8caaf2ae50bb",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-dispatch",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356276
+        "created_at": 1792366438
       }
     ],
-    "updated_at": 1792356276,
+    "updated_at": 1792366438,
     "created_at": 1792353113,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -1664,16 +1829,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "39ed4f48-8178-4beb-9d60-1e5cbf5daefa",
+        "id": "910310de-9582-40ba-9e5f-21ab7cf76134",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-cx-pm",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356276
+        "created_at": 1792366438
       }
     ],
-    "updated_at": 1792356276,
+    "updated_at": 1792366438,
     "created_at": 1792353113,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -1697,16 +1862,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "c1e07d61-5390-493d-9a30-153d2422ecd3",
+        "id": "1cd8c18e-7148-43f1-8337-d59c4d2ca14a",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-council",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356276
+        "created_at": 1792366438
       }
     ],
-    "updated_at": 1792356276,
+    "updated_at": 1792366438,
     "created_at": 1792353113,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -1730,16 +1895,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "0d61524e-adb8-4b20-bba2-91805ed3fc2e",
+        "id": "2d61045f-d6f6-471d-83e7-1ed28267bf36",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-codexwatch",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356276
+        "created_at": 1792366438
       }
     ],
-    "updated_at": 1792356276,
+    "updated_at": 1792366438,
     "created_at": 1792353113,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -1763,16 +1928,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "c666a8db-eb71-4d78-8602-3885460e2da1",
+        "id": "29e09442-b8f1-474f-90bb-584d6a0c7477",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-codex-tender",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356276
+        "created_at": 1792366438
       }
     ],
-    "updated_at": 1792356276,
+    "updated_at": 1792366438,
     "created_at": 1792353113,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -1796,16 +1961,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "d12203ed-4752-4114-9bd4-73c638fce0d8",
+        "id": "3fd58929-3335-48d8-adfd-a2fb7eb1fb93",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-closure-audit",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356276
+        "created_at": 1792366438
       }
     ],
-    "updated_at": 1792356276,
+    "updated_at": 1792366438,
     "created_at": 1792353113,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -1829,16 +1994,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "d8be54b0-37b7-4390-b251-0999880f5890",
+        "id": "7923b563-c4bd-4beb-847b-a0c4946ca149",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-cartograph",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356276
+        "created_at": 1792366438
       }
     ],
-    "updated_at": 1792356276,
+    "updated_at": 1792366438,
     "created_at": 1792353113,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -1862,17 +2027,413 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "4a305b4f-9116-4cfa-9539-0e3673e9f97a",
+        "id": "9eaeb219-cf3e-4f09-8f61-5018cf55a00c",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-briefauthor",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356276
+        "created_at": 1792366438
       }
     ],
-    "updated_at": 1792356276,
+    "updated_at": 1792366438,
     "created_at": 1792353113,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "5f2e63e6-8412-4a64-b69c-b4f2f73a38aa",
+    "id": "claude-cmd-boylenet-xplat-swarm",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Claude Command: boylenet-xplat-swarm",
+    "description": "Launch parallel autonomous assistants across Claude Code, OpenAI Codex, Kimi K2.8, Local GPU & Antigravity (AGY) via bd-cross-platform-swarm-assist.py",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-code-command"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "98ce83ca-35f7-4b25-b650-6521de5bc09a",
+        "resource_type": "skill",
+        "resource_id": "claude-cmd-boylenet-xplat-swarm",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792366437
+      }
+    ],
+    "updated_at": 1792366437,
+    "created_at": 1792366437,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "cc6088ab-42d6-461a-824d-56dda542453b",
+    "id": "claude-cmd-boylenet-oracle",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Claude Command: boylenet-oracle",
+    "description": "Run Dual Browser Oracle (.137:9222 BattleStation & .181:9222 Bittorrent) CDP UI verification or bd-oracle multi-model AI consensus",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-code-command"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "5bfae31a-8072-4c4b-aef1-cad0bf47473d",
+        "resource_type": "skill",
+        "resource_id": "claude-cmd-boylenet-oracle",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792366437
+      }
+    ],
+    "updated_at": 1792366437,
+    "created_at": 1792366437,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "c891ccd7-2700-4707-91ff-556f797225b6",
+    "id": "claude-cmd-boylenet-local-coder",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Claude Command: boylenet-local-coder",
+    "description": "Dispatch $0 bd-local-coding-agent on .137 RTX 2080 Ti or .83 Qwen3.6-Heretic with .82 64-core ramdisk pytest self-healing verification",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-code-command"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "76e5bf64-1658-4ee1-a746-9a8b425d5722",
+        "resource_type": "skill",
+        "resource_id": "claude-cmd-boylenet-local-coder",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792366437
+      }
+    ],
+    "updated_at": 1792366437,
+    "created_at": 1792366437,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "c6ac7090-590c-41ec-9c1c-0c48503b7983",
+    "id": "claude-cmd-boylenet-infra",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Claude Command: boylenet-infra",
+    "description": "Invoke Boylenet 27-VM infrastructure MCP/CLI (bd-boylenet-infra-mcp.py) to run commands across 27 VMs, inspect GPU Sovereign Gateway (:4010), or toggle bd-airgap",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-code-command"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "c9ce1219-e14f-417b-80ad-121c9b354c03",
+        "resource_type": "skill",
+        "resource_id": "claude-cmd-boylenet-infra",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792366437
+      }
+    ],
+    "updated_at": 1792366437,
+    "created_at": 1792366437,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "d574e904-557f-49a8-80f8-ce541ccdcce2",
+    "id": "claude-cmd-boylenet-e2e",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Claude Command: boylenet-e2e",
+    "description": "Run Boylenet E2E verification suites (bd-full-suite-e2e-test.py, bd-openwebui-e2e-test.py, and bd-oracle-suite-verifier.py)",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-code-command"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "742a46dc-194f-4dd5-84bd-e829613f9f92",
+        "resource_type": "skill",
+        "resource_id": "claude-cmd-boylenet-e2e",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792366437
+      }
+    ],
+    "updated_at": 1792366437,
+    "created_at": 1792366437,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "571e7cc2-159a-4432-98b8-e92ce1b03478",
+    "id": "claude-cmd-boylenet-bdkb",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Claude Command: boylenet-bdkb",
+    "description": "Query the 6-Volume BD KB (/home/mboyle/bd-persist/bd-kb/*.md) and Qdrant bd_master_kb (10.0.70.125:6333) in <20ms with exact citations",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-code-command"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "1c5e4611-c73b-441e-a240-84b41908b2dd",
+        "resource_type": "skill",
+        "resource_id": "claude-cmd-boylenet-bdkb",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792366437
+      }
+    ],
+    "updated_at": 1792366437,
+    "created_at": 1792366437,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "6827cd3f-b736-4d23-8f31-df2ac34b0216",
+    "id": "claude-cmd-bd-vm",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Claude Command: bd-vm",
+    "description": "Execute a command or browse files on any of the 27 Boylenet VMs via :4079/vm/<vm>/execute",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-code-command"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "5608d68b-802d-45d0-a6a8-a687eca858ba",
+        "resource_type": "skill",
+        "resource_id": "claude-cmd-bd-vm",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792366437
+      }
+    ],
+    "updated_at": 1792366437,
+    "created_at": 1792366437,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "406d965b-f6d4-40b1-8943-e5e75cc671ae",
+    "id": "claude-cmd-bd-vault",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Claude Command: bd-vault",
+    "description": "Inspect the 86-Model Boylenet AI Vault catalog, measured tok/s speeds, and active orchestrator tiers (:4084 & :4010)",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-code-command"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "1036b6fa-b512-46f2-be5f-4ed1388d0c57",
+        "resource_type": "skill",
+        "resource_id": "claude-cmd-bd-vault",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792366437
+      }
+    ],
+    "updated_at": 1792366437,
+    "created_at": 1792366437,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "03c6aca5-5972-4b14-9e74-fafdb538acd0",
+    "id": "claude-cmd-bd-queue",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Claude Command: bd-queue",
+    "description": "Inspect open/pending rows across all 6 Boylenet backlog queues (O1670, P3-LENS, APP-FEATURE, BH1, P2-FIX, APP-DL-FIX)",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-code-command"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "e1c9dcc0-ce13-4ba4-87e6-4a8b8d0d07a7",
+        "resource_type": "skill",
+        "resource_id": "claude-cmd-bd-queue",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792366437
+      }
+    ],
+    "updated_at": 1792366437,
+    "created_at": 1792366437,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "6033c137-488d-464a-8c9d-fdf36434fa41",
+    "id": "claude-cmd-bd-oracle-e2e",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Claude Command: bd-oracle-e2e",
+    "description": "Query and inspect Dual Chrome CDP Browser Oracles (.137:9222 BattleStation & .181:9222 Bittorrent)",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-code-command"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "c49675bf-98f3-4475-ba4d-522e5da226b5",
+        "resource_type": "skill",
+        "resource_id": "claude-cmd-bd-oracle-e2e",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792366437
+      }
+    ],
+    "updated_at": 1792366437,
+    "created_at": 1792366437,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "2f264499-3db4-4eb1-81cc-9fe29977b3d5",
+    "id": "claude-cmd-bd-local-fix",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Claude Command: bd-local-fix",
+    "description": "Dispatch the $0 Local Coding Agent (bd-local-coding-agent) with indentation-normalized guarded_edit in a bd-local-wt sandbox",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-code-command"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "b49ada1e-154d-4296-83cb-2481fddfa936",
+        "resource_type": "skill",
+        "resource_id": "claude-cmd-bd-local-fix",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792366437
+      }
+    ],
+    "updated_at": 1792366437,
+    "created_at": 1792366437,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "43dbb060-dcd7-4247-b3a2-16010b6807f4",
+    "id": "claude-cmd-bd-infra",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Claude Command: bd-infra",
+    "description": "Run Boylenet Sentinel (:4099), Doctor (:4081), vSAN/ESXi, and O1740 Pool Quota status via boylenet-infra MCP",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-code-command"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "32767ea0-0707-4dd5-bd46-4c9a4f194076",
+        "resource_type": "skill",
+        "resource_id": "claude-cmd-bd-infra",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792366437
+      }
+    ],
+    "updated_at": 1792366437,
+    "created_at": 1792366437,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
       "name": "User",
@@ -1895,16 +2456,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "96da2a66-fe1a-4301-856f-759698288600",
+        "id": "3e515bb3-7e9c-4858-8f8e-0b2475b0ad5b",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-briefauthor-2",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356276
+        "created_at": 1792366437
       }
     ],
-    "updated_at": 1792356276,
+    "updated_at": 1792366437,
     "created_at": 1792353113,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -1928,16 +2489,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "c4ac4bdf-4db8-4cd5-a7b5-c67e796d4131",
+        "id": "017c1fea-3d3a-40f4-b176-bfe02bd87606",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-b-login",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356276
+        "created_at": 1792366437
       }
     ],
-    "updated_at": 1792356276,
+    "updated_at": 1792366437,
     "created_at": 1792353113,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -1961,16 +2522,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "a2c146aa-96dc-4cb7-81a3-c575ada6dd34",
+        "id": "5ddb8ac7-73d2-4e7a-83e2-9f5ce96a6efd",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-audit",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356276
+        "created_at": 1792366437
       }
     ],
-    "updated_at": 1792356276,
+    "updated_at": 1792366437,
     "created_at": 1792353113,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -1994,16 +2555,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "5abd8b3c-19e8-4b45-80ff-ad6cc1b028a9",
+        "id": "3b7177a1-3f7b-4cb1-9f93-0fa40280fd0c",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-askbox",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356275
+        "created_at": 1792366437
       }
     ],
-    "updated_at": 1792356275,
+    "updated_at": 1792366437,
     "created_at": 1792353113,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -2027,16 +2588,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "a1b40c98-d07e-4cce-b451-c09164e21435",
+        "id": "9cf88f40-7fae-4ba6-89e7-c7ec7c98e56a",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-antigravity",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356275
+        "created_at": 1792366437
       }
     ],
-    "updated_at": 1792356275,
+    "updated_at": 1792366437,
     "created_at": 1792353113,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -2060,16 +2621,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "daab8830-0a18-4374-83c9-e91f5f6e3c61",
+        "id": "6603a255-00ff-4bb2-8b25-1d5224a998d5",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-advisor",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356275
+        "created_at": 1792366437
       }
     ],
-    "updated_at": 1792356275,
+    "updated_at": 1792366437,
     "created_at": 1792353113,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -2093,16 +2654,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "0ad16d1c-417b-42df-8946-9b723950c976",
+        "id": "2d5c89d2-870c-4755-8d53-95e6ca2176c1",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-advisor-b",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356275
+        "created_at": 1792366437
       }
     ],
-    "updated_at": 1792356275,
+    "updated_at": 1792366437,
     "created_at": 1792353113,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -2126,16 +2687,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "7286bdbd-eda3-478c-b638-9bfc4423d4d4",
+        "id": "94f0c84f-8945-4f48-84e6-37f233df039a",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-adjudicator",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356275
+        "created_at": 1792366437
       }
     ],
-    "updated_at": 1792356275,
+    "updated_at": 1792366437,
     "created_at": 1792353113,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -2159,16 +2720,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "90a4823a-e5ee-4891-b1df-29661fdbb343",
+        "id": "f384146c-675f-479a-a82b-535ef322bd4a",
         "resource_type": "skill",
         "resource_id": "codex-agent-bd-adjudicator-b",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356275
+        "created_at": 1792366437
       }
     ],
-    "updated_at": 1792356275,
+    "updated_at": 1792366437,
     "created_at": 1792353113,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -2192,16 +2753,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "b430176e-dffe-4479-9b2f-28db70fb7c8d",
+        "id": "93c4dd93-4460-41fe-a30b-cb2a72c52e5c",
         "resource_type": "skill",
         "resource_id": "claude-cmd-bd-dispatch-ops-wt-new",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356275
+        "created_at": 1792366436
       }
     ],
-    "updated_at": 1792356275,
+    "updated_at": 1792366436,
     "created_at": 1792353113,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -2225,16 +2786,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "5a3f6c2c-b8e1-4297-9e99-acf27cc06211",
+        "id": "0b483d30-9577-4b08-b524-0c4462770deb",
         "resource_type": "skill",
         "resource_id": "claude-cmd-bd-dispatch-ops-worker-band",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356275
+        "created_at": 1792366436
       }
     ],
-    "updated_at": 1792356275,
+    "updated_at": 1792366436,
     "created_at": 1792353113,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -2258,16 +2819,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "0d30e42d-910b-4a0f-bafb-b9f0861db22c",
+        "id": "99c63dca-495e-45c2-b7fd-29b12ce189fa",
         "resource_type": "skill",
         "resource_id": "claude-cmd-bd-dispatch-ops-retire-seat",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356275
+        "created_at": 1792366436
       }
     ],
-    "updated_at": 1792356275,
+    "updated_at": 1792366436,
     "created_at": 1792353113,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -2291,16 +2852,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "65308679-a29c-4602-a42a-0f3b86a778d4",
+        "id": "27e602f9-1262-40ca-8d87-9a101b7e2efd",
         "resource_type": "skill",
         "resource_id": "claude-cmd-bd-dispatch-ops-next-id",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356275
+        "created_at": 1792366436
       }
     ],
-    "updated_at": 1792356275,
+    "updated_at": 1792366436,
     "created_at": 1792353113,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -2324,16 +2885,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "3e321603-c3f0-47dd-90dd-528177b7279d",
+        "id": "c4527cb8-1a8a-4c30-a84c-fd7081ce7397",
         "resource_type": "skill",
         "resource_id": "claude-cmd-bd-dispatch-ops-launch-role",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356275
+        "created_at": 1792366436
       }
     ],
-    "updated_at": 1792356275,
+    "updated_at": 1792366436,
     "created_at": 1792353113,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -2357,17 +2918,83 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "66a35f89-756a-4e05-9fa3-27b9d0517117",
+        "id": "f2b4a1e5-b482-4fa7-8263-89347479c22a",
         "resource_type": "skill",
         "resource_id": "claude-cmd-bd-dispatch-ops-gates-parallel",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356275
+        "created_at": 1792366435
       }
     ],
-    "updated_at": 1792356275,
+    "updated_at": 1792366435,
     "created_at": 1792353113,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "d32a9470-47a2-4175-a0db-d3d9d21e1292",
+    "id": "claude-cmd-bd-bdkb",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Claude Command: bd-bdkb",
+    "description": "Search the 6-Volume Boylenet & BulkDownloader Master Encyclopedia (BD KB) in <20ms",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-code-command"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "4bbebbf5-4a8d-4b9c-9580-0268a9dae068",
+        "resource_type": "skill",
+        "resource_id": "claude-cmd-bd-bdkb",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792366434
+      }
+    ],
+    "updated_at": 1792366434,
+    "created_at": 1792366434,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "256d4c31-1336-4bc0-98ed-9901912a2ca3",
+    "id": "claude-cmd-bd-airgap",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "Claude Command: bd-airgap",
+    "description": "Check or verify kernel-level WAN Airgap status (bd-airgap status|verify) across GPU nodes",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-code-command"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "cca69123-a2be-44e6-a3b3-1afdb45f72f9",
+        "resource_type": "skill",
+        "resource_id": "claude-cmd-bd-airgap",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792366434
+      }
+    ],
+    "updated_at": 1792366434,
+    "created_at": 1792366434,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
       "name": "User",
@@ -2390,16 +3017,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "b0e5b799-6368-4d31-abda-dcd6f8f89a00",
+        "id": "bc491a5b-aa6a-48a8-baef-4e8889bce709",
         "resource_type": "skill",
         "resource_id": "claude-cmd-bd-dispatch-ops-dispatch-manifest",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356275
+        "created_at": 1792366434
       }
     ],
-    "updated_at": 1792356275,
+    "updated_at": 1792366434,
     "created_at": 1792353113,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -2423,16 +3050,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "f29176fa-7d68-42d9-9ae5-8aa1d07a1b29",
+        "id": "a15584a8-7462-46e1-a5bb-0d7bba4334ad",
         "resource_type": "skill",
         "resource_id": "claude-cmd-bd-dispatch-ops-claim",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356275
+        "created_at": 1792366434
       }
     ],
-    "updated_at": 1792356275,
+    "updated_at": 1792366434,
     "created_at": 1792353113,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -2456,16 +3083,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "2cb4044f-cd60-4678-bbd5-2bf1f7cce116",
+        "id": "2746862d-e289-4a18-a671-e2fc6530ef40",
         "resource_type": "skill",
         "resource_id": "claude-cmd-bd-dispatch-ops-brief",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356275
+        "created_at": 1792366434
       }
     ],
-    "updated_at": 1792356275,
+    "updated_at": 1792366434,
     "created_at": 1792353113,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -2489,16 +3116,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "3bb122b2-13c2-46eb-84bf-f6107ec92fba",
+        "id": "23ac5706-60bf-426f-871b-364198d1c7dc",
         "resource_type": "skill",
         "resource_id": "claude-cmd-bd-dispatch-ops-assign-lens",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356275
+        "created_at": 1792366434
       }
     ],
-    "updated_at": 1792356275,
+    "updated_at": 1792366434,
     "created_at": 1792353113,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -2522,16 +3149,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "f9cde823-f34b-4085-bb24-0c951cd0ff2a",
+        "id": "d7b1e442-2ea4-44ef-b385-76e969178e7b",
         "resource_type": "skill",
         "resource_id": "rebase-orchestrator",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356275
+        "created_at": 1792366434
       }
     ],
-    "updated_at": 1792356275,
+    "updated_at": 1792366434,
     "created_at": 1792353113,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -2555,16 +3182,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "ad44e9e8-be4c-4796-9266-125d373d64b4",
+        "id": "a3d4903b-de6a-4818-8457-091470906ed4",
         "resource_type": "skill",
         "resource_id": "bd-lens",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356275
+        "created_at": 1792366434
       }
     ],
-    "updated_at": 1792356275,
+    "updated_at": 1792366434,
     "created_at": 1792353112,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -2588,16 +3215,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "88d5b10d-d091-451e-a5d9-f5e66f506809",
+        "id": "bce069ee-5e50-47a8-ae8d-4387e46f6ad5",
         "resource_type": "skill",
         "resource_id": "bd-fleet-mcp",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356275
+        "created_at": 1792366434
       }
     ],
-    "updated_at": 1792356275,
+    "updated_at": 1792366434,
     "created_at": 1792353112,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -2621,16 +3248,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "bb7d6110-0ec8-427a-9d85-82a8faac0cde",
+        "id": "2dc4aab2-c3de-4e77-96b2-1893b7b8211d",
         "resource_type": "skill",
         "resource_id": "bd-dispatch-ops",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356274
+        "created_at": 1792366434
       }
     ],
-    "updated_at": 1792356274,
+    "updated_at": 1792366434,
     "created_at": 1792353112,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -2654,16 +3281,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "7c6935fe-0a78-452d-afb0-509a2ef166ec",
+        "id": "e965adb8-1331-42cd-b934-16bb49436e75",
         "resource_type": "skill",
         "resource_id": "bd-agy-dispatch",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356274
+        "created_at": 1792366434
       }
     ],
-    "updated_at": 1792356274,
+    "updated_at": 1792366434,
     "created_at": 1792353112,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -2687,16 +3314,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "36a780b3-7d11-45e7-a4db-83c52cc090de",
+        "id": "c6579c09-e7ba-48ce-8d45-c361ebd9cf9c",
         "resource_type": "skill",
         "resource_id": "bd-harness-cut",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356274
+        "created_at": 1792366434
       }
     ],
-    "updated_at": 1792356274,
+    "updated_at": 1792366434,
     "created_at": 1792353112,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -2720,16 +3347,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "f9c6940c-f804-4fd3-aded-5daa71a1b96e",
+        "id": "849c7be3-de6d-4efd-b528-a47cfbc8fef5",
         "resource_type": "skill",
         "resource_id": "context-guard",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356274
+        "created_at": 1792366434
       }
     ],
-    "updated_at": 1792356274,
+    "updated_at": 1792366434,
     "created_at": 1792353112,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -2753,16 +3380,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "8442bd04-4e25-4db6-bad0-16c687ee9fc0",
+        "id": "45e9c6c9-380e-4db7-ae55-470348c0f2fd",
         "resource_type": "skill",
         "resource_id": "bd-browser-oracle",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356274
+        "created_at": 1792366434
       }
     ],
-    "updated_at": 1792356274,
+    "updated_at": 1792366434,
     "created_at": 1792353112,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -2786,16 +3413,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "b02896ae-dc13-4ec0-a091-ff9f9c4dcf20",
+        "id": "40c19cb2-ffeb-4a8c-82bb-d14a3767a1bf",
         "resource_type": "skill",
         "resource_id": "ui-plugin-navigation",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356274
+        "created_at": 1792366434
       }
     ],
-    "updated_at": 1792356274,
+    "updated_at": 1792366434,
     "created_at": 1792353112,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -2819,16 +3446,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "f9d02139-4da2-471e-bfba-5d9ebe630d0b",
+        "id": "fe34be2b-c64e-4977-aa7c-78942f086920",
         "resource_type": "skill",
         "resource_id": "run-workflow",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356274
+        "created_at": 1792366434
       }
     ],
-    "updated_at": 1792356274,
+    "updated_at": 1792366434,
     "created_at": 1792353112,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -2852,16 +3479,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "53a05858-5311-4aa9-9442-7ce83f4a62d6",
+        "id": "533c3842-654d-4162-894e-90b4a6d9f22f",
         "resource_type": "skill",
         "resource_id": "plugin",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356274
+        "created_at": 1792366434
       }
     ],
-    "updated_at": 1792356274,
+    "updated_at": 1792366434,
     "created_at": 1792353112,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -2885,16 +3512,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "329c5e03-bc5b-4a53-8fed-614dca70336f",
+        "id": "8aa07615-8856-485e-9bb2-a7afcbea0f7e",
         "resource_type": "skill",
         "resource_id": "permissioned-github",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356274
+        "created_at": 1792366434
       }
     ],
-    "updated_at": 1792356274,
+    "updated_at": 1792366434,
     "created_at": 1792353112,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -2918,16 +3545,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "3766723b-c19f-42e0-bb26-2ef0991f0b9e",
+        "id": "d481b348-86d0-49c2-aeb5-9e6c3a4c9848",
         "resource_type": "skill",
         "resource_id": "migrate-workflows",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356274
+        "created_at": 1792366434
       }
     ],
-    "updated_at": 1792356274,
+    "updated_at": 1792366434,
     "created_at": 1792353112,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -2951,16 +3578,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "04d509bc-c835-4f20-8dfa-c7319657aad2",
+        "id": "44d14e1a-2a10-4937-a0aa-cd9ee664eef3",
         "resource_type": "skill",
         "resource_id": "generative_ui",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356274
+        "created_at": 1792366434
       }
     ],
-    "updated_at": 1792356274,
+    "updated_at": 1792366434,
     "created_at": 1792353112,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -2984,16 +3611,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "4d22b938-8150-4173-a6ad-b569c0645437",
+        "id": "927318ab-f91e-4b47-a50c-f64bdf6555e4",
         "resource_type": "skill",
         "resource_id": "automation",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356274
+        "created_at": 1792366433
       }
     ],
-    "updated_at": 1792356274,
+    "updated_at": 1792366433,
     "created_at": 1792353112,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -3017,16 +3644,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "ef52ba9b-c827-44c3-94cc-9c608bf47213",
+        "id": "0ea88866-d02b-4cb4-bf94-441f6d478529",
         "resource_type": "skill",
         "resource_id": "antigravity_guide",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356274
+        "created_at": 1792366433
       }
     ],
-    "updated_at": 1792356274,
+    "updated_at": 1792366433,
     "created_at": 1792353112,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -3050,16 +3677,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "661ca6b6-f013-4f30-a968-d7344746ee95",
+        "id": "2e3a50fd-7c69-4d18-a888-c2928d70c0a8",
         "resource_type": "skill",
         "resource_id": "agy-customizations",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356274
+        "created_at": 1792366433
       }
     ],
-    "updated_at": 1792356274,
+    "updated_at": 1792366433,
     "created_at": 1792353112,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -3083,16 +3710,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "01be4fe6-3df4-4308-8455-e9e80e972758",
+        "id": "cb05f748-81fe-4c7a-9e12-0c738aa0cb72",
         "resource_type": "skill",
         "resource_id": "xlsx",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356274
+        "created_at": 1792366433
       }
     ],
-    "updated_at": 1792356274,
+    "updated_at": 1792366433,
     "created_at": 1792353112,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -3116,16 +3743,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "5089b0a1-dc4d-4652-81b5-d8b11823fa64",
+        "id": "a266a38d-59cc-44d5-8df8-a813cdc6456c",
         "resource_type": "skill",
         "resource_id": "skill-creator",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356274
+        "created_at": 1792366433
       }
     ],
-    "updated_at": 1792356274,
+    "updated_at": 1792366433,
     "created_at": 1792353112,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -3149,16 +3776,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "c4e95cd5-bae9-40ab-a01f-2749b8691c98",
+        "id": "516a04bd-b236-4d37-931e-291306af6f86",
         "resource_type": "skill",
         "resource_id": "pptx",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356274
+        "created_at": 1792366433
       }
     ],
-    "updated_at": 1792356274,
+    "updated_at": 1792366433,
     "created_at": 1792353112,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -3182,16 +3809,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "0cf4379a-16cc-4a46-ac10-b78c8785e5f6",
+        "id": "e36bb4ec-cecf-4bf5-832b-ee9c038a0a17",
         "resource_type": "skill",
         "resource_id": "pdf",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356274
+        "created_at": 1792366433
       }
     ],
-    "updated_at": 1792356274,
+    "updated_at": 1792366433,
     "created_at": 1792353112,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -3215,16 +3842,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "f0d54ee7-7d64-4b99-836f-0f17a5464a34",
+        "id": "b7b4441d-2f91-4f97-9c9d-1b3c50d0ef37",
         "resource_type": "skill",
         "resource_id": "morning",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356274
+        "created_at": 1792366433
       }
     ],
-    "updated_at": 1792356274,
+    "updated_at": 1792366433,
     "created_at": 1792353112,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -3248,16 +3875,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "be0c2c6f-236f-43dd-be1b-540cfca7014b",
+        "id": "28eb1a42-495a-4bb5-b763-bf8a9c6558cf",
         "resource_type": "skill",
         "resource_id": "import-memory",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356274
+        "created_at": 1792366433
       }
     ],
-    "updated_at": 1792356274,
+    "updated_at": 1792366433,
     "created_at": 1792353112,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -3281,16 +3908,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "d60a3ed6-20d3-47b7-94ba-650e8fd7585c",
+        "id": "9ec7e083-3d6c-4155-a396-acfc964429ab",
         "resource_type": "skill",
         "resource_id": "google-workspace",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356274
+        "created_at": 1792366433
       }
     ],
-    "updated_at": 1792356274,
+    "updated_at": 1792366433,
     "created_at": 1792353112,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -3314,16 +3941,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "5720f876-5a8e-4edb-a9ea-0fd45f160fe9",
+        "id": "434eff13-054e-4af5-a13e-9c47644f4ecd",
         "resource_type": "skill",
         "resource_id": "docx",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356274
+        "created_at": 1792366433
       }
     ],
-    "updated_at": 1792356274,
+    "updated_at": 1792366433,
     "created_at": 1792353112,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -3347,16 +3974,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "d1ab2543-10c8-45c0-a990-43bb1ab0f872",
+        "id": "adf10c3c-7544-453f-a9ba-162a9333d67f",
         "resource_type": "skill",
         "resource_id": "docs",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356273
+        "created_at": 1792366433
       }
     ],
-    "updated_at": 1792356273,
+    "updated_at": 1792366433,
     "created_at": 1792353112,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -3380,16 +4007,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "441c7943-40cc-46f8-bf66-8b72ad48536b",
+        "id": "708fd178-6c30-42f9-a856-c152d8a49fdf",
         "resource_type": "skill",
         "resource_id": "verify-and-stop",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356273
+        "created_at": 1792366433
       }
     ],
-    "updated_at": 1792356273,
+    "updated_at": 1792366433,
     "created_at": 1792353112,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -3413,16 +4040,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "4769c78a-6702-4291-83eb-a3a5e060ec29",
+        "id": "17ae7b63-9a92-4363-a3c6-1c84593318da",
         "resource_type": "skill",
         "resource_id": "surgical-patch",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356273
+        "created_at": 1792366433
       }
     ],
-    "updated_at": 1792356273,
+    "updated_at": 1792366433,
     "created_at": 1792353112,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -3446,16 +4073,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "551ff274-5923-47ee-a5f7-920e3b490033",
+        "id": "cbddb7eb-3081-4c6b-aed4-dd5042d8f556",
         "resource_type": "skill",
         "resource_id": "safe-refactor",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356273
+        "created_at": 1792366433
       }
     ],
-    "updated_at": 1792356273,
+    "updated_at": 1792366433,
     "created_at": 1792353112,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -3479,16 +4106,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "f6443155-a574-476a-b076-9e8d8d6096bc",
+        "id": "2b514400-7c72-47f2-b018-495378fa2d73",
         "resource_type": "skill",
         "resource_id": "migration",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356273
+        "created_at": 1792366433
       }
     ],
-    "updated_at": 1792356273,
+    "updated_at": 1792366433,
     "created_at": 1792353112,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -3512,16 +4139,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "cc187218-24ba-425e-98ed-14b90e3fd336",
+        "id": "d327e049-af56-4d1c-862e-4632ea62c80d",
         "resource_type": "skill",
         "resource_id": "lean-build",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356273
+        "created_at": 1792366432
       }
     ],
-    "updated_at": 1792356273,
+    "updated_at": 1792366432,
     "created_at": 1792353111,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -3545,16 +4172,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "704afef6-e834-4c5c-b4cc-591a1281fec9",
+        "id": "11b19f79-d126-4168-9bd7-23ff86992077",
         "resource_type": "skill",
         "resource_id": "investigate-first",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356273
+        "created_at": 1792366432
       }
     ],
-    "updated_at": 1792356273,
+    "updated_at": 1792366432,
     "created_at": 1792353111,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -3578,16 +4205,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "dbfe4df9-db4d-4942-8727-886abd1d3453",
+        "id": "f35e01e7-6b86-41af-88f3-b8f4b3da7b5c",
         "resource_type": "skill",
         "resource_id": "fleet-satellite-orchestration",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356273
+        "created_at": 1792366432
       }
     ],
-    "updated_at": 1792356273,
+    "updated_at": 1792366432,
     "created_at": 1792353111,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -3611,16 +4238,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "2a72e9af-76b5-4d78-b023-7e757ca0b8db",
+        "id": "4700e78b-e24f-4e73-b0b5-9f498f301733",
         "resource_type": "skill",
         "resource_id": "fleet-gridlock-recovery",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356273
+        "created_at": 1792366432
       }
     ],
-    "updated_at": 1792356273,
+    "updated_at": 1792366432,
     "created_at": 1792353111,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -3644,16 +4271,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "4f0f4c85-fb64-46fc-b152-22b91cdbb1a4",
+        "id": "a8e9710c-65c6-4e09-8e6f-5ff0fd21536f",
         "resource_type": "skill",
         "resource_id": "find-skills",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356273
+        "created_at": 1792366432
       }
     ],
-    "updated_at": 1792356273,
+    "updated_at": 1792366432,
     "created_at": 1792353111,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -3677,17 +4304,116 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "886e1e17-51b5-4532-be7f-146c21f9a225",
+        "id": "b85e2533-bb27-4a62-8ce1-deead885ab9b",
         "resource_type": "skill",
         "resource_id": "cdp-frame-scroll-controls",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356273
+        "created_at": 1792366432
       }
     ],
-    "updated_at": 1792356273,
+    "updated_at": 1792366432,
     "created_at": 1792353111,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "ad800335-88d9-409a-94ea-09426cb45388",
+    "id": "bd-swarm-mod",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "bd-swarm-mod",
+    "description": "Unified Autonomous Swarm Mod & Plugin Pack across Claude, Codex, Kimi, AGY, and OpenWebUI (.164:8090 / .72:8080). Provides <100-token pre-turn infrastructure & quota context injection (Mod 1), <4s post-edit Ruff + Mypy + .82 /dev/shm ramdisk pytest verification (Mod 2), autonomous Rule 25 Qdrant Hiv",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-codex-agy-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "86f47777-1546-417f-9be5-2fc3815ebeb0",
+        "resource_type": "skill",
+        "resource_id": "bd-swarm-mod",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792366431
+      }
+    ],
+    "updated_at": 1792366431,
+    "created_at": 1792366431,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "199e45d2-de27-43c7-81bb-4d41c3eddc7f",
+    "id": "bd-p2-appdl-verifier",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "bd-p2-appdl-verifier",
+    "description": "Autonomous verification, PATCH-SHA256 derivation, and queue reconciliation skill for P2-FIX-QUEUE.tsv (20 open rows) and APP-DL-FIX-QUEUE.tsv / app-dl-reprobe.tsv (5 open/built/unknown + 4 reprobe rows). Use when auditing or verifying P2-FIX and APP-DL-FIX cuts, running hermetic ruff/mypy/bd-pytest-",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-codex-agy-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "e574ac73-78a8-4bec-a381-db7230d67ce7",
+        "resource_type": "skill",
+        "resource_id": "bd-p2-appdl-verifier",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792366431
+      }
+    ],
+    "updated_at": 1792366431,
+    "created_at": 1792366431,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "f8a836d9-121f-485c-a598-0b25c154388f",
+    "id": "bd-oracle-suite-e2e",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "bd-oracle-suite-e2e",
+    "description": "Autonomous Dual Browser Oracle (.137:9222 BattleStation & .181:9222 Bittorrent) + bd-oracle Visual, Interactive, Dynamic-State & Consensus E2E Verification Suite for all Boylenet portals (:4080-:4099, :8090, :3000).",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "claude-codex-agy-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "61c61ba7-69c1-4df7-8b2d-79e540998821",
+        "resource_type": "skill",
+        "resource_id": "bd-oracle-suite-e2e",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792366431
+      }
+    ],
+    "updated_at": 1792366431,
+    "created_at": 1792366431,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
       "name": "User",
@@ -3710,16 +4436,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "e9974629-83aa-4ad7-8021-35bdd9d7bd31",
+        "id": "b61f14aa-3a13-41d7-8c84-dc369c14fdbc",
         "resource_type": "skill",
         "resource_id": "caveman",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356273
+        "created_at": 1792366431
       }
     ],
-    "updated_at": 1792356273,
+    "updated_at": 1792366431,
     "created_at": 1792353111,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -3743,16 +4469,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "889cedb7-96e1-41a5-b332-26af02dd901d",
+        "id": "145d9511-efae-474e-b39a-984dddfeb8b0",
         "resource_type": "skill",
         "resource_id": "caveman-stats",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356273
+        "created_at": 1792366431
       }
     ],
-    "updated_at": 1792356273,
+    "updated_at": 1792366431,
     "created_at": 1792353111,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -3776,16 +4502,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "4296b410-38fe-4347-a29f-c1930f73c8bb",
+        "id": "b3777bd5-81e1-416c-80f6-b7ba76f02437",
         "resource_type": "skill",
         "resource_id": "caveman-setup",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356273
+        "created_at": 1792366431
       }
     ],
-    "updated_at": 1792356273,
+    "updated_at": 1792366431,
     "created_at": 1792353111,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -3809,16 +4535,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "0c75aa2e-91f0-41be-b765-d705869c9967",
+        "id": "c5d10d8f-abba-4ee7-be54-6d4deefdfccf",
         "resource_type": "skill",
         "resource_id": "caveman-review",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356273
+        "created_at": 1792366431
       }
     ],
-    "updated_at": 1792356273,
+    "updated_at": 1792366431,
     "created_at": 1792353111,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -3842,16 +4568,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "9cebb470-ee92-448a-8b52-61a9de337a79",
+        "id": "478737ee-f3fb-4996-92fa-b3ab16348462",
         "resource_type": "skill",
         "resource_id": "caveman-optimize",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356273
+        "created_at": 1792366431
       }
     ],
-    "updated_at": 1792356273,
+    "updated_at": 1792366431,
     "created_at": 1792353111,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -3875,16 +4601,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "736ab173-9ca3-4005-b9b0-008fd70f061f",
+        "id": "a10b72ca-bdca-4ebc-83cd-415fca3910e7",
         "resource_type": "skill",
         "resource_id": "caveman-manage",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356273
+        "created_at": 1792366431
       }
     ],
-    "updated_at": 1792356273,
+    "updated_at": 1792366431,
     "created_at": 1792353111,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -3908,16 +4634,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "334180d0-e08d-4e2a-8722-bc4011fcf5e6",
+        "id": "f312b507-efee-4326-aae3-5ace8705ba8d",
         "resource_type": "skill",
         "resource_id": "caveman-learn",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356273
+        "created_at": 1792366431
       }
     ],
-    "updated_at": 1792356273,
+    "updated_at": 1792366431,
     "created_at": 1792353111,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -3941,16 +4667,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "e7482b00-fa2a-41ae-b01f-72a596819c97",
+        "id": "c6cef686-23f7-4e8f-890e-b211aaf61c40",
         "resource_type": "skill",
         "resource_id": "caveman-help",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356273
+        "created_at": 1792366431
       }
     ],
-    "updated_at": 1792356273,
+    "updated_at": 1792366431,
     "created_at": 1792353111,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -3974,16 +4700,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "3a0880d0-364a-4345-bc1c-1b2cb9650b72",
+        "id": "c4c92154-dc36-4797-988b-d0b72e986397",
         "resource_type": "skill",
         "resource_id": "caveman-explore",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356273
+        "created_at": 1792366431
       }
     ],
-    "updated_at": 1792356273,
+    "updated_at": 1792366431,
     "created_at": 1792353111,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -4007,16 +4733,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "ec99b458-6334-4ebf-865b-95d8c1184a7e",
+        "id": "cbc207fe-6b1e-4682-8f78-063dfd573dbe",
         "resource_type": "skill",
         "resource_id": "caveman-evidence-review",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356273
+        "created_at": 1792366431
       }
     ],
-    "updated_at": 1792356273,
+    "updated_at": 1792366431,
     "created_at": 1792353111,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -4040,16 +4766,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "90acfa51-9063-4ee5-9b07-5d7652ef2ef7",
+        "id": "f959b1a2-1448-4ac5-8706-81f0245ef2bc",
         "resource_type": "skill",
         "resource_id": "caveman-discover",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356273
+        "created_at": 1792366431
       }
     ],
-    "updated_at": 1792356273,
+    "updated_at": 1792366431,
     "created_at": 1792353111,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -4073,16 +4799,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "c68141e5-518b-4304-a5d1-203ca6a31e13",
+        "id": "5005a77e-bbfe-4fa7-aec1-3006b296fa0a",
         "resource_type": "skill",
         "resource_id": "caveman-compress",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356273
+        "created_at": 1792366431
       }
     ],
-    "updated_at": 1792356273,
+    "updated_at": 1792366431,
     "created_at": 1792353111,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -4106,16 +4832,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "da214c0d-1916-4593-8d2c-85fdeade95be",
+        "id": "372f92ec-764f-4708-b22e-722095ba17f1",
         "resource_type": "skill",
         "resource_id": "caveman-commit",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356273
+        "created_at": 1792366431
       }
     ],
-    "updated_at": 1792356273,
+    "updated_at": 1792366431,
     "created_at": 1792353111,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -4139,16 +4865,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "58e3a869-907f-45e1-8fcf-76c89588faff",
+        "id": "fdd0ce2b-c81e-4b7f-b706-16b3182e1844",
         "resource_type": "skill",
         "resource_id": "cavecrew",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356272
+        "created_at": 1792366431
       }
     ],
-    "updated_at": 1792356272,
+    "updated_at": 1792366431,
     "created_at": 1792353111,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
@@ -4172,17 +4898,248 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "61a4e4e4-32b6-4e1a-be6d-a649a3cdaf03",
+        "id": "61b5abce-906a-4ba7-961e-19b43a888ec7",
         "resource_type": "skill",
         "resource_id": "boylenet-architect",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356272
+        "created_at": 1792366431
       }
     ],
-    "updated_at": 1792356272,
+    "updated_at": 1792366431,
     "created_at": 1792353111,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "4e6385a3-6545-4f4a-bcc2-3ede1e15b7fb",
+    "id": "boylenet-local-coding-agent",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "boylenet-local-coding-agent",
+    "description": "Boylenet $0 Local GPU Coding Agent skill for Kimi K2.8, Claude Code, Codex, and AGY. Dispatches autonomous code generation and .82 64-core ramdisk pytest self-healing via .137 RTX 2080 Ti or .83 Dual T4 Qwen3.6-Heretic.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "kimi-k2.8-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "3b995451-2f75-43b0-9c88-2681dd6bc107",
+        "resource_type": "skill",
+        "resource_id": "boylenet-local-coding-agent",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792366430
+      }
+    ],
+    "updated_at": 1792366430,
+    "created_at": 1792366430,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "aaa89f06-07fa-47c6-8ac7-7df24a79d82d",
+    "id": "boylenet-infra-commander",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "boylenet-infra-commander",
+    "description": "Boylenet 27-VM Infrastructure Commander skill for Kimi K2.8, Claude Code, Codex, and AGY. Execute commands across all 27 VMs, inspect Sovereign Local Gateway (:4010) & LiteLLM (:4000), and toggle bd-airgap.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "kimi-k2.8-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "5102d6a4-1cc8-4337-b753-b021b3c5dc5b",
+        "resource_type": "skill",
+        "resource_id": "boylenet-infra-commander",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792366430
+      }
+    ],
+    "updated_at": 1792366430,
+    "created_at": 1792366430,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "df9c7796-aff9-489a-a0d6-10cdb6c94ca2",
+    "id": "boylenet-dual-oracle-e2e",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "boylenet-dual-oracle-e2e",
+    "description": "Dual-Node Windows Chrome CDP Browser Oracle (.137:9222 BattleStation & .181:9222 Bittorrent) and E2E Portal Verification skill for Kimi K2.8, Claude Code, Codex, and AGY.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "kimi-k2.8-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "c14b3d0a-49cd-4faa-b8ba-c6b81e36b0e4",
+        "resource_type": "skill",
+        "resource_id": "boylenet-dual-oracle-e2e",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792366430
+      }
+    ],
+    "updated_at": 1792366430,
+    "created_at": 1792366430,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "c64fb662-75b0-407e-922a-1af379d493fd",
+    "id": "boylenet-bdkb-hivemind",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "boylenet-bdkb-hivemind",
+    "description": "Sub-20ms 6-Volume Boylenet Master Knowledge Base (BD KB), Qdrant bd_master_kb (10.0.70.125:6333), and HiveMind episodic memory recall/publish skill for Kimi K2.8, Claude Code, Codex, and AGY.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "kimi-k2.8-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "571c1fba-fe63-44a0-922e-6c5d02bbb6e8",
+        "resource_type": "skill",
+        "resource_id": "boylenet-bdkb-hivemind",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792366430
+      }
+    ],
+    "updated_at": 1792366430,
+    "created_at": 1792366430,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "5207cd41-06da-4709-9840-5f54f498dddf",
+    "id": "boylenet-autonomous-mods",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "boylenet-autonomous-mods",
+    "description": "Reference and operating guide for Boylenet's Autonomous Mods, PreToolUse/PostToolUse Hooks, .82 64-core Ramdisk Pytest Interceptor, HiveMind Auto-Publishers, and OpenWebUI Inlet/Outlet Filters across Claude Code, Codex, Kimi, AGY, and OpenWebUI.",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "kimi-k2.8-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "96a26808-6fa7-4234-9a54-d13da36435e4",
+        "resource_type": "skill",
+        "resource_id": "boylenet-autonomous-mods",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792366430
+      }
+    ],
+    "updated_at": 1792366430,
+    "created_at": 1792366430,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "cfe779be-0bab-4469-9a70-09b3bc10673a",
+    "id": "boylenet-autonomous-infra",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "boylenet-autonomous-infra",
+    "description": "Autonomous Boylenet 27-node cluster infrastructure execution, $0 local coding agent dispatch, 64-core /dev/shm ramdisk pytest digesting, dual Chrome CDP browser oracles (.137 & .181), 6-volume Master BD KB search, Qdrant Hivemind vector memory, 86-model AI Vault catalog, O1740 dynamic pool routing, ",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "kimi-k2.8-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "67a9a3d3-5c18-4757-9da4-8cbbe3a0c4af",
+        "resource_type": "skill",
+        "resource_id": "boylenet-autonomous-infra",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792366430
+      }
+    ],
+    "updated_at": 1792366430,
+    "created_at": 1792366430,
+    "user": {
+      "id": "a12463df-370f-4948-b488-9437da254b15",
+      "name": "User",
+      "role": "admin",
+      "email": "admin@localhost"
+    }
+  },
+  {
+    "version_id": "3b57c7d1-95ff-4317-8581-a10e87f02042",
+    "id": "boylenet-4platform-bridge",
+    "user_id": "a12463df-370f-4948-b488-9437da254b15",
+    "name": "boylenet-4platform-bridge",
+    "description": "Unified 4-Platform Autonomous Integration Bridge across Antigravity (AGY), Claude Code, OpenAI Codex CLI, Kimi K2.8 CLI, and Local GPU (:4010 / .137 / .83). Documents how all platforms seamlessly invoke bd-boylenet-infra-mcp.py, bd-swarm-mod, bd-local-coding-agent, and bd-cross-platform-swarm-assist",
+    "meta": {
+      "i18n": null,
+      "tags": [
+        "kimi-k2.8-skill"
+      ]
+    },
+    "is_active": true,
+    "access_grants": [
+      {
+        "id": "0877634e-6023-4a0a-a6a4-97c5d800e6a8",
+        "resource_type": "skill",
+        "resource_id": "boylenet-4platform-bridge",
+        "principal_type": "user",
+        "principal_id": "*",
+        "permission": "read",
+        "created_at": 1792366430
+      }
+    ],
+    "updated_at": 1792366430,
+    "created_at": 1792366430,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",
       "name": "User",
@@ -4205,16 +5162,16 @@
     "is_active": true,
     "access_grants": [
       {
-        "id": "0e57615c-3608-400c-a065-30bc8b249563",
+        "id": "0cef673e-b8dc-4e43-9345-08917a61cb15",
         "resource_type": "skill",
         "resource_id": "bd-ci-taxonomy",
         "principal_type": "user",
         "principal_id": "*",
         "permission": "read",
-        "created_at": 1792356272
+        "created_at": 1792366430
       }
     ],
-    "updated_at": 1792356272,
+    "updated_at": 1792366430,
     "created_at": 1792353111,
     "user": {
       "id": "a12463df-370f-4948-b488-9437da254b15",

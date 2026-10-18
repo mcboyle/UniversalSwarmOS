@@ -428,6 +428,7 @@ sections:
     target: newtab
     hotkey: 4
     statusCheck: true
+    statusCheckUrl: http://10.0.70.164:8090
     tags:
     - ai
     - openwebui
@@ -513,6 +514,7 @@ sections:
     url: http://10.0.70.125:8081
     target: newtab
     statusCheck: true
+    statusCheckUrl: http://10.0.70.164:4010/status
     tags:
     - gpu
     - tier1
@@ -546,6 +548,7 @@ sections:
     url: http://10.0.70.228:11434
     target: newtab
     statusCheck: true
+    statusCheckUrl: http://10.0.70.228:8090
     tags:
     - ollama
     - satellite
@@ -556,6 +559,7 @@ sections:
     url: http://10.0.70.72:8081
     target: newtab
     statusCheck: true
+    statusCheckUrl: http://10.0.70.164:4010/status
     tags:
     - ollama
     - vault-a
@@ -566,6 +570,7 @@ sections:
     url: http://10.0.70.125:8005
     target: newtab
     statusCheck: true
+    statusCheckUrl: http://10.0.70.125:6333/collections
     tags:
     - ollama
     - infer01
@@ -781,6 +786,7 @@ sections:
     url: http://10.0.70.72:5555
     target: newtab
     statusCheck: true
+    statusCheckUrl: http://10.0.70.164:4010/status
     tags:
     - app
     - bulkdownloader
@@ -857,6 +863,7 @@ sections:
     url: http://10.0.70.72:6080/vnc.html
     target: newtab
     statusCheck: true
+    statusCheckUrl: http://10.0.70.164:6080/vnc.html
     tags:
     - vnc
     - desktop
@@ -1387,6 +1394,7 @@ sections:
     url: http://10.0.70.72:8080
     target: newtab
     statusCheck: true
+    statusCheckUrl: http://10.0.70.164:4010/status
     tags:
     - node
     - vlan70
@@ -1409,6 +1417,7 @@ sections:
     url: http://10.0.70.125:8081
     target: newtab
     statusCheck: true
+    statusCheckUrl: http://10.0.70.125:6333/collections
     tags:
     - node
     - vlan70

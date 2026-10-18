@@ -1,0 +1,1 @@
+{"name":"role_state_get","description":"Read role state through the canonical helper; preserve missing-state return status.","parameters":{"properties":{"role":{"title":"Role","type":"string"}},"required":["role"],"title":"role_state_getArguments","type":"object"}}

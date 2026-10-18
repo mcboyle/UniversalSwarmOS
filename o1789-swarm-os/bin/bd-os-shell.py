@@ -225,6 +225,94 @@ DOCK_APPS: List[Dict[str, Any]] = [
         "shortcut": "",
         "cat": "Core OS",
     },
+    {
+        "id": "visual-gallery-179",
+        "icon": "🖼️",
+        "title": "179-Image Visual Gallery & 165-View Launcher",
+        "short": "165-View Gallery",
+        "port": 4088,
+        "sub": "topology",
+        "shortcut": "",
+        "cat": "Observability",
+        "url": f"http://{HOST_IP}:4088/gallery",
+    },
+    {
+        "id": "wallboard-eight-4x2",
+        "icon": "🧱",
+        "title": "4x2 Eight-Pack 60fps Mega-NOC Wallboard",
+        "short": "4x2 Wallboard",
+        "port": 4088,
+        "sub": "topology",
+        "shortcut": "",
+        "cat": "Observability",
+        "url": f"http://{HOST_IP}:4088/?mode=eightpack",
+    },
+    {
+        "id": "gpu-orchestrator",
+        "icon": "⚙️",
+        "title": "Tier 1/2/3 GPU Mode Orchestrator & Router",
+        "short": "GPU Orchestrator",
+        "port": 4010,
+        "sub": "orchestrator",
+        "shortcut": "",
+        "cat": "Hardware",
+        "url": f"http://{HOST_IP}:4010/status",
+    },
+    {
+        "id": "litellm",
+        "icon": "🔀",
+        "title": "LiteLLM Unified Proxy Gateway",
+        "short": "LiteLLM Proxy",
+        "port": 4000,
+        "sub": "litellm",
+        "shortcut": "",
+        "cat": "AI Studio",
+        "url": f"http://{HOST_IP}:4000/ui",
+    },
+    {
+        "id": "openwebui",
+        "icon": "🌐",
+        "title": "OpenWebUI Local RAG & Ollama Workspace",
+        "short": "OpenWebUI RAG",
+        "port": 8090,
+        "sub": "openwebui",
+        "shortcut": "",
+        "cat": "AI Studio",
+        "url": f"http://{HOST_IP}:8090",
+    },
+    {
+        "id": "lobechat",
+        "icon": "✨",
+        "title": "LobeChat Studio Workbench",
+        "short": "LobeChat Studio",
+        "port": 4095,
+        "sub": "lobechat",
+        "shortcut": "",
+        "cat": "AI Studio",
+        "url": f"http://{HOST_IP}:4095",
+    },
+    {
+        "id": "opencode",
+        "icon": "🧑‍💻",
+        "title": "OpenCode Browser Coding Agent",
+        "short": "OpenCode IDE",
+        "port": 4096,
+        "sub": "opencode",
+        "shortcut": "",
+        "cat": "AI Studio",
+        "url": f"http://{HOST_IP}:4096",
+    },
+    {
+        "id": "gitea",
+        "icon": "🦊",
+        "title": "Forgejo / Gitea Self-Hosted Git Server",
+        "short": "Gitea Git CI",
+        "port": 3000,
+        "sub": "gitea",
+        "shortcut": "",
+        "cat": "Security & CI",
+        "url": f"http://{HOST_IP}:3000",
+    },
 ]
 
 # Additional Boylenet Apps (bringing total searchable apps in Cmd+K to 59)
@@ -694,7 +782,7 @@ VAULT_86_MODELS: List[Dict[str, str]] = [
         "node": ".72",
         "size": "229.67 GiB",
         "tier": "Tier 3",
-        "speed": "94.0 pp / 2.4 tg tok/s",
+        "speed": "1.73 pp / 2.47 tg tok/s",
     },
     {
         "id": "minimax-m3-426b-uncensored",
@@ -704,7 +792,7 @@ VAULT_86_MODELS: List[Dict[str, str]] = [
         "node": ".72",
         "size": "189.13 GiB",
         "tier": "Tier 3",
-        "speed": "88.6 pp / 3.4 tg tok/s",
+        "speed": "0.55 pp / 1.59 tg tok/s",
     },
     {
         "id": "nemotron-3-ultra-550b-a55b",
@@ -714,7 +802,7 @@ VAULT_86_MODELS: List[Dict[str, str]] = [
         "node": ".72",
         "size": "188.30 GiB",
         "tier": "Tier 3",
-        "speed": "76.5 pp / 2.4 tg tok/s",
+        "speed": "1.75 pp / 1.37 tg tok/s",
     },
     {
         "id": "beam-1.0-501b-a23b",
@@ -724,7 +812,7 @@ VAULT_86_MODELS: List[Dict[str, str]] = [
         "node": ".72",
         "size": "174.04 GiB",
         "tier": "Tier 3",
-        "speed": "104.2 pp / 5.8 tg tok/s",
+        "speed": "1.16 pp / 3.05 tg tok/s",
     },
     {
         "id": "deepseek-v4-flash",
@@ -1094,7 +1182,7 @@ VAULT_86_MODELS: List[Dict[str, str]] = [
         "node": ".83",
         "size": "1453.79 GiB",
         "tier": "Tier 3",
-        "speed": "69.1 pp / 16.3 tg tok/s",
+        "speed": "VALIDATED (96 Safetensors \u2022 497,220 tensors \u2022 37,993ms)",
     },
     {
         "id": "glm-5.2",
@@ -1134,7 +1222,7 @@ VAULT_86_MODELS: List[Dict[str, str]] = [
         "node": ".83",
         "size": "238.22 GiB",
         "tier": "Tier 3",
-        "speed": "69.1 pp / 1.5 tg tok/s",
+        "speed": "2.92 pp / 2.42 tg tok/s",
     },
     {
         "id": "glm-5.3-753b",
@@ -1144,7 +1232,7 @@ VAULT_86_MODELS: List[Dict[str, str]] = [
         "node": ".83",
         "size": "236.44 GiB",
         "tier": "Tier 3",
-        "speed": "78.4 pp / 2.1 tg tok/s",
+        "speed": "1.95 pp / 1.71 tg tok/s",
     },
     {
         "id": "muse-spark-816b-a42b",
@@ -1154,7 +1242,7 @@ VAULT_86_MODELS: List[Dict[str, str]] = [
         "node": ".83",
         "size": "210.08 GiB",
         "tier": "Tier 3",
-        "speed": "74.5 pp / 1.9 tg tok/s",
+        "speed": "0.41 pp / 0.13 tg tok/s",
     },
     {
         "id": "ling-3.1-flash-564b",
@@ -1164,7 +1252,7 @@ VAULT_86_MODELS: List[Dict[str, str]] = [
         "node": ".83",
         "size": "203.10 GiB",
         "tier": "Tier 3",
-        "speed": "82.1 pp / 2.5 tg tok/s",
+        "speed": "2.61 pp / 1.34 tg tok/s",
     },
     {
         "id": "tier3b-deepseek-v3-0324",
@@ -1773,8 +1861,13 @@ def parse_pool_state() -> Dict[str, Any]:
         "tier": "tier1",
         "vram": "4xT4 60GB",
     }
+    pool_observed_at = utc_now()
     if os.path.exists(POOL_STATE_TSV):
         try:
+            st_m = os.path.getmtime(POOL_STATE_TSV)
+            pool_observed_at = datetime.datetime.fromtimestamp(
+                st_m, datetime.timezone.utc
+            ).strftime("%Y-%m-%dT%H:%M:%SZ")
             with open(POOL_STATE_TSV, "r", encoding="utf-8") as f:
                 lines = [ln.rstrip("\n") for ln in f if ln.strip()]
             if len(lines) > 1:
@@ -1788,6 +1881,9 @@ def parse_pool_state() -> Dict[str, Any]:
                     p = row.get("pool", "")
                     if not p:
                         continue
+                    q_obs = row.get("quota_observed_at") or row.get("since") or ""
+                    if q_obs and q_obs != "-":
+                        pool_observed_at = q_obs
                     try:
                         pct = float(
                             row.get("pct", "0")
@@ -1811,6 +1907,7 @@ def parse_pool_state() -> Dict[str, Any]:
                         "five_hour_pct": round(pct, 1),
                         "weekly_pct": round(wk, 1),
                         "resets_at": row.get("resets_at", "-"),
+                        "quota_observed_at": q_obs or pool_observed_at,
                         "evidence": ev[:180],
                     }
                     if p == "local" and ev:
@@ -1825,18 +1922,31 @@ def parse_pool_state() -> Dict[str, Any]:
                             local_info["tier"] = m_tier.group(1)
         except Exception:
             pass
-    return {"pools": pools, "local_ fallback": local_info}
+    return {
+        "pools": pools,
+        "local_ fallback": local_info,
+        "pool_observed_at": pool_observed_at,
+    }
 
 
 def gather_os_state(force: bool = False) -> Dict[str, Any]:
     now = time.time()
+    ps_mtime = (
+        os.path.getmtime(POOL_STATE_TSV) if os.path.exists(POOL_STATE_TSV) else 0.0
+    )
     with _STATE_LOCK:
-        if not force and _STATE_CACHE["data"] and (now - _STATE_CACHE["ts"] < 3.0):
+        if (
+            not force
+            and _STATE_CACHE["data"]
+            and (now - _STATE_CACHE["ts"] < 3.0)
+            and _STATE_CACHE.get("ps_mtime") == ps_mtime
+        ):
             return _STATE_CACHE["data"]
 
     ps = parse_pool_state()
     pools = ps["pools"]
     loc_fb = ps["local_ fallback"]
+    pool_observed_at = ps.get("pool_observed_at", utc_now())
 
     # Live GPU Orchestrator (:4010)
     gpu_data = {
@@ -1884,6 +1994,7 @@ def gather_os_state(force: bool = False) -> Dict[str, Any]:
         )
         claude_abcd.append(p_info)
 
+    dock_ids = {a["id"] for a in dock_with_status}
     all_apps = [
         {
             "id": a["id"],
@@ -1895,7 +2006,7 @@ def gather_os_state(force: bool = False) -> Dict[str, Any]:
             "shortcut": a.get("shortcut", ""),
             "dock": True,
             "online": a["online"],
-            "url": f"http://{HOST_IP}:{a['port']}",
+            "url": a.get("url") or f"http://{HOST_IP}:{a['port']}",
         }
         for a in dock_with_status
     ] + [
@@ -1912,6 +2023,7 @@ def gather_os_state(force: bool = False) -> Dict[str, Any]:
             "url": x["url"],
         }
         for x in EXTRA_APPS
+        if x["id"] not in dock_ids
     ]
 
     payload = {
@@ -1921,11 +2033,13 @@ def gather_os_state(force: bool = False) -> Dict[str, Any]:
         "url": "http://os.boylenet.themfboyles.com",
         "controller_ip": HOST_IP,
         "timestamp": utc_now(),
+        "pool_observed_at": pool_observed_at,
         "topbar": {
             "claude_pools": claude_abcd,
             "claude_summary": " • ".join(
                 f"{p['pool']}:{p['five_hour_pct']:.0f}%" for p in claude_abcd
             ),
+            "pool_observed_at": pool_observed_at,
             "cloud_credit_usd": 1000,
             "cloud_credit_label": "$1,000 Cloud ($250×4 • Cap OFF)",
             "gpu_active_model": gpu_data["active_model"],
@@ -1953,6 +2067,7 @@ def gather_os_state(force: bool = False) -> Dict[str, Any]:
 
     with _STATE_LOCK:
         _STATE_CACHE["ts"] = now
+        _STATE_CACHE["ps_mtime"] = ps_mtime
         _STATE_CACHE["data"] = payload
     return payload
 
@@ -2195,6 +2310,7 @@ OS_SHELL_HTML = """<!DOCTYPE html>
         <option value="solarized-ops">☀️ Solarized Ops</option>
         <option value="daylight">🌕 Daylight</option>
       </select>
+      <button class="act-btn" id="btn-refresh-state" onclick="fetchState(true); refreshAirgapBtn();" title="Refresh Live OS Telemetry & Pool Quota State">↻ Refresh</button>
       <button class="act-btn" onclick="exportSnapshot()" title="#UX-35 Export Cluster Snapshot">📸 Snapshot</button>
     </div>
   </header>
@@ -2203,7 +2319,7 @@ OS_SHELL_HTML = """<!DOCTYPE html>
     <!-- #UX-1 Left App Dock -->
     <aside id="left-dock">
       <div class="dock-header">
-        <span class="dock-hdr-txt">18 Flagship Apps (0ms DOM)</span>
+        <span class="dock-hdr-txt">26 Flagship Views (0ms DOM)</span>
         <span style="cursor:pointer" onclick="toggleDock()" title="Collapse/Expand Dock">⇔</span>
       </div>
       <div id="dock-list"></div>
@@ -2344,7 +2460,7 @@ function getAppById(appId) {
 
 function resolveAppUrl(app) {
   if (!app) return appUrlForPort(4098);
-  if (app.url && !app.dock) return app.url;
+  if (app.url) return app.url;
   return appUrlForPort(app.port);
 }
 
@@ -2469,7 +2585,7 @@ function renderDock() {
   const list = document.getElementById('dock-list');
   const activeId = PANE_ACTIVE_APP[FOCUSED_PANE];
   list.innerHTML = (OS_STATE.dock_apps || []).map(a => `
-    <div class="dock-item ${a.id === activeId ? 'active' : ''}" onclick="selectAppInFocusedPane('${a.id}')" title="${a.title} (:${a.port}) ${a.shortcut}">
+    <div class="dock-item ${a.id === activeId ? 'active' : ''}" data-app-id="${a.id}" onclick="selectAppInFocusedPane('${a.id}')" title="${a.title} (:${a.port}) ${a.shortcut}">
       <div class="dock-left">
         <span class="dock-icon">${a.icon}</span>
         <span class="dock-label">${a.short} <span style="opacity:0.55;font-size:10.5px">:${a.port}</span></span>
@@ -2497,7 +2613,13 @@ function populatePaneSelectors() {
 function updateTopBar() {
   if (!OS_STATE || !OS_STATE.topbar) return;
   const tb = OS_STATE.topbar;
-  document.getElementById('pill-claude').textContent = 'Pools ' + tb.claude_summary;
+  const obsTs = tb.pool_observed_at || OS_STATE.pool_observed_at || OS_STATE.timestamp || '';
+  const shortTs = obsTs ? obsTs.slice(-9) : '';
+  const claudeEl = document.getElementById('pill-claude');
+  if (claudeEl) {
+    claudeEl.textContent = 'Pools ' + tb.claude_summary + (shortTs ? ` (${shortTs})` : '');
+    claudeEl.setAttribute('data-observed-at', obsTs);
+  }
   document.getElementById('pill-cloud').textContent = tb.cloud_credit_label;
   document.getElementById('pill-gpu').textContent = `4xT4 (${tb.gpu_tier}): ${tb.gpu_active_model} • ${tb.gpu_tok_s} tok/s`;
   document.getElementById('pill-vault').textContent = tb.vault_label;
@@ -2506,6 +2628,7 @@ function updateTopBar() {
   if (pipBody) {
     pipBody.innerHTML = `
       <div><b>Claude A/B/C/D 5h:</b> ${tb.claude_summary}</div>
+      <div><b>Pool State Synced:</b> <span id="pip-pool-ts">${obsTs}</span></div>
       <div><b>Cloud Burst Credit:</b> <span style="color:var(--bd-ok)">${tb.cloud_credit_label}</span></div>
       <div><b>4xT4 Active GPU:</b> ${tb.gpu_active_model} (${tb.gpu_tok_s} tok/s)</div>
       <div><b>Model Vault:</b> ${tb.vault_label} (100% READY)</div>
@@ -2693,9 +2816,9 @@ function highlightCmdK() {
   });
 }
 
-async function fetchState() {
+async function fetchState(force=false) {
   try {
-    const r = await fetch('/api/os-state');
+    const r = await fetch('/api/os-state' + (force ? '?force=1' : ''));
     OS_STATE = await r.json();
     populatePaneSelectors();
     renderDock();
@@ -2714,7 +2837,7 @@ window.addEventListener('DOMContentLoaded', () => {
   if (sel) sel.value = savedTheme;
   fetchState();
   refreshAirgapBtn();
-  setInterval(fetchState, 6000);
+  setInterval(fetchState, 3000);
   if (window.location.hash === '#cmdk') setTimeout(() => openCmdK('all'), 300);
 });
 
@@ -2839,6 +2962,7 @@ class OSShellHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
+        force_q = "force=1" in (parsed.query or "")
         if path == "/api/airgap":
             p = subprocess.run(
                 ["/home/mboyle/bin/bd-airgap", "status"],
@@ -2852,7 +2976,7 @@ class OSShellHandler(http.server.BaseHTTPRequestHandler):
                 self._send_json(200, {"airgap_enabled": False, "raw": p.stdout})
             return
         if path == "/health":
-            st = gather_os_state()
+            st = gather_os_state(force=force_q)
             self._send_json(
                 200,
                 {
@@ -2892,12 +3016,13 @@ class OSShellHandler(http.server.BaseHTTPRequestHandler):
                         "/static/boylenet-ui.css",
                     ],
                     "topbar": st.get("topbar", {}),
+                    "pool_observed_at": st.get("pool_observed_at"),
                     "timestamp": utc_now(),
                 },
             )
             return
-        if path == "/api/os-state":
-            self._send_json(200, gather_os_state())
+        if path in ("/api/os-state", "/api/status", "/status"):
+            self._send_json(200, gather_os_state(force=force_q))
             return
         if path == "/static/boylenet-ui.css":
             self._send_bytes(

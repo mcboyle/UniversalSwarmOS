@@ -1,0 +1,1 @@
+{"name":"role_state_set","description":"Record what a role has in flight (bd-role-state.sh set). Mutation; logged.","parameters":{"properties":{"role":{"title":"Role","type":"string"},"seat":{"title":"Seat","type":"string"},"text":{"title":"Text","type":"string"}},"required":["role","seat","text"],"title":"role_state_setArguments","type":"object"}}

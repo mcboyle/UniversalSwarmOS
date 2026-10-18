@@ -1,0 +1,1 @@
+{"name":"role_state_get","description":"What a role has in flight (bd-role-state.sh get). exit 2 = no state.","parameters":{"properties":{"role":{"title":"Role","type":"string"}},"required":["role"],"title":"role_state_getArguments","type":"object"}}

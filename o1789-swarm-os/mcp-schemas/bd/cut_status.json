@@ -1,0 +1,1 @@
+{"name":"cut_status","description":"Git identity of a cut worktree: branch, HEAD, index write-tree, dirty state, DONE.md/VERDICT line, verify-lock state.","parameters":{"properties":{"worktree":{"title":"Worktree","type":"string"}},"required":["worktree"],"title":"cut_statusArguments","type":"object"}}
