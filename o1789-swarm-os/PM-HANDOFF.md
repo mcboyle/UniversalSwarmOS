@@ -1,139 +1,140 @@
-# PM HANDOFF AGY-council (Antigravity Autonomous Controller) -> bd-pm-B4-B (Claude Opus 5.5 High, Pool B)
-**Date**: 2026-10-16T14:50:00Z  
-**Predecessor Seat**: AGY-council (Antigravity Autonomous Controller, Argon 4 / Gemini Pro Tier)  
-**Successor Seat**: bd-pm-B4-B (Claude PM on Pool B, Claude Opus 5.5 High)  
-**Restart Rationale**: Scheduled succession to Claude B PM following full deployment of Waves 5–8 (16 swarm cuts, 268/268 tests green), formal Z3 SMT consensus verification, 24-dimension cluster swarm audit, and complete fleet VM tooling validation.
+# MASTER PM HANDOFF (`O1789`) — AGY-Council (`Agent-101`) -> `bd-pm-B` (Remote-Control PM) & Command Squad
+
+- **WRITTEN-AT**: `2026-10-18T20:52:00Z`
+- **CAMPAIGN**: `O1789` (Boylenet 27-Node Hardware/vSAN/25GbE Upgrade, 86-Model Dual-Vault, 165-View 60fps Swarm OS, OpenWebUI 50-Toolkit Super-Suite & Dual-Platform Git Publication)
+- **ACTIVE PM SEAT**: `bd-pm-B` (`--remote-control`, Pool B `OK` `0%` 5h / `19%` wk)
+- **COMMAND SQUAD NODES**: `.51` (`wrk-test01` / Integrator), `.194` (`wrk-test05` / Dispatcher & LensRouter), `.85` (`wrk-test06` / Audit & Adjudicator), `.52` (`wrk-test02` / Trainer & Usage Sentinel)
+- **CRITICAL HARDWARE INVARIANT**: **DO NOT INTERRUPT, RESTART, OR CONTEND WITH `Agent-37`'S ACTIVE `llama-bench` / `ggml-rpc-server` BENCHMARK SWEEP ON `.72`, `.83`, `.125`, OR `.228`!** (`77/87` models completed; final `10` heavyweight models actively running on `.72+.228` and `.83+.125`).
 
 ---
 
-## 1. Executive Master Synthesis & Deliveries
-1. **Waves 5, 6, 7 & 8 Fully Deployed & Verified**:
-   - All 16 sandboxed cuts implemented in `/home/mboyle/bd-cuts/` with **268 / 268 tests PASS (100% green)**:
-     * Wave 5: Productive Friction (5.1), Artifact Graph Memory (5.2), ESXi Healer (5.3), Cockpit v2 (5.4) -> 86 tests PASS.
-     * Wave 6: Local PRM Gate (6.1), RTV Consensus (6.2), Fuzzing Regression Matrix (6.3), Speculative Pre-Exec (6.4) -> 82 tests PASS.
-     * Wave 7: SMT Invariant Verifier (7.1), Supreme Court (7.2), Worktree GC (7.3), Vision UI Steerer (7.4) -> 50 tests PASS.
-     * Wave 8: Knowledge Distiller (8.1), eBPF Streamer (8.2), Elastic Autoscaler (8.3), Ambient HUD (8.4) -> 50 tests PASS.
-2. **Formal Z3 SMT Consensus Proven**:
-   - `UNSAT_PROVEN` unanimous 4-pool quorum (Claude, Codex, AGY, Local) for Waves 5–8 integration readiness.
-   - Proof Artifact: `/home/mboyle/bd-persist/WAVE_5_8_SMT_CONSENSUS_PROOF.md`.
-3. **Rebase Train Stacking Pipeline Ready**:
-   - 100% disjoint domain modules (0 AST merge conflicts across 16 cuts).
-   - Rule 86 Protocol F compliance proven (surviving mutants classified as non-blocking `BOARD-WITH-ADVISORY`).
-   - Audit Artifact: `/home/mboyle/.gemini/antigravity-cli/brain/62d3879a-675a-4913-93d4-3017d3a70ccf/REBASE_TRAIN_STACKING_AUDIT.md`.
-4. **24-Dimension Swarm Audit Complete (100% PASS)**:
-   - Full synthesis on disk: `/home/mboyle/.gemini/antigravity-cli/brain/d61a0f86-9a87-4a9f-8b2c-ea5791e23bc8/BOYLENET_24_DIMENSION_SWARM_SYNTHESIS_REPORT.md`.
+## 1. Published GitHub & Local Gitea Multi-Repository Matrix (`O1789` Secret-Sanitized)
+
+All Boylenet Swarm OS code, systemd units, OpenWebUI Super-Suite gateways/pipelines/exports, the 6-Volume Master `BD KB`, `157+` O1789 verification receipts, and sanitized infrastructure configurations are committed and pushed to **both** GitHub (`mcboyle`) and Local Gitea (`10.0.70.164:3000/mboyle`) with `BOYLENET_SECRET_GUARD` pre-commit scrubbing:
+
+| Repository | GitHub URL (`mcboyle`) | Local Gitea URL (`10.0.70.164:3000/mboyle`) | Local Staging Path | Tracked Files | Head Commit SHA (`main`) |
+|---|---|---|---|---:|---|
+| **`boylenet-swarm-os`** | `https://github.com/mcboyle/boylenet-swarm-os` | `http://10.0.70.164:3000/mboyle/boylenet-swarm-os` | `/home/mboyle/git-repos/boylenet-swarm-os` | `200` | `8c28f72cc2f8` |
+| **`boylenet-openwebui-supersuite`** | `https://github.com/mcboyle/boylenet-openwebui-supersuite` | `http://10.0.70.164:3000/mboyle/boylenet-openwebui-supersuite` | `/home/mboyle/git-repos/boylenet-openwebui-supersuite` | `15` | `e8d2758b7c22` |
+| **`boylenet-bd-kb-and-receipts`** | `https://github.com/mcboyle/boylenet-bd-kb-and-receipts` | `http://10.0.70.164:3000/mboyle/boylenet-bd-kb-and-receipts` | `/home/mboyle/git-repos/boylenet-bd-kb-and-receipts` | `170` | `340d8f3249cd` |
+| **`boylenet-infra-configs`** | `https://github.com/mcboyle/boylenet-infra-configs` | `http://10.0.70.164:3000/mboyle/boylenet-infra-configs` | `/home/mboyle/git-repos/boylenet-infra-configs` | `18` | `00f546673ef1` |
+| **`UniversalSwarmOS`** | `https://github.com/mcboyle/UniversalSwarmOS` | `http://10.0.70.164:3000/mboyle/UniversalSwarmOS` | `/home/mboyle/git-repos/UniversalSwarmOS` | `922` | `e426727077bb` |
 
 ---
 
-## 2. Fleet VM Infrastructure & Tooling Status
-1. **Host Matrix**:
-   - 39 nodes cataloged in `/home/mboyle/bd-persist/HOST-STATE.tsv` (38 up, 1 not probed).
-   - 27-node active Boylenet footprint: 584 vCPUs, 1,808 GB RAM, 5 hardware GPUs.
-2. **Tooling Parity across Fleet VMs**:
-   - `caveman`: 4.0.1 (bin-v4.0.1) installed across cluster worker nodes.
-   - `claude`: 2.1.301 (Claude Code - latest release).
-   - `codex`: 0.163.0 (latest release).
-   - `grok`: 1.0.60 (latest release).
-   - `kimi`: 2.2.0 (latest release).
-   - `agy`: 1.4.0 (standalone controller build).
-   - `python3`, `git`, `docker`, `act_runner` (60 active Gitea CI shard runners on `wrk-test01`, `wrk-test05`, `wrk-test06`, `wrk-test07`).
-   - 25GbE MTU 9000 unfragmented packet delivery verified (25/25 Linux hosts pass 8972 DF pings).
-   - vSAN Datastore: 334.5 TB capacity, 205 TB free across ESXi01–04.
-   - ESXi Hardware: 8 redundant PSUs (~2kW total), 0 memory ECC errors across all 4 hosts.
-3. **AI Satellite Backends & Hardware Segregation (Rule 84)**:
-   - GPU 1 (`ai-infer01`, .125, Tesla T4): 83.4% VRAM used | `hermes3:8b` + `qwen2.5-coder:7b` + `nomic-embed-text`.
-   - GPU 2 (`ai-ollama01`, .228, Tesla T4): 54.8% VRAM used | `qwen2.5-coder:7b` 32k context on 88 vCPU VM.
-   - GPU 3 (`wrk-test01`, .83, Tesla T4): 88.3% VRAM used | `hermes3:8b` hot-pinned (1.1 ms TTFT).
-   - GPU 4 (`ai-srv01`, .72, Tesla T4): 59.9% VRAM used | `Qwythos-9B-Claude-Mythos-5-1M` (verified at 60k/64k context @ 607 tok/s) + `bge-m3` + `qwen2.5vl:7b`.
-   - GPU 5 (`BattleStation`, .137, RTX 2080 Ti): `qwen2.5-coder:7b-16k` generating 91.4–94.0 tok/s, CPU embeddings (`num_gpu=0`), Chrome CDP Oracle port 9222.
-4. **Live Web Endpoints**:
-   - Jarvis Cockpit: `http://10.0.70.164:3002` (Next.js 14, 12,500+ requests benchmarked with 0 errors).
-   - 4-Platform Fleet Chat: `http://10.0.70.164:3003/fleet-chats` (2.27ms SSE latency, 0 leaks).
-   - OpenWebUI: `http://10.0.70.164:8090` (Hermes 3 Ultracode).
-   - LiteLLM Proxy: `http://10.0.70.164:4000` (Redis prompt cache 14.77x speedup).
-   - RAG Memory Endpoint: `http://10.0.70.164:8099` (`tmem.sqlite` 1.25 GB, 225k records, 68ms latency).
-   - Dual Chrome CDP Oracles: `10.0.10.137:9222` & `10.0.70.181:9222` (<10ms latency).
+## 2. 86-Model Dual-Vault (`8.9 TB` on `.72` & `.83`), Category Champions & `Agent-37` Sweep Status
+
+1. **Dual-Vault Inventory (`100%` Mirrored Across AI Vault A `.72` & AI Vault B `.83`)**:
+   - **Total Model Directories**: **`86 / 86`** (`8.9 TB` total weights on NVMe/vSAN)
+   - **LiteLLM Router (`.164:4000` & `.228:4000`)**: **`228`** live routed model aliases (`/home/mboyle/infra/support-layer/litellm/config.yaml`)
+   - **OpenWebUI Catalog (`.164:8090` & `.72:8080`)**: **`260`** models with explicit **`🟢 LOCAL [FREE • AIRGAP]`** (`198`) vs **`☁️ CLOUD [PAID WAN]`** (`62`) badges
+2. **Measured `llama-bench` (`b11716`) Category Champions**:
+   - **Flagship Uncensored Coding & Reasoning (35B MoE)**: **`Qwen3.6-35B-A3B-Heretic`** (`qwen3.6-35b-a3b-heretic`) — **`103.59 tok/s` prefill (`pp512`) / `24.16 tok/s` decode (`tg128`)** on 1x T4 + Skylake AVX-512 (`795.0 tok/s` pp / `65.8 tok/s` tg on 2x T4)
+   - **High-Throughput Local Coding (30B MoE)**: **`Qwen3-Coder-30B-A3B-Instruct-Q4_K_M`** (`tier1-qwen3-coder-30b-a3b`) — **`848.90 tok/s` prefill / `77.62 tok/s` decode** on 2x T4 Pool Alpha
+   - **Offensive Security & Binary/Packet Analysis (35B MoE)**: **`Huihui-CyberStrike-OffSec-35B-abliterated-Q4_K_M`** (`cyberstrike-35b`) — **`799.00 tok/s` prefill / `66.47 tok/s` decode** on 2x T4
+   - **100B+ Frontier Hybrid MoE**: **`GLM-4.5-Air-REAP-82B-A12B-Heretic-Q4_K_M`** (`106B.A12B`) — **`30.02 tok/s` prefill / `6.40 tok/s` decode** on 1x T4 + Skylake AVX-512 (`-ot exps=CPU, ngl=99`); **`NVIDIA-Nemotron-3.5-Bolt-74B-A9B`** — **`29.18 tok/s` pp / `13.46 tok/s` tg**
+   - **Speculative Drafter & Ultra-Fast 9B/10B**: **`Qwythos-9B-Claude-Mythos-5-1M-MTP-Q8_0`** (`1,005.86 tok/s` pp / `21.39 tok/s` tg) & **`DeepSeek-V4-Flash-0731-Q8_0`** (`680.20 tok/s` pp / `61.50 tok/s` tg)
+   - **1-Trillion Parameter Frontier**: **`KIMI-K3-MXP4-DERISKED-Q2_K`** (`940.18 GiB`, 38 shards) — **`69.13 tok/s` pp / `16.30 tok/s` tg** across 4-Node `1.73 TB` DDR4 + 4x T4 Hybrid
+3. **`Agent-37` Benchmark Sweep Status (DO NOT INTERRUPT)**:
+   - **Progress**: **`77 / 87` (`88.5%`) completed** (`60` real-weight GGUF `llama-bench` configurations `rc=0` + `17` non-GGUF Safetensors/ONNX/Diffusers models validated).
+   - **Remaining**: **`10` ultra-heavyweight models** (`5` on `.72` + `5` on `.83`), currently benchmarking `nemotron-3-ultra-550b-a55b` (`188.3 GiB`) on `.72+.228` and `ling-3.1-flash-564b` (`203.1 GiB`) on `.83+.125`.
+   - **Receipt**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT37-NEW-FRONTIER-MODELS-BENCHMARK-RECEIPTS.md`.
 
 ---
 
-## 3. Fleet Role Briefs & Launcher Verification
-1. **Role Prompts Census**:
-   - 210 role prompts in `/home/mboyle/bd-persist/role-prompts/` verified 100% valid non-empty files.
-   - Harmonized under Directive O1740: abstracted for cross-platform execution (AGY, Claude Code, OpenAI Codex, Kimi, Satellite AI).
-2. **Launchers Verified (Code 0, Twin-Checked)**:
-   - `/home/mboyle/bd-persist/harness/bd-launch-role.sh`: Syntax OK, twin verified byte-for-byte. `test_h571` passed 20/20.
-   - `/home/mboyle/bd-persist/harness/bd-launch-codex-role.sh`: Syntax OK, `test_H553` passed 10/10.
-   - `/home/mboyle/bd-persist/harness/bd-launch-agy.sh`: Syntax OK.
-   - `/home/mboyle/bd-persist/harness/bd-launch-kimi.sh`: Syntax OK.
-   - `/home/mboyle/bin/bd-pick-host`: Syntax OK.
+## 3. Raw Unrestricted AI CLI (`/home/mboyle/bin/bd-raw-ai`) & 100% Kernel WAN Airgap (`/home/mboyle/bin/bd-airgap`)
+
+1. **`/home/mboyle/bin/bd-raw-ai` (Zero-Guardrail Direct Heretic/Abliterated Launcher)**:
+   - Connects directly to local `ik_llama.cpp` (`b11716`) endpoints on `.72`, `.83`, and `.125` with zero system-prompt filtering, zero proxy inspection, and zero cloud egress.
+   - Commands: `bd-raw-ai "<prompt>"`, `bd-raw-ai --cyber "<prompt>"`, `bd-raw-ai --reason "<prompt>"`, `bd-raw-ai --list`.
+2. **`/home/mboyle/bin/bd-airgap` + `:4085` Top-Bar Toggle (3-Layer Hardware/Kernel WAN Lock)**:
+   - **Layer 1**: Kernel `iptables OUTPUT` & `DOCKER-USER` chains blocking all non-RFC1918 WAN traffic (`10.0.0.0/8`, `127.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16` whitelisted).
+   - **Layer 2**: LiteLLM (`:4000`) routing lock (`🟢 LOCAL [FREE • AIRGAP]` models only).
+   - **Layer 3**: Cloud Burst Orchestrator (`:4090`) budget lock (`AIRGAP-LOCKED`).
+   - Commands: `bd-airgap status`, `bd-airgap on`, `bd-airgap off`, or click the **`🛡️ WAN AIRGAP`** pill in the Unified OS Shell (`http://10.0.70.164:4085`).
 
 ---
 
-## 4. Successor Operational Orders for Incoming PM (`bd-pm-B4-B`)
+## 4. OpenWebUI Maximum-Power Super-Suite (`:8090` / `.72:8080` + `:4079` Universal Gateway)
 
-### Step 0: Verify Fleet Services & New Tooling Integrations (OPERATOR MANDATE)
-Before proceeding to general dispatch, verify that the seat environment and fleet tools are fully operational:
-1. **Pre-Execution Token Guard**:
-   ```bash
-   python3 /home/mboyle/bin/bd-token-guard.py test
-   ```
-   *Enforces Rule 58 AST slicing, blocks naked pytest, avoids prefix cache misses (-85.1% spend reduction).*
-2. **Sub-Millisecond Reactive Wakeup Daemon**:
-   ```bash
-   python3 /home/mboyle/bin/bd-inbox-watcher.py --benchmark
-   ```
-   *Kernel inotify replaces 10-minute cron with ~13.97ms end-to-end event wakeup.*
-3. **Realtime Event-Driven Stall Sentinel**:
-   ```bash
-   python3 /home/mboyle/bin/bd-realtime-stall-sentinel.py --selftest
-   ```
-   *5-second in-memory state tracking catches unhandled modals `(y/n)` and tool freezes.*
-4. **Inter-VM Mesh Event Bus**:
-   ```bash
-   curl -s http://10.0.70.164:3004/api/status | jq .
-   ```
-   *HTTP/SSE pub-sub streaming on port 3004 eliminating NFS `say.log` flock contention.*
-5. **Local LLM Triage & Watchdog**:
-   ```bash
-   python3 /home/mboyle/bin/bd-local-triage-watch.py
-   ```
-   *LiteLLM :4000 GPU cluster triage and conventional commits at $0.00 marginal cost.*
-6. **Active Cluster Services**:
+Deployed in 100% parity on Controller (`http://10.0.70.164:8090` / `http://openwebui.boylenet.themfboyles.com`) and AI Vault A (`http://10.0.70.72:8080` / `http://ai-webui.boylenet.themfboyles.com`):
+
+1. **`260` Explicitly Labeled Models**: `198` `🟢 LOCAL [FREE • AIRGAP]` + `62` `☁️ CLOUD [PAID WAN]`.
+2. **`50` Native Python Toolkits (`tk_01`..`tk_50`) + `5` OpenAPI 3.1 Tool Servers (`39` REST Endpoints)**:
+   - Covers file/AST/git, Gitea/GitHub PRs, SearXNG/ArXiv/Wiki, Chrome CDP Oracles (`.137:9222` & `.181:9222`), 14 MCP servers, VMware ESXi/vSAN, UniFi 25GbE, `/dev/shm` Ramdisk Pytest, Z3 SMT prover, eBPF profiler, and `BD KB` search.
+3. **`128` Agent Skills + `128` Slash Command Prompts**: Full fleet skill catalog accessible via `/` commands in chat.
+4. **`8` Valve-Configurable Pipelines + `12` Active Global Functions (`20` Total)**:
+   - Includes `bd_smart_o1740_intent_router_pipeline`, `bd_kb_auto_grounding_pipeline`, `bd_rule22_airgap_dlp_shield_pipeline`, `bd_multi_agent_council_consensus_pipeline`, `bd_autonomous_code_and_pytest_pipeline`, `bd_deep_research_multi_engine_pipeline`, `bd_multimodal_flux_vision_voice_pipeline`, and `bd_langfuse_caveman_telemetry_filter`.
+5. **`11` Dedicated Local Multimodal Image & Speech Models**:
+   - `6` Local Image/Vision generators (`/static/generated/<id>.png` 1080p studio) + `5` Local Neural Speech TTS/STT models (`Kokoro-82M`, `Piper`, `Faster-Whisper-Large-v3`).
+6. **`6-Volume Master BD KB` + `5` Qdrant 1024-Dim Vector Collections (`11` Knowledge Bases)**:
+   - Authored in `/home/mboyle/bd-persist/bd-kb/00..05-*.md` + `manifest.json`, indexed in Qdrant (`http://10.0.70.125:6333/collections/bd_master_kb`, 28 chunks, 1024-d BGE-M3 hybrid vectors), and attached natively to OpenWebUI models.
+7. **`28` Interactive Open Terminal VM Connections (`/vm/<hostname>`)**:
+   - Live interactive shell + file browser inside OpenWebUI for all `27` Boylenet VMs (`hub-mesh01`, `ai-srv01`, `aidev`, `ai-infer01`, `ai-ollama01`, `wrk-test01..07`, `spr-pool01..12`, etc.) plus the `64-Core CI Ramdisk` (`/dev/shm/bd-openwebui-ci-ramdisk`).
+
+---
+
+## 5. Live 60fps 165-View HiveMind/CoT/Rack/Military Visualizer (`:4088`) & Unified OS Shell (`:4085`)
+
+1. **Unified Boylenet OS Shell (`http://10.0.70.164:4085` / `http://os.boylenet.themfboyles.com`)**:
+   - Single-pane top navigation bar across all Boylenet apps, `Ctrl+K` global command omnibar, `~` slide-down Quake Web Terminal drawer (`:4083`), and 1-click WAN Airgap toggle.
+2. **165-View Live 60fps Visualizer (`http://10.0.70.164:4088` / `http://topology.boylenet.themfboyles.com`)**:
+   - **`V01`–`V100`**: 100 live 60fps HiveMind Chain-of-Thought (CoT) agent movement & reasoning views.
+   - **`T01`–`T65`**: 65 live 60fps 3D Topology, 12U 36-inch Physical Rack Digital Twins, vSAN NVMe, 25GbE SFP28, and Military/Sci-Fi Mission Control views.
+   - **Wallboard & Gallery**: `/wallboard` (`2x2` / `3x2` auto-cycling NOC display) and `/gallery` (`179` rendered previews with 1-click `🚀 Launch Live 60fps` and `⭐ Set Preferred` persistence).
+
+---
+
+## 6. Immediate Operational Orders for Incoming PM (`bd-pm-B`) & Command Squad (`.51`, `.194`, `.85`, `.52`)
+
+### Order 1: Refresh Stale Platform Usage Across All Pools (FIRST ACTION)
+Before dispatching heavy lifters, Command Squad usage/telemetry agents on `.51`, `.194`, `.85`, and `.52` MUST refresh stale quota observations in `/home/mboyle/bd-persist/POOL_STATE.tsv`:
+1. Refresh **AGY** (`gemini 5h/wk`, `claude+gpt 5h/wk`), **Claude Pools A/B/C/D** (`bd-usage-a-A`, `bd-usage-b-B`, `bd-usage-c-C`, `bd-usage-d-D`), **Codex** (`codex rate_limits`), **Kimi** (`/usage`), and **Local GPU/MoE** (`local`) rows in `/home/mboyle/bd-persist/POOL_STATE.tsv`.
+2. Verify `/home/mboyle/bd-persist/POOL_STATE.tsv` timestamps are `< 120s` old before resolving pools under **Directive O1740** (Rule 6: `UNKNOWN` is never permission).
+
+### Order 2: Start Remaining Queue & Launch Task Rows (`O1740` Dynamic Capability Routing)
+1. **Command Squad (`.51` Integrator, `.194` Dispatcher/LensRouter, `.85` Audit/Adjudicator, `.52` Trainer)**:
+   - Bind to `OK` high-context pools (lowest `five_hour_pct` tie-break: currently Pool B `0%` and Pool D `0%`, followed by Pool A `2%` and Pool C `3%`).
+2. **Heavy Lifters (`review-*` Lenses -> Fixers -> Builders)**:
+   - Resume the remaining `BulkDownloader` queue (`60` tagged candidates / staged briefs in `/home/mboyle/bd-persist/harness-work/O1789/staged_briefs/`).
+   - Enforce the **Global 30 Heavy-Lifter Seat Cap** across all pools (`30s` launch spacing, `HUB-GATE` O1741 load guard, `retire-seat` hot-swap on verdict completion).
+   - Enforce **Rule 86 (Protocol F)**: surviving synthetic test mutants on sound candidate code are `BOARD-WITH-ADVISORY` and never block train integration.
+
+### Order 3: Execute Local vs. Cloud Coding Agent A/B Sandbox Benchmark (OPERATOR MANDATE)
+To measure the real-world speed, token throughput, and pytest reliability of our best local coding model against a frontier cloud agent on an identical production task:
+1. **Select a Queued Task Row / Fix**: Pick the first ready builder/fixer task row from the active queue.
+2. **Create Two Isolated Sandboxes in `/home/mboyle/bd-local-wt/` (or `/home/mboyle/bd-cuts/`)**:
+   - **Cloud Sandbox**: `/home/mboyle/bd-local-wt/<row>-cloud-ab` — dispatched via standard cloud builder (`Claude Sonnet/Opus` or `Codex gpt-6-astra`).
+   - **Local Sandbox**: `/home/mboyle/bd-local-wt/<row>-local-ab` — dispatched to a **Local Coding Agent** backed by the Category Champion local coding model (`Qwen3.6-35B-A3B-Heretic` or `Qwen3-Coder-30B-A3B-Instruct` via LiteLLM `:4000` / local OpenCode/Aider/Codex harness).
+3. **CRITICALBENCHMARK GUARD**:
+   - While `Agent-37`'s final 10 models are finishing `llama-bench` on `.72+.228` and `.83+.125`, route the Local Coding Agent's immediate inference to **`.137` (`BattleStation` RTX 2080 Ti `94 tok/s`)** or wait for `.72`/`.83` `llama-bench` completion before binding 2xT4 `.72+.83` so `Agent-37`'s active benchmark run is **never interrupted or contended with**!
+4. **Record Comparative Metrics**:
+   - Write `/home/mboyle/bd-persist/harness-work/O1789/LOCAL-VS-CLOUD-AB-SANDBOX-BENCHMARK.md` comparing:
+     - Wall-clock time to patch (`seconds`)
+     - Prompt & completion token speeds (`tok/s`)
+     - `ruff_check` + `mypy_check` + `bd-pytest-digest` pass rate on first attempt (`PASS`/`FAIL`)
+     - Marginal API cost (`$0.00` local vs `$X.XX` cloud).
+
+---
+
+## 7. Preserved Historical Baseline (`2026-10-16` Waves 5–8 & Infrastructure Proofs)
+
+1. **Waves 5, 6, 7 & 8 (16 Cuts, `268/268` Tests PASS) & Z3 SMT Consensus**:
+   - Proof Artifact: `/home/mboyle/bd-persist/WAVE_5_8_SMT_CONSENSUS_PROOF.md` (`UNSAT_PROVEN` unanimous 4-pool quorum).
+   - Rebase Train Audit: `/home/mboyle/.gemini/antigravity-cli/brain/62d3879a-675a-4913-93d4-3017d3a70ccf/REBASE_TRAIN_STACKING_AUDIT.md`.
+   - 24-Dimension Swarm Synthesis: `/home/mboyle/.gemini/antigravity-cli/brain/d61a0f86-9a87-4a9f-8b2c-ea5791e23bc8/BOYLENET_24_DIMENSION_SWARM_SYNTHESIS_REPORT.md`.
+2. **Active Cluster Services & Endpoints**:
+   - Unified Boylenet OS Shell: `http://10.0.70.164:4085` (`http://os.boylenet.themfboyles.com`)
+   - 165-View 60fps Topology & HiveMind CoT Visualizer: `http://10.0.70.164:4088` (`http://topology.boylenet.themfboyles.com`)
+   - 86-Model App Storefront: `http://10.0.70.164:4084` (`http://models.boylenet.themfboyles.com`)
+   - OpenWebUI Super-Suite: `http://10.0.70.164:8090` & `http://10.0.70.72:8080`
+   - OpenWebUI Universal Gateway (`50` Toolkits, `8` Pipelines, `28` VM Terminals): `http://10.0.70.164:4079`
+   - Guided Swarm Studio: `http://10.0.70.164:4098`
+   - Cloud Burst & WAN Airgap Orchestrator: `http://10.0.70.164:4090`
+   - 83-Service Autonomous Sentinel: `http://10.0.70.164:4099`
    - Jarvis Cockpit: `http://10.0.70.164:3002`
    - Universal Fleet Chat: `http://10.0.70.164:3003/fleet-chats`
-   - LiteLLM Proxy: `http://10.0.70.164:4000`
-   - OpenWebUI: `http://10.0.70.164:8090`
-   - Chrome CDP Oracles: `10.0.10.137:9222` & `10.0.70.181:9222`
-
-### Step 1: Claim PM Role
-```bash
-BD_SEAT=bd-pm-B4-B /home/mboyle/bd-role-claim.sh claim pm bd-pm-B4-B $$
-echo "bd-pm-B4-B" > /home/mboyle/bd-persist/PM-SEAT
-```
-
-### Step 2: Usage Agents Status (ALREADY ACTIVE)
-All 4 Claude usage agents have been launched and verified active by AGY-council:
-- `bd-usage-a-A` (pid 1240724, Opus 5.5 Low) -> Active
-- `bd-usage-b-B` (pid 1257097, Opus 5.5 Low) -> Active
-- `bd-usage-c-C` (pid 1258693, Opus 5.5 High) -> Active
-- `bd-usage-d-D` (pid 1265740, Opus 5.5 Low) -> Active
-- Pool State: Pool A (`OK`), Pool B (`OK`), Pool C (`OFF-PACE`), Pool D (`OK`), Codex (`OK`), AGY (`OK`), Kimi (`OK`).
-
-### Step 3: Re-Arm Fleet Cron Jobs
-Edit `crontab -e` or use automation to remove `#O1737-S1-HOLD` on:
-- `bd-auto-merge.sh` (every 3m)
-- `bd-regen-main.sh` (every 10m)
-- `bd-lens-router.sh` (every 2m)
-- `bd-auto-compact.sh` (every 2m)
-- `bd-autobounce-scan.sh` (every 3m)
-- `bd-fleet-auto-update.sh` (weekly)
-
-### Step 4: Dispatch the Rest of the Fleet
-1. Follow **Dynamic Capability Routing (Directive O1740)**:
-   - Read `/home/mboyle/bd-persist/POOL_STATE.tsv` at launch time.
-   - Adhere to the **Global 30 Heavy-Lifter Seat Cap** across all pools.
-   - Launch order: Review Lenses -> Fixers -> Builders.
-2. Ingest staged briefs from `/home/mboyle/bd-persist/harness-work/O1789/staged_briefs/`:
-   - Stack cuts in accordance with the 6-layer rebase train plan.
-   - Enforce Rule 86 Protocol F: surviving test mutants are classified as `BOARD-WITH-ADVISORY` and non-blocking coverage debt.
-
+   - LiteLLM Proxy (`228` Models): `http://10.0.70.164:4000` & `http://10.0.70.228:4000`
+   - Local Gitea Server: `http://10.0.70.164:3000`
+   - Qdrant Vector Engine (`bd_master_kb` + 5 Fleet RAG Collections): `http://10.0.70.125:6333`
+   - Dual Chrome CDP Oracles: `10.0.10.137:9222` & `10.0.70.181:9222`

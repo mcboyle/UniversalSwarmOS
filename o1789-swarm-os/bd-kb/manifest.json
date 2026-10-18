@@ -1,8 +1,8 @@
 {
   "schema": "boylenet.bd-kb.manifest.v1",
-  "updated_at": "2026-10-18T20:51:16Z",
+  "updated_at": "2026-10-18T20:54:12Z",
   "campaign": "O1789",
-  "total_volumes": 6,
+  "total_volumes": 7,
   "qdrant_collection": {
     "url": "http://10.0.70.125:6333/collections/bd_master_kb",
     "dimensions": 1024,
@@ -53,6 +53,12 @@
       "size_bytes": 9818,
       "sha256": "44f7d36ab82fa345d7b84acb7acbd4ffaf632d736a7dd6c77ff3d825f82d3e5e",
       "lines": 83
+    },
+    {
+      "filename": "05-SWARM-OPERATIONS-RECEIPTS-AND-PLAYBOOKS.md",
+      "size_bytes": 488251,
+      "sha256": "e7cff30bdf3c786975e808439e853858f2efd7ca51b888c030ca57dca4ec62d4",
+      "lines": 4888
     }
   ]
 }
