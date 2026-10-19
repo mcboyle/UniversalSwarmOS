@@ -3,8 +3,8 @@
 Boylenet Unified Voice, Vision & Multimodal Cockpit Bridge (:4093)
 Service: bd-multimodal-bridge.service
 Domains:
-  - http://voice.boylenet.themfboyles.com
-  - http://multimodal.boylenet.themfboyles.com
+  - http://voice.boylenet.themfboyles.org
+  - http://multimodal.boylenet.themfboyles.org
   - http://10.0.70.164:4093
 
 Features:
@@ -1092,10 +1092,10 @@ STUDIO_HTML = """<!DOCTYPE html>
   </div>
   <div class="nav-links">
     <span class="badge-live" id="statusBadge">● ONLINE :4093 • <300ms TTS READY</span>
-    <a href="http://dashy.boylenet.themfboyles.com" target="_blank">Dashy (:4080)</a>
-    <a href="http://jarvis.boylenet.themfboyles.com" target="_blank">Jarvis (:3002)</a>
-    <a href="http://harnesses.boylenet.themfboyles.com" target="_blank">Harnesses (:4098)</a>
-    <a href="http://litellm.boylenet.themfboyles.com/ui" target="_blank">LiteLLM (:4000)</a>
+    <a href="http://dashy.boylenet.themfboyles.org" target="_blank">Dashy (:4080)</a>
+    <a href="http://jarvis.boylenet.themfboyles.org" target="_blank">Jarvis (:3002)</a>
+    <a href="http://harnesses.boylenet.themfboyles.org" target="_blank">Harnesses (:4098)</a>
+    <a href="http://litellm.boylenet.themfboyles.org/ui" target="_blank">LiteLLM (:4000)</a>
     <a href="/health" target="_blank">/health JSON</a>
   </div>
 </header>
@@ -1623,8 +1623,8 @@ class MultimodalBridgeHandler(BaseHTTPRequestHandler):
                     "port": PORT,
                     "host": "10.0.70.164",
                     "domains": [
-                        "http://voice.boylenet.themfboyles.com",
-                        "http://multimodal.boylenet.themfboyles.com",
+                        "http://voice.boylenet.themfboyles.org",
+                        "http://multimodal.boylenet.themfboyles.org",
                     ],
                     "endpoints": [
                         "POST /v1/audio/speech",

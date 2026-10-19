@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Boylenet Natural-Language Ops Shell (bd-ops-web.py / bd-ops)
-Port: 4089 (http://ops.boylenet.themfboyles.com)
+Port: 4089 (http://ops.boylenet.themfboyles.org)
 Swarms #17 & #C9: Translates natural-language infrastructure requests into structured,
 pre-vetted read/ops commands across:
   - bd-pool-autobalancer
@@ -57,7 +57,12 @@ def http_get_json(url: str, timeout: float = 8.0) -> Dict[str, Any]:
         return json.loads(resp.read().decode("utf-8"))
 
 
-def http_post_json(url: str, payload: Dict[str, Any], timeout: float = 20.0, headers: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+def http_post_json(
+    url: str,
+    payload: Dict[str, Any],
+    timeout: float = 20.0,
+    headers: Optional[Dict[str, str]] = None,
+) -> Dict[str, Any]:
     hdrs = {"Content-Type": "application/json"}
     if headers:
         hdrs.update(headers)
@@ -86,7 +91,18 @@ PLAYBOOKS: List[Dict[str, Any]] = [
         "target_node": "ai-srv01 (.72), ai-srv02 (.73), ai-ollama01 (.228), ai-infer01 (.125)",
         "command_preview": "/home/mboyle/bin/bd-tier-switch status",
         "description": "Queries :4010 GPU Orchestrator for live nvidia-smi temperatures, VRAM usage, power draw, DDR4 RAM, and active llama.cpp RPC slots across all 4 Tesla T4 nodes.",
-        "keywords": ["gpu", "temp", "temps", "temperature", "t4", "vram", "4xt4", "nvidia", "watts", "power"],
+        "keywords": [
+            "gpu",
+            "temp",
+            "temps",
+            "temperature",
+            "t4",
+            "vram",
+            "4xt4",
+            "nvidia",
+            "watts",
+            "power",
+        ],
     },
     {
         "id": "vsan_disk_groups_esxi",
@@ -99,7 +115,19 @@ PLAYBOOKS: List[Dict[str, Any]] = [
         "target_node": "esxi01 (10.0.20.41) / vSAN Cluster (vc04 10.0.20.70)",
         "command_preview": "bd-ops --playbook vsan_disk_groups_esxi --host esxi01 (via http://10.0.70.164:4091/api/hardware)",
         "description": "Inspects vSAN datastore capacity (328.45 TiB total), cache tier SSDs, and backing NAA capacity disks on the requested ESXi host (esxi01..esxi04 or all).",
-        "keywords": ["vsan", "disk group", "disk groups", "esxi01", "esxi02", "esxi03", "esxi04", "esxi", "ssd", "datastore", "ilo"],
+        "keywords": [
+            "vsan",
+            "disk group",
+            "disk groups",
+            "esxi01",
+            "esxi02",
+            "esxi03",
+            "esxi04",
+            "esxi",
+            "ssd",
+            "datastore",
+            "ilo",
+        ],
     },
     {
         "id": "switch_tier1_cyberstrike",
@@ -125,7 +153,14 @@ PLAYBOOKS: List[Dict[str, Any]] = [
         "target_node": "10.0.70.164:4010 -> ai-srv01 (.72), ai-srv02 (.73), ai-ollama01 (.228), ai-infer01 (.125)",
         "command_preview": "/home/mboyle/bin/bd-tier-switch tier1 qwen3-coder-30b-a3b",
         "description": "Hot-swaps the 4xT4 GPU cluster into dual-pool Tier 1 with qwen3-coder-30b-a3b (77.6 tok/s).",
-        "keywords": ["qwen3", "qwen3-coder", "30b", "a3b", "restore tier 1", "default model"],
+        "keywords": [
+            "qwen3",
+            "qwen3-coder",
+            "30b",
+            "a3b",
+            "restore tier 1",
+            "default model",
+        ],
     },
     {
         "id": "switch_tier2_deepseek70b",
@@ -151,7 +186,14 @@ PLAYBOOKS: List[Dict[str, Any]] = [
         "target_node": "test3big (10.0.70.82, 64-vCPU) + wrk-test01..07",
         "command_preview": "/home/mboyle/bin/bd-remote-pytest-turbo --warm",
         "description": "Pre-stages BulkDownloader worktree into /dev/shm/bd-ci-ramdisk on test3big (10.0.70.82) and precompiles Python bytecode for zero-I/O test execution.",
-        "keywords": ["warm", "ramdisk", "test3big", "ci ramdisk", "/dev/shm", "pytest turbo warm"],
+        "keywords": [
+            "warm",
+            "ramdisk",
+            "test3big",
+            "ci ramdisk",
+            "/dev/shm",
+            "pytest turbo warm",
+        ],
     },
     {
         "id": "audit_ci_ramdisk",
@@ -164,7 +206,13 @@ PLAYBOOKS: List[Dict[str, Any]] = [
         "target_node": "test3big (10.0.70.82) + wrk-test01..07",
         "command_preview": "/home/mboyle/bin/bd-remote-pytest-turbo --audit",
         "description": "Audits /dev/shm free space, nproc core counts, load averages, and virtualenv readiness across test workers.",
-        "keywords": ["audit ramdisk", "check ramdisk", "pytest audit", "worker pool status", "test3big status"],
+        "keywords": [
+            "audit ramdisk",
+            "check ramdisk",
+            "pytest audit",
+            "worker pool status",
+            "test3big status",
+        ],
     },
     {
         "id": "lowest_5h_quota_pool",
@@ -177,7 +225,17 @@ PLAYBOOKS: List[Dict[str, Any]] = [
         "target_node": "controller (10.0.70.164)",
         "command_preview": "/home/mboyle/bin/bd-pool-autobalancer --status --no-color",
         "description": "Evaluates live POOL_STATE.tsv and /var/tmp/bd-pool-autobalancer.json to rank all pools (Claude A/B/C/D, Codex, Kimi, AGY, Local 4xT4) by lowest 5-hour quota utilization.",
-        "keywords": ["lowest", "5h", "quota", "pool", "autobalancer", "five_hour", "which pool", "o1740", "remaining quota"],
+        "keywords": [
+            "lowest",
+            "5h",
+            "quota",
+            "pool",
+            "autobalancer",
+            "five_hour",
+            "which pool",
+            "o1740",
+            "remaining quota",
+        ],
     },
     {
         "id": "sentinel_health_matrix",
@@ -190,7 +248,15 @@ PLAYBOOKS: List[Dict[str, Any]] = [
         "target_node": "controller (10.0.70.164:4099) -> 27-Node Boylenet Swarm",
         "command_preview": "curl -s http://127.0.0.1:4099/api/status (bd-infra-sentinel)",
         "description": "Queries the :4099 Infra Sentinel daemon for the live 83-service health matrix, uptime %, latency, and recent self-healing actions.",
-        "keywords": ["sentinel", "health", "unhealthy", "degraded", "83", "services", "uptime"],
+        "keywords": [
+            "sentinel",
+            "health",
+            "unhealthy",
+            "degraded",
+            "83",
+            "services",
+            "uptime",
+        ],
     },
     {
         "id": "sentinel_heal_all",
@@ -203,7 +269,13 @@ PLAYBOOKS: List[Dict[str, Any]] = [
         "target_node": "controller (10.0.70.164:4099) -> 27-Node Boylenet Swarm",
         "command_preview": "POST http://127.0.0.1:4099/api/heal-now {}",
         "description": "Triggers an immediate full-fleet sweep and automatic self-heal remediation on :4099 Infra Sentinel.",
-        "keywords": ["heal", "self-heal", "fix services", "restart unhealthy", "heal all"],
+        "keywords": [
+            "heal",
+            "self-heal",
+            "fix services",
+            "restart unhealthy",
+            "heal all",
+        ],
     },
     {
         "id": "vault_curator_pairs",
@@ -216,7 +288,15 @@ PLAYBOOKS: List[Dict[str, Any]] = [
         "target_node": "controller (.164) + /models/gguf Vault",
         "command_preview": "/home/mboyle/bin/bd-vault-curator --pairs",
         "description": "Inspects the GGUF model vault manifest and displays verified target + draft speculative decoding pairs.",
-        "keywords": ["vault", "curator", "gguf", "draft", "speculative", "pairs", "orphans"],
+        "keywords": [
+            "vault",
+            "curator",
+            "gguf",
+            "draft",
+            "speculative",
+            "pairs",
+            "orphans",
+        ],
     },
     {
         "id": "semantic_search_fleet",
@@ -227,9 +307,17 @@ PLAYBOOKS: List[Dict[str, Any]] = [
         "safety_class": "READ-ONLY",
         "risk_level": "LOW (Zero State Mutation)",
         "target_node": "ai-infer01 (10.0.70.125:6333 Qdrant + TEI :8081/:8082)",
-        "command_preview": "/home/mboyle/bin/bd-semantic-search \"<search_term>\" --top-k 5",
+        "command_preview": '/home/mboyle/bin/bd-semantic-search "<search_term>" --top-k 5',
         "description": "Executes hybrid vector + cross-encoder reranked semantic search against Qdrant (.125:6333) and TEI (.125:8081/:8082).",
-        "keywords": ["search", "semantic", "qdrant", "rag", "find code", "where is", "ast"],
+        "keywords": [
+            "search",
+            "semantic",
+            "qdrant",
+            "rag",
+            "find code",
+            "where is",
+            "ast",
+        ],
     },
 ]
 
@@ -262,42 +350,123 @@ def deterministic_classify(query: str) -> Tuple[str, float, str]:
         return "lowest_5h_quota_pool", 1.0, "Default playbook: lowest 5h quota check"
 
     # Direct high-precision intent patterns
-    if ("gpu" in q_low or "t4" in q_low or "vram" in q_low) and any(
-        w in q_low for w in ("temp", "temps", "temperature", "check", "status", "show", "power", "vram", "nodes")
-    ) and "switch" not in q_low:
-        return "gpu_temps_all", 0.99, "Matched GPU temperature / VRAM telemetry across 4xT4 nodes"
+    if (
+        ("gpu" in q_low or "t4" in q_low or "vram" in q_low)
+        and any(
+            w in q_low
+            for w in (
+                "temp",
+                "temps",
+                "temperature",
+                "check",
+                "status",
+                "show",
+                "power",
+                "vram",
+                "nodes",
+            )
+        )
+        and "switch" not in q_low
+    ):
+        return (
+            "gpu_temps_all",
+            0.99,
+            "Matched GPU temperature / VRAM telemetry across 4xT4 nodes",
+        )
 
     if "vsan" in q_low or "disk group" in q_low or re.search(r"\besxi0[1-4]\b", q_low):
-        return "vsan_disk_groups_esxi", 0.99, "Matched vSAN disk group / ESXi host storage query"
+        return (
+            "vsan_disk_groups_esxi",
+            0.99,
+            "Matched vSAN disk group / ESXi host storage query",
+        )
 
     if "cyberstrike" in q_low or ("tier 1" in q_low and "35b" in q_low):
-        return "switch_tier1_cyberstrike", 0.99, "Matched Tier 1 switch to cyberstrike-offsec-35b"
+        return (
+            "switch_tier1_cyberstrike",
+            0.99,
+            "Matched Tier 1 switch to cyberstrike-offsec-35b",
+        )
 
-    if ("switch" in q_low or "load" in q_low or "restore" in q_low) and ("qwen3" in q_low or "30b" in q_low):
-        return "switch_tier1_qwen3", 0.98, "Matched Tier 1 switch to qwen3-coder-30b-a3b"
+    if ("switch" in q_low or "load" in q_low or "restore" in q_low) and (
+        "qwen3" in q_low or "30b" in q_low
+    ):
+        return (
+            "switch_tier1_qwen3",
+            0.98,
+            "Matched Tier 1 switch to qwen3-coder-30b-a3b",
+        )
 
-    if ("switch" in q_low or "load" in q_low) and ("tier 2" in q_low or "tier2" in q_low or "70b" in q_low):
-        return "switch_tier2_deepseek70b", 0.98, "Matched Tier 2 switch to deepseek-r1-distill-llama-70b"
+    if ("switch" in q_low or "load" in q_low) and (
+        "tier 2" in q_low or "tier2" in q_low or "70b" in q_low
+    ):
+        return (
+            "switch_tier2_deepseek70b",
+            0.98,
+            "Matched Tier 2 switch to deepseek-r1-distill-llama-70b",
+        )
 
-    if ("warm" in q_low or "pre-sync" in q_low or "presync" in q_low) and ("ramdisk" in q_low or "test3big" in q_low or "ci" in q_low or "pytest" in q_low):
+    if ("warm" in q_low or "pre-sync" in q_low or "presync" in q_low) and (
+        "ramdisk" in q_low or "test3big" in q_low or "ci" in q_low or "pytest" in q_low
+    ):
         return "warm_ci_ramdisk", 0.99, "Matched CI ramdisk warm-up on test3big (.82)"
 
-    if ("audit" in q_low or "status" in q_low or "check" in q_low) and ("ramdisk" in q_low or "test3big" in q_low or "pytest turbo" in q_low):
+    if ("audit" in q_low or "status" in q_low or "check" in q_low) and (
+        "ramdisk" in q_low or "test3big" in q_low or "pytest turbo" in q_low
+    ):
         return "audit_ci_ramdisk", 0.96, "Matched CI ramdisk audit across worker pool"
 
-    if any(w in q_low for w in ("5h", "quota", "lowest", "which pool", "autobalancer", "pool state", "pools")):
-        return "lowest_5h_quota_pool", 0.99, "Matched cross-pool 5h quota & O1740 autobalancer inspection"
+    if any(
+        w in q_low
+        for w in (
+            "5h",
+            "quota",
+            "lowest",
+            "which pool",
+            "autobalancer",
+            "pool state",
+            "pools",
+        )
+    ):
+        return (
+            "lowest_5h_quota_pool",
+            0.99,
+            "Matched cross-pool 5h quota & O1740 autobalancer inspection",
+        )
 
-    if ("heal" in q_low or "fix" in q_low or "remediate" in q_low) and ("sentinel" in q_low or "service" in q_low or "unhealthy" in q_low or "all" in q_low):
+    if re.search(r"\b(heal|self-heal|fix|remediate)\b", q_low) and (
+        "sentinel" in q_low
+        or "service" in q_low
+        or "unhealthy" in q_low
+        or "all" in q_low
+    ):
         return "sentinel_heal_all", 0.97, "Matched Infra Sentinel self-heal execution"
 
-    if "sentinel" in q_low or "unhealthy" in q_low or "83" in q_low or "service health" in q_low:
-        return "sentinel_health_matrix", 0.95, "Matched Infra Sentinel 83-service health matrix"
+    if (
+        "sentinel" in q_low
+        or "unhealthy" in q_low
+        or "83" in q_low
+        or "service health" in q_low
+    ):
+        return (
+            "sentinel_health_matrix",
+            0.95,
+            "Matched Infra Sentinel 83-service health matrix",
+        )
 
     if "vault" in q_low or "gguf" in q_low or "draft" in q_low or "curator" in q_low:
-        return "vault_curator_pairs", 0.96, "Matched GGUF Model Vault curator & draft pairs check"
+        return (
+            "vault_curator_pairs",
+            0.96,
+            "Matched GGUF Model Vault curator & draft pairs check",
+        )
 
-    if "semantic" in q_low or "qdrant" in q_low or q_low.startswith("search ") or q_low.startswith("find "):
+    if (
+        "semantic" in q_low
+        or "qdrant" in q_low
+        or q_low.startswith("search ")
+        or q_low.startswith("find ")
+    ):
         return "semantic_search_fleet", 0.95, "Matched Hybrid RAG + AST semantic search"
 
     # Fallback keyword scoring
@@ -315,7 +484,9 @@ def call_kimi_classifier(query: str, timeout: float = 22.0) -> Dict[str, Any]:
     """Invoke Kimi Code CLI (/home/mboyle/.local/bin/kimi -p ... with stdin=subprocess.DEVNULL)."""
     if not os.path.isfile(KIMI_BIN):
         return {"ok": False, "error": f"{KIMI_BIN} not found"}
-    ids_desc = ", ".join(f"{p['id']} ({p['safety_class']}: {p['title']})" for p in PLAYBOOKS)
+    ids_desc = ", ".join(
+        f"{p['id']} ({p['safety_class']}: {p['title']})" for p in PLAYBOOKS
+    )
     prompt = (
         "You are the Boylenet Natural-Language Ops Shell classifier. "
         f"Map the operator query to ONE playbook_id from: [{ids_desc}]. "
@@ -346,10 +517,17 @@ def call_kimi_classifier(query: str, timeout: float = 22.0) -> Dict[str, Any]:
                     "elapsed_s": elapsed,
                     "playbook_id": pb_id,
                     "confidence": float(parsed.get("confidence", 0.95)),
-                    "rationale": str(parsed.get("rationale", "Classified by Kimi Code CLI")),
+                    "rationale": str(
+                        parsed.get("rationale", "Classified by Kimi Code CLI")
+                    ),
                     "raw_excerpt": raw[:300],
                 }
-        return {"ok": False, "engine": "kimi-code-cli", "elapsed_s": elapsed, "raw_excerpt": raw[:300]}
+        return {
+            "ok": False,
+            "engine": "kimi-code-cli",
+            "elapsed_s": elapsed,
+            "raw_excerpt": raw[:300],
+        }
     except Exception as exc:
         return {"ok": False, "engine": "kimi-code-cli", "error": str(exc)}
 
@@ -387,9 +565,16 @@ def call_local_llm_classifier(query: str, timeout: float = 8.0) -> Dict[str, Any
                     "engine": "local-4xt4-qwen3-coder-30b-a3b",
                     "elapsed_s": elapsed,
                     "playbook_id": pb_id,
-                    "rationale": str(parsed.get("rationale", "Classified by Local 4xT4 GPU")),
+                    "rationale": str(
+                        parsed.get("rationale", "Classified by Local 4xT4 GPU")
+                    ),
                 }
-        return {"ok": False, "engine": "local-4xt4", "elapsed_s": elapsed, "raw_excerpt": content[:240]}
+        return {
+            "ok": False,
+            "engine": "local-4xt4",
+            "elapsed_s": elapsed,
+            "raw_excerpt": content[:240],
+        }
     except Exception as exc:
         return {"ok": False, "engine": "local-4xt4", "error": str(exc)}
 
@@ -403,7 +588,13 @@ def translate_nl_query(query: str, engine_pref: str = "auto") -> Dict[str, Any]:
     det_id, det_conf, det_reason = deterministic_classify(query)
     chosen_id = det_id
     engine_used = "deterministic-fast-path"
-    ai_trace: Dict[str, Any] = {"deterministic": {"playbook_id": det_id, "confidence": det_conf, "rationale": det_reason}}
+    ai_trace: Dict[str, Any] = {
+        "deterministic": {
+            "playbook_id": det_id,
+            "confidence": det_conf,
+            "rationale": det_reason,
+        }
+    }
 
     if engine_pref == "kimi":
         kimi_res = call_kimi_classifier(query, timeout=25.0)
@@ -440,8 +631,13 @@ def translate_nl_query(query: str, engine_pref: str = "auto") -> Dict[str, Any]:
     target_node = pb["target_node"]
     if pb["id"] == "vsan_disk_groups_esxi":
         host = params.get("host", "esxi01")
-        host_ips = {"esxi01": "10.0.20.41", "esxi02": "10.0.20.42", "esxi03": "10.0.20.43", "esxi04": "10.0.20.44"}
-        target_node = f"{host}.boylenet.themfboyles.com ({host_ips.get(host, '10.0.20.41')}) via :4091 Hardware Telemetry"
+        host_ips = {
+            "esxi01": "10.0.20.41",
+            "esxi02": "10.0.20.42",
+            "esxi03": "10.0.20.43",
+            "esxi04": "10.0.20.44",
+        }
+        target_node = f"{host}.boylenet.themfboyles.org ({host_ips.get(host, '10.0.20.41')}) via :4091 Hardware Telemetry"
         cmd_str = f"bd-ops --execute --playbook vsan_disk_groups_esxi --host {host}"
     elif pb["id"] == "semantic_search_fleet":
         term = params.get("search_term", "O1740 dynamic capability routing")
@@ -495,7 +691,9 @@ def load_ops_history(limit: int = 20) -> List[Dict[str, Any]]:
         return []
 
 
-def execute_verified_playbook(playbook_id: str, params: Optional[Dict[str, str]] = None, query: str = "") -> Dict[str, Any]:
+def execute_verified_playbook(
+    playbook_id: str, params: Optional[Dict[str, str]] = None, query: str = ""
+) -> Dict[str, Any]:
     """
     Strictly executes ONLY pre-vetted playbooks in PLAYBOOK_BY_ID.
     Never executes arbitrary shell strings.
@@ -531,11 +729,21 @@ def execute_verified_playbook(playbook_id: str, params: Optional[Dict[str, str]]
                 vram = f"{n.get('vram_used_mib', 0)}/{n.get('vram_total_mib', 15360)}"
                 pwr = f"{n.get('power_w', 0):.1f}W"
                 ram = f"{n.get('ddr4_ram_used_gib', 0):.1f}/{n.get('ddr4_ram_total_gib', 0):.1f}"
-                st = "ONLINE (rc=0)" if n.get("probe_rc") == 0 else f"DEGRADED (rc={n.get('probe_rc')})"
-                lines.append(f" {name:<14} {mip:<13} {rip:<13} {temp:<8} {vram:<15} {pwr:<9} {ram:<16} {st}")
+                st = (
+                    "ONLINE (rc=0)"
+                    if n.get("probe_rc") == 0
+                    else f"DEGRADED (rc={n.get('probe_rc')})"
+                )
+                lines.append(
+                    f" {name:<14} {mip:<13} {rip:<13} {temp:<8} {vram:<15} {pwr:<9} {ram:<16} {st}"
+                )
             lines.append("=" * 90)
             stdout_str = "\n".join(lines)
-            structured_data = {"active_model": data.get("active_model"), "effective_tier": data.get("effective_tier"), "nodes": nodes}
+            structured_data = {
+                "active_model": data.get("active_model"),
+                "effective_tier": data.get("effective_tier"),
+                "nodes": nodes,
+            }
 
         elif playbook_id == "vsan_disk_groups_esxi":
             host_filter = str(params.get("host", "esxi01")).lower().strip()
@@ -567,21 +775,46 @@ def execute_verified_playbook(playbook_id: str, params: Optional[Dict[str, str]]
                     f"   vSAN DGs : {h.get('vsan_dg_count')} Disk Groups | {h.get('vsan_ssd_count')} Cache SSDs | {h.get('vsan_cap_disk_count')} Capacity Disks"
                 )
                 for idx, dg in enumerate(h.get("vsan_disk_groups", []), 1):
-                    lines.append(f"     [Disk Group #{idx}] Cache SSD: {dg.get('ssd')} -> {dg.get('capacity_disk_count')} Capacity Disks:")
+                    lines.append(
+                        f"     [Disk Group #{idx}] Cache SSD: {dg.get('ssd')} -> {dg.get('capacity_disk_count')} Capacity Disks:"
+                    )
                     for cd in dg.get("capacity_disks", []):
                         lines.append(f"        - {cd}")
             lines.append("=" * 90)
             stdout_str = "\n".join(lines)
             structured_data = {"vsan": vsan, "hosts": matched_hosts}
 
-        elif playbook_id in ("switch_tier1_cyberstrike", "switch_tier1_qwen3", "switch_tier2_deepseek70b"):
+        elif playbook_id in (
+            "switch_tier1_cyberstrike",
+            "switch_tier1_qwen3",
+            "switch_tier2_deepseek70b",
+        ):
             if playbook_id == "switch_tier1_cyberstrike":
-                cmd = ["/home/mboyle/bin/bd-tier-switch", "tier1", "cyberstrike-offsec-35b"]
+                cmd = [
+                    "/home/mboyle/bin/bd-tier-switch",
+                    "tier1",
+                    "cyberstrike-offsec-35b",
+                ]
             elif playbook_id == "switch_tier1_qwen3":
-                cmd = ["/home/mboyle/bin/bd-tier-switch", "tier1", "qwen3-coder-30b-a3b"]
+                cmd = [
+                    "/home/mboyle/bin/bd-tier-switch",
+                    "tier1",
+                    "qwen3-coder-30b-a3b",
+                ]
             else:
-                cmd = ["/home/mboyle/bin/bd-tier-switch", "tier2", "deepseek-r1-distill-llama-70b"]
-            p = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=120, check=False)
+                cmd = [
+                    "/home/mboyle/bin/bd-tier-switch",
+                    "tier2",
+                    "deepseek-r1-distill-llama-70b",
+                ]
+            p = subprocess.run(
+                cmd,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=False,
+            )
             rc = p.returncode
             stdout_str = p.stdout.strip()
             stderr_str = p.stderr.strip()
@@ -590,33 +823,58 @@ def execute_verified_playbook(playbook_id: str, params: Optional[Dict[str, str]]
             cmd = ["/home/mboyle/bin/bd-remote-pytest-turbo", "--warm"]
             if params.get("node"):
                 cmd.extend(["--node", params["node"]])
-            p = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=90, check=False)
+            p = subprocess.run(
+                cmd,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=90,
+                check=False,
+            )
             rc = p.returncode
             stdout_str = p.stdout.strip()
             stderr_str = p.stderr.strip()
 
         elif playbook_id == "audit_ci_ramdisk":
             cmd = ["/home/mboyle/bin/bd-remote-pytest-turbo", "--audit"]
-            p = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=45, check=False)
+            p = subprocess.run(
+                cmd,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=45,
+                check=False,
+            )
             rc = p.returncode
             stdout_str = p.stdout.strip()
             stderr_str = p.stderr.strip()
 
         elif playbook_id == "lowest_5h_quota_pool":
             cmd = ["/home/mboyle/bin/bd-pool-autobalancer", "--status", "--no-color"]
-            p = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=20, check=False)
+            p = subprocess.run(
+                cmd,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=20,
+                check=False,
+            )
             rc = p.returncode
             stdout_str = p.stdout.strip()
             stderr_str = p.stderr.strip()
             try:
-                with open("/var/tmp/bd-pool-autobalancer.json", "r", encoding="utf-8") as f:
+                with open(
+                    "/var/tmp/bd-pool-autobalancer.json", "r", encoding="utf-8"
+                ) as f:
                     structured_data = json.load(f)
             except Exception:
                 pass
 
         elif playbook_id == "sentinel_health_matrix":
             st = http_get_json("http://127.0.0.1:4099/api/status", timeout=10.0)
-            unhealthy = [s for s in st.get("services", []) if not s.get("healthy", True)]
+            unhealthy = [
+                s for s in st.get("services", []) if not s.get("healthy", True)
+            ]
             lines = [
                 "==========================================================================================",
                 f" BOYLENET INFRA SENTINEL (:4099) — {st.get('healthy_services')}/{st.get('total_services')} HEALTHY ({st.get('uptime_pct')}% Uptime)",
@@ -626,7 +884,9 @@ def execute_verified_playbook(playbook_id: str, params: Optional[Dict[str, str]]
             if unhealthy:
                 lines.append(" Unhealthy / Degraded Services:")
                 for u in unhealthy:
-                    lines.append(f"   - [{u.get('category')}] {u.get('name')} ({u.get('id')}): {u.get('detail')}")
+                    lines.append(
+                        f"   - [{u.get('category')}] {u.get('name')} ({u.get('id')}): {u.get('detail')}"
+                    )
             else:
                 lines.append(" All 83 monitored services are HEALTHY (0 unhealthy).")
             lines.append("=" * 90)
@@ -640,15 +900,31 @@ def execute_verified_playbook(playbook_id: str, params: Optional[Dict[str, str]]
 
         elif playbook_id == "vault_curator_pairs":
             cmd = ["/home/mboyle/bin/bd-vault-curator", "--pairs"]
-            p = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=30, check=False)
+            p = subprocess.run(
+                cmd,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
             rc = p.returncode
             stdout_str = p.stdout.strip()
             stderr_str = p.stderr.strip()
 
         elif playbook_id == "semantic_search_fleet":
-            term = str(params.get("search_term") or query or "O1740 dynamic capability routing")
+            term = str(
+                params.get("search_term") or query or "O1740 dynamic capability routing"
+            )
             cmd = ["/home/mboyle/bin/bd-semantic-search", term, "--top-k", "5"]
-            p = subprocess.run(cmd, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=30, check=False)
+            p = subprocess.run(
+                cmd,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
             rc = p.returncode
             stdout_str = p.stdout.strip()
             stderr_str = p.stderr.strip()
@@ -942,11 +1218,11 @@ HTML_PAGE = """<!DOCTYPE html>
     </div>
   </div>
   <div class="nav-pills">
-    <a href="http://dashy.boylenet.themfboyles.com">Dashy :4080</a>
-    <a href="http://mobile.boylenet.themfboyles.com">Mobile PWA :4086</a>
-    <a href="http://cloud.boylenet.themfboyles.com">Cloud Burst :4090</a>
-    <a href="http://hardware.boylenet.themfboyles.com">Hardware :4091</a>
-    <a href="http://sentinel.boylenet.themfboyles.com">Sentinel :4099</a>
+    <a href="http://dashy.boylenet.themfboyles.org">Dashy :4080</a>
+    <a href="http://mobile.boylenet.themfboyles.org">Mobile PWA :4086</a>
+    <a href="http://cloud.boylenet.themfboyles.org">Cloud Burst :4090</a>
+    <a href="http://hardware.boylenet.themfboyles.org">Hardware :4091</a>
+    <a href="http://sentinel.boylenet.themfboyles.org">Sentinel :4099</a>
     <a href="/health">Health JSON</a>
   </div>
 </header>
@@ -1190,7 +1466,7 @@ class OpsRequestHandler(http.server.BaseHTTPRequestHandler):
                     "status": "ok",
                     "service": "bd-ops-web",
                     "port": PORT,
-                    "url": "http://ops.boylenet.themfboyles.com",
+                    "url": "http://ops.boylenet.themfboyles.org",
                     "playbooks_count": len(PLAYBOOKS),
                     "kimi_cli_present": os.path.isfile(KIMI_BIN),
                     "litellm_gateway": LITELLM_URL,
@@ -1237,7 +1513,9 @@ class OpsRequestHandler(http.server.BaseHTTPRequestHandler):
             params = body.get("params") or {}
             query = str(body.get("query", "")).strip()
             if not playbook_id and query:
-                tr = translate_nl_query(query, engine_pref=str(body.get("engine", "auto")))
+                tr = translate_nl_query(
+                    query, engine_pref=str(body.get("engine", "auto"))
+                )
                 playbook_id = tr["playbook_id"]
                 params = tr.get("params", {})
             res = execute_verified_playbook(playbook_id, params=params, query=query)
@@ -1254,12 +1532,27 @@ def main() -> int:
     ap.add_argument("query", nargs="*", help="Natural-language infrastructure request")
     ap.add_argument("--serve", action="store_true", help="Run HTTP server on :4089")
     ap.add_argument("--port", type=int, default=PORT, help="HTTP port (default 4089)")
-    ap.add_argument("--dry-run", action="store_true", help="Show Dry-Run Preview without executing")
-    ap.add_argument("--execute", "-x", action="store_true", help="Execute the matched verified playbook")
-    ap.add_argument("--playbook", default="", help="Directly specify verified playbook_id")
-    ap.add_argument("--host", default="", help="Optional ESXi host parameter (e.g. esxi01)")
-    ap.add_argument("--engine", default="auto", choices=["auto", "kimi", "local", "deterministic"])
-    ap.add_argument("--list-playbooks", action="store_true", help="List all pre-vetted playbooks")
+    ap.add_argument(
+        "--dry-run", action="store_true", help="Show Dry-Run Preview without executing"
+    )
+    ap.add_argument(
+        "--execute",
+        "-x",
+        action="store_true",
+        help="Execute the matched verified playbook",
+    )
+    ap.add_argument(
+        "--playbook", default="", help="Directly specify verified playbook_id"
+    )
+    ap.add_argument(
+        "--host", default="", help="Optional ESXi host parameter (e.g. esxi01)"
+    )
+    ap.add_argument(
+        "--engine", default="auto", choices=["auto", "kimi", "local", "deterministic"]
+    )
+    ap.add_argument(
+        "--list-playbooks", action="store_true", help="List all pre-vetted playbooks"
+    )
     ap.add_argument("--json", action="store_true", help="Output JSON")
     args = ap.parse_args()
 
@@ -1267,18 +1560,33 @@ def main() -> int:
         if args.json:
             print(json.dumps(PLAYBOOKS, indent=2))
         else:
-            print("==========================================================================================")
+            print(
+                "=========================================================================================="
+            )
             print(" BOYLENET NATURAL-LANGUAGE OPS SHELL — PRE-VETTED PLAYBOOKS (:4089)")
-            print("==========================================================================================")
+            print(
+                "=========================================================================================="
+            )
             for pb in PLAYBOOKS:
-                print(f" [{pb['safety_class']:<12}] {pb['id']:<26} | {pb['tool']:<22} | \"{pb['sample_query']}\"")
-            print("==========================================================================================")
+                print(
+                    f' [{pb["safety_class"]:<12}] {pb["id"]:<26} | {pb["tool"]:<22} | "{pb["sample_query"]}"'
+                )
+            print(
+                "=========================================================================================="
+            )
         return 0
 
     query_str = " ".join(args.query).strip()
-    if args.serve or (not query_str and not args.playbook and os.path.basename(sys.argv[0]) == "bd-ops-web.py"):
+    if args.serve or (
+        not query_str
+        and not args.playbook
+        and os.path.basename(sys.argv[0]) == "bd-ops-web.py"
+    ):
         srv = ThreadedHTTPServer(("0.0.0.0", args.port), OpsRequestHandler)
-        print(f"[bd-ops-web] Listening on http://0.0.0.0:{args.port} (http://ops.boylenet.themfboyles.com)", flush=True)
+        print(
+            f"[bd-ops-web] Listening on http://0.0.0.0:{args.port} (http://ops.boylenet.themfboyles.org)",
+            flush=True,
+        )
         srv.serve_forever()
         return 0
 
@@ -1299,19 +1607,31 @@ def main() -> int:
         if args.json:
             print(json.dumps(preview, indent=2))
         else:
-            print("==========================================================================================")
+            print(
+                "=========================================================================================="
+            )
             print(f" DRY-RUN PREVIEW — {preview['title']}")
-            print("==========================================================================================")
+            print(
+                "=========================================================================================="
+            )
             print(f" Query          : {preview['query']}")
             print(f" Playbook ID    : {preview['playbook_id']}")
-            print(f" Safety Class   : {preview['safety_class']} ({preview['risk_level']})")
+            print(
+                f" Safety Class   : {preview['safety_class']} ({preview['risk_level']})"
+            )
             print(f" Target Tool    : {preview['tool']} ({preview['binary']})")
             print(f" Target Node(s) : {preview['target_node']}")
             print(f" Exact Command  : {preview['command']}")
-            print(f" Translator     : {preview['engine_used']} ({preview['translation_ms']}ms)")
-            print("------------------------------------------------------------------------------------------")
+            print(
+                f" Translator     : {preview['engine_used']} ({preview['translation_ms']}ms)"
+            )
+            print(
+                "------------------------------------------------------------------------------------------"
+            )
             print(" Tip: Re-run with --execute (-x) to run this verified playbook.")
-            print("==========================================================================================")
+            print(
+                "=========================================================================================="
+            )
         return 0
 
     exec_res = execute_verified_playbook(

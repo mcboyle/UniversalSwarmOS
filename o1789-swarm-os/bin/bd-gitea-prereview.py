@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 bd-gitea-prereview.py — Autonomous Gitea PR/Commit Webhook Pre-Review & OffSec Red-Team Swarm (:4092)
- URL: http://10.0.70.164:4092 | http://prereview.boylenet.themfboyles.com
+ URL: http://10.0.70.164:4092 | http://prereview.boylenet.themfboyles.org
 
 Pipeline:
   1. Static Fast-Fail Gates:
@@ -608,7 +608,7 @@ def format_gitea_markdown(report: dict[str, Any]) -> str:
 
     lines.append("")
     lines.append(
-        f"🔗 **Dashboard Link:** [http://prereview.boylenet.themfboyles.com/?id={report['review_id']}](http://10.0.70.164:4092/?id={report['review_id']})"
+        f"🔗 **Dashboard Link:** [http://prereview.boylenet.themfboyles.org/?id={report['review_id']}](http://10.0.70.164:4092/?id={report['review_id']})"
     )
     return "\n".join(lines)
 

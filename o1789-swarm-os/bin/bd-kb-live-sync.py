@@ -62,18 +62,6 @@ def log_msg(msg: str) -> None:
 
 
 def load_embedding_fn():
-    try:
-        spec = importlib.util.spec_from_file_location(
-            "bd_openwebui_tool_gateway", "/home/mboyle/bin/bd-openwebui-tool-gateway.py"
-        )
-        if spec and spec.loader:
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            return mod.compute_hybrid_1024_embedding
-    except Exception:
-        pass
-
-    # Deterministic 1024-d fallback matching bd-openwebui-tool-gateway.py
     import math
 
     def _fallback_embed(text: str) -> list[float]:
@@ -85,13 +73,12 @@ def load_embedding_fn():
             h = hashlib.sha256(tok.encode("utf-8")).digest()
             idx1 = int.from_bytes(h[0:2], "little") % 1024
             idx2 = int.from_bytes(h[2:4], "little") % 1024
-            sign1 = 1.0 if (h[4] & 1) == 0 else -1.0
-            sign2 = 1.0 if (h[5] & 1) == 0 else -1.0
+            sign1 = 1.0 if h[4] & 1 == 0 else -1.0
+            sign2 = 1.0 if h[5] & 1 == 0 else -1.0
             vec[idx1] += sign1 * 1.0
             vec[idx2] += sign2 * 0.5
-        norm = math.sqrt(sum(v * v for v in vec)) or 1.0
+        norm = math.sqrt(sum((v * v for v in vec))) or 1.0
         return [round(v / norm, 6) for v in vec]
-
     return _fallback_embed
 
 
@@ -212,6 +199,7 @@ def load_all_kb_chunks() -> list[dict[str, Any]]:
         ("bd-kb-fleet-law", "04-FLEET-LAW-RULES-1-86-AND-O1740-ROUTING.md", "⚖️ BD-KB 04: Fleet Law Rules 1-86 & O1740 Routing"),
         ("bd-kb-ci-and-uis", "05-CI-TAXONOMY-RECOVERY-AND-MCP-TOOLS.md", "🩺 BD-KB 05A: CI Taxonomy, Recovery, 14 MCPs & 50 Toolkits"),
         ("bd-kb-swarm-ops", "05-SWARM-OPERATIONS-RECEIPTS-AND-PLAYBOOKS.md", "🛠️ BD-KB 05B: Swarm Operations Receipts, PM Handoffs & Watchdog Playbooks"),
+        ("bd-kb-5platform-mods", "06-5PLATFORM-MCP-MODS-HTTPS-AND-215-LEDGER.md", "🌐 BD-KB 06: 5-Platform boylenet-infra MCP, Mods 1-5, NGINX/Cloudflare HTTPS & 215/215 Backlog Ledger"),
     ]
     chunks: list[dict[str, Any]] = []
     chunk_idx = 1

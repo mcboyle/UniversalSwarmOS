@@ -4,79 +4,79 @@ pageInfo:
   logo: https://i.ibb.co/qWWpD0v/astro-dab-128.png
   navLinks:
   - title: Boylenet OS :4085
-    path: http://os.boylenet.themfboyles.com
+    path: http://os.boylenet.themfboyles.org
     target: newtab
   - title: Briefing & Doctor :4081
-    path: http://briefing.boylenet.themfboyles.com
+    path: http://briefing.boylenet.themfboyles.org
     target: newtab
   - title: 86-Model Vault :4084
-    path: http://models.boylenet.themfboyles.com
+    path: http://models.boylenet.themfboyles.org
     target: newtab
   - title: Terminal & TV Wall :4083
-    path: http://terminal.boylenet.themfboyles.com
+    path: http://terminal.boylenet.themfboyles.org
     target: newtab
   - title: SSO & Root CA :4082
-    path: http://sso.boylenet.themfboyles.com
+    path: http://sso.boylenet.themfboyles.org
     target: newtab
   - title: 3D Topology :4088
-    path: http://topology.boylenet.themfboyles.com
+    path: http://topology.boylenet.themfboyles.org
     target: newtab
   - title: Multi-Harness :4098
-    path: http://harnesses.boylenet.themfboyles.com
+    path: http://harnesses.boylenet.themfboyles.org
     target: newtab
   - title: Cloud Burst :4090
-    path: http://cloud.boylenet.themfboyles.com
+    path: http://cloud.boylenet.themfboyles.org
     target: newtab
   - title: Sentinel :4099
-    path: http://sentinel.boylenet.themfboyles.com
+    path: http://sentinel.boylenet.themfboyles.org
     target: newtab
   - title: Vault :4087
-    path: http://vault.boylenet.themfboyles.com
+    path: http://vault.boylenet.themfboyles.org
     target: newtab
   - title: Mobile :4086
-    path: http://mobile.boylenet.themfboyles.com
+    path: http://mobile.boylenet.themfboyles.org
     target: newtab
   - title: NL Ops :4089
-    path: http://ops.boylenet.themfboyles.com
+    path: http://ops.boylenet.themfboyles.org
     target: newtab
   - title: Hardware & vSAN :4091
-    path: http://hardware.boylenet.themfboyles.com
+    path: http://hardware.boylenet.themfboyles.org
     target: newtab
   - title: PreReview :4092
-    path: http://prereview.boylenet.themfboyles.com
+    path: http://prereview.boylenet.themfboyles.org
     target: newtab
   - title: Voice & Vision :4093
-    path: http://voice.boylenet.themfboyles.com
+    path: http://voice.boylenet.themfboyles.org
     target: newtab
   - title: Research :4094
-    path: http://research.boylenet.themfboyles.com
+    path: http://research.boylenet.themfboyles.org
     target: newtab
   - title: LobeChat :4095
-    path: http://lobechat.boylenet.themfboyles.com
+    path: http://lobechat.boylenet.themfboyles.org
     target: newtab
   - title: OpenCode :4096
-    path: http://opencode.boylenet.themfboyles.com
+    path: http://opencode.boylenet.themfboyles.org
     target: newtab
   - title: OpenClaw :4097
-    path: http://openclaw.boylenet.themfboyles.com
+    path: http://openclaw.boylenet.themfboyles.org
     target: newtab
   - title: Jarvis Cockpit :3002
-    path: http://jarvis.boylenet.themfboyles.com
+    path: http://jarvis.boylenet.themfboyles.org
     target: newtab
   - title: Swarm Chat :3003
-    path: http://chat.boylenet.themfboyles.com
+    path: http://chat.boylenet.themfboyles.org
     target: newtab
   - title: OpenWebUI :8090
-    path: http://openwebui.boylenet.themfboyles.com
+    path: http://openwebui.boylenet.themfboyles.org
     target: newtab
   - title: LiteLLM :4000/ui
-    path: http://litellm.boylenet.themfboyles.com/ui
+    path: http://litellm.boylenet.themfboyles.org/ui
     target: newtab
   - title: Grafana :3001
-    path: http://grafana.boylenet.themfboyles.com
+    path: http://grafana.boylenet.themfboyles.org
     target: newtab
   - title: Gitea :3000
-    path: http://gitea.boylenet.themfboyles.com
+    path: http://gitea.boylenet.themfboyles.org
     target: newtab
   - title: vCenter (.20.70)
     path: https://10.0.20.70/ui
@@ -120,9 +120,9 @@ sections:
     collapsed: false
   items:
   - title: Boylenet OS Desktop Shell (:4085)
-    description: Single-Glass Windowed Desktop OS Shell • Cmd+K Spotlight, Split-Screen Tiling, Bottom App Dock & Live Top Telemetry Bar (os.boylenet.themfboyles.com)
+    description: Single-Glass Windowed Desktop OS Shell • Cmd+K Spotlight, Split-Screen Tiling, Bottom App Dock & Live Top Telemetry Bar (os.boylenet.themfboyles.org)
     icon: fas fa-desktop
-    url: http://os.boylenet.themfboyles.com
+    url: http://os.boylenet.themfboyles.org
     target: newtab
     statusCheck: true
     statusCheckUrl: http://10.0.70.164:4085/health
@@ -132,9 +132,9 @@ sections:
     - shell
     - spotlight
   - title: Executive Briefing & Doctor (:4081)
-    description: Plain-English Daily Morning Briefing, Universal Cluster Spotlight Search & 1-Click Automated Cluster Doctor (briefing.boylenet.themfboyles.com / doctor.boylenet.themfboyles.com)
+    description: Plain-English Daily Morning Briefing, Universal Cluster Spotlight Search & 1-Click Automated Cluster Doctor (briefing.boylenet.themfboyles.org / doctor.boylenet.themfboyles.org)
     icon: fas fa-stethoscope
-    url: http://briefing.boylenet.themfboyles.com
+    url: http://briefing.boylenet.themfboyles.org
     target: newtab
     statusCheck: true
     statusCheckUrl: http://10.0.70.164:4081/health
@@ -144,9 +144,9 @@ sections:
     - search
     - executive
   - title: 3D Swarm & Rack Topology (:4088)
-    description: Real-Time 2D Executive Flow Map, 3D Holo-Deck Orbit Visualizer & Physical Rack / VLAN Fabric Inspector (topology.boylenet.themfboyles.com)
+    description: Real-Time 2D Executive Flow Map, 3D Holo-Deck Orbit Visualizer & Physical Rack / VLAN Fabric Inspector (topology.boylenet.themfboyles.org)
     icon: fas fa-project-diagram
-    url: http://topology.boylenet.themfboyles.com
+    url: http://topology.boylenet.themfboyles.org
     target: newtab
     statusCheck: true
     statusCheckUrl: http://10.0.70.164:4088/health
@@ -156,9 +156,9 @@ sections:
     - swarm
     - rack
   - title: 86-Model AI Vault Storefront (:4084)
-    description: Interactive 86-Model AI App Store & 1-Click Benchmark / Load / Chat Launcher across Vault A (.72) & Vault B (.83) (models.boylenet.themfboyles.com)
+    description: Interactive 86-Model AI App Store & 1-Click Benchmark / Load / Chat Launcher across Vault A (.72) & Vault B (.83) (models.boylenet.themfboyles.org)
     icon: fas fa-store
-    url: http://models.boylenet.themfboyles.com
+    url: http://models.boylenet.themfboyles.org
     target: newtab
     statusCheck: true
     statusCheckUrl: http://10.0.70.164:4084/health
@@ -168,9 +168,9 @@ sections:
     - storefront
     - benchmark
   - title: Multi-Node Web Terminal & Agent TV Wall (:4083)
-    description: 1-Click Browser SSH Terminal to all 27 Nodes + 4-Up / 9-Up Live Tmux Swarm Agent TV Wall (terminal.boylenet.themfboyles.com)
+    description: 1-Click Browser SSH Terminal to all 27 Nodes + 4-Up / 9-Up Live Tmux Swarm Agent TV Wall (terminal.boylenet.themfboyles.org)
     icon: fas fa-tv
-    url: http://terminal.boylenet.themfboyles.com
+    url: http://terminal.boylenet.themfboyles.org
     target: newtab
     statusCheck: true
     statusCheckUrl: http://10.0.70.164:4083/health
@@ -180,9 +180,9 @@ sections:
     - tv-wall
     - tmux
   - title: Zero-Friction SSO & QR Handoff (:4082)
-    description: 1-Click Auto-Login SSO Launchpad, iPhone/iPad Site Magic QR Code Wall & Boylenet Root CA Trust Installer (sso.boylenet.themfboyles.com / ca.boylenet.themfboyles.com)
+    description: 1-Click Auto-Login SSO Launchpad, iPhone/iPad Site Magic QR Code Wall & Boylenet Root CA Trust Installer (sso.boylenet.themfboyles.org / ca.boylenet.themfboyles.org)
     icon: fas fa-qrcode
-    url: http://sso.boylenet.themfboyles.com
+    url: http://sso.boylenet.themfboyles.org
     target: newtab
     statusCheck: true
     statusCheckUrl: http://10.0.70.164:4082/health
@@ -192,9 +192,9 @@ sections:
     - ca
     - mobile
   - title: Multi-Harness Studio & Arena (:4098)
-    description: Hermes, DeepSeek-V3.2-Speciale, OpenRouter, OpenCode, OpenClaw & Side-by-Side Blind Elo Model Arena (harnesses.boylenet.themfboyles.com)
+    description: Hermes, DeepSeek-V3.2-Speciale, OpenRouter, OpenCode, OpenClaw & Side-by-Side Blind Elo Model Arena (harnesses.boylenet.themfboyles.org)
     icon: fas fa-robot
-    url: http://harnesses.boylenet.themfboyles.com
+    url: http://harnesses.boylenet.themfboyles.org
     target: newtab
     statusCheck: true
     statusCheckUrl: http://10.0.70.164:4098/health
@@ -203,9 +203,9 @@ sections:
     - arena
     - studio
   - title: Cloud Burst Orchestrator (:4090)
-    description: Hybrid Cloud ($1,000 Free Session Credit Pool Across Pools A-D) + Local 4x Tesla T4 Burst Orchestrator (cloud.boylenet.themfboyles.com)
+    description: Hybrid Cloud ($1,000 Free Session Credit Pool Across Pools A-D) + Local 4x Tesla T4 Burst Orchestrator (cloud.boylenet.themfboyles.org)
     icon: fas fa-cloud-upload-alt
-    url: http://cloud.boylenet.themfboyles.com
+    url: http://cloud.boylenet.themfboyles.org
     target: newtab
     statusCheck: true
     statusCheckUrl: http://10.0.70.164:4090/health
@@ -222,9 +222,9 @@ sections:
     collapsed: false
   items:
   - title: 3D/2D Architecture Topology & Live Swarm Visualizer :4088
-    description: Real-Time 2D Executive Flow Map, 3D Holo-Deck Orbit Visualizer & VLAN Fabric Inspector • Live Agents, 25GbE RoCE & Ping Trace (topology.boylenet.themfboyles.com)
+    description: Real-Time 2D Executive Flow Map, 3D Holo-Deck Orbit Visualizer & VLAN Fabric Inspector • Live Agents, 25GbE RoCE & Ping Trace (topology.boylenet.themfboyles.org)
     icon: fas fa-project-diagram
-    url: http://topology.boylenet.themfboyles.com
+    url: http://topology.boylenet.themfboyles.org
     target: newtab
     statusCheck: true
     statusCheckUrl: http://10.0.70.164:4088/health
@@ -235,9 +235,9 @@ sections:
     - visualizer
     - network
   - title: Credentials, API Keys & 27-Node SSH Health Vault :4087
-    description: Unified Credentials, API Tokens, vSphere/iLO4/UniFi Keys & Live 27-Node SSH Reachability Matrix (vault.boylenet.themfboyles.com)
+    description: Unified Credentials, API Tokens, vSphere/iLO4/UniFi Keys & Live 27-Node SSH Reachability Matrix (vault.boylenet.themfboyles.org)
     icon: fas fa-key
-    url: http://vault.boylenet.themfboyles.com
+    url: http://vault.boylenet.themfboyles.org
     target: newtab
     statusCheck: true
     statusCheckUrl: http://10.0.70.164:4087/health
@@ -248,9 +248,9 @@ sections:
     - keys
     - security
   - title: Mobile & Tablet PWA Command Deck :4086
-    description: iOS/Android Touch PWA Command Deck • Pools & Quotas, 1-Tap Claude RC Launch, 4xT4 GPU Switcher, Sentinel Quick Heal & All Web UIs (mobile.boylenet.themfboyles.com)
+    description: iOS/Android Touch PWA Command Deck • Pools & Quotas, 1-Tap Claude RC Launch, 4xT4 GPU Switcher, Sentinel Quick Heal & All Web UIs (mobile.boylenet.themfboyles.org)
     icon: fas fa-mobile-alt
-    url: http://mobile.boylenet.themfboyles.com
+    url: http://mobile.boylenet.themfboyles.org
     target: newtab
     statusCheck: true
     statusCheckUrl: http://10.0.70.164:4086/health
@@ -260,9 +260,9 @@ sections:
     - pwa
     - remote-control
   - title: Natural-Language Ops Shell :4089
-    description: Kimi Code CLI + Local 4xT4 NL-to-Ops Translator • Dry-Run Safety Classification (READ-ONLY vs STATE-CHANGE) & 1-Click Verified Playbooks (ops.boylenet.themfboyles.com)
+    description: Kimi Code CLI + Local 4xT4 NL-to-Ops Translator • Dry-Run Safety Classification (READ-ONLY vs STATE-CHANGE) & 1-Click Verified Playbooks (ops.boylenet.themfboyles.org)
     icon: fas fa-terminal
-    url: http://ops.boylenet.themfboyles.com
+    url: http://ops.boylenet.themfboyles.org
     target: newtab
     statusCheck: true
     statusCheckUrl: http://10.0.70.164:4089/health
@@ -272,7 +272,7 @@ sections:
     - kimi
     - playbooks
   - title: Jarvis OS Cockpit :3002
-    description: Fleet Command Nexus • 27-Node Telemetry, GPU Mode Switcher & Swarm Control (jarvis.boylenet.themfboyles.com)
+    description: Fleet Command Nexus • 27-Node Telemetry, GPU Mode Switcher & Swarm Control (jarvis.boylenet.themfboyles.org)
     icon: fas fa-satellite-dish
     url: http://10.0.70.164:3002
     target: newtab
@@ -284,7 +284,7 @@ sections:
     - jarvis
     - controller
   - title: Jarvis Swarm Chat :3003
-    description: 4-Column Real-Time Local LLM Arena & GPU Tier Streaming Studio (chat.boylenet.themfboyles.com)
+    description: 4-Column Real-Time Local LLM Arena & GPU Tier Streaming Studio (chat.boylenet.themfboyles.org)
     icon: fas fa-comments
     url: http://10.0.70.164:3003
     target: newtab
@@ -296,9 +296,9 @@ sections:
     - streaming
     - controller
   - title: LobeChat AI Studio :4095
-    description: 'Sleek GitHub AI Workbench • Tier 1/2/3 Models, DeepSeek <think> & Function Calling • Access Code: boylenet-admin (lobechat.boylenet.themfboyles.com)'
+    description: 'Sleek GitHub AI Workbench • Tier 1/2/3 Models, DeepSeek <think> & Function Calling • Access Code: boylenet-admin (lobechat.boylenet.themfboyles.org)'
     icon: fas fa-magic
-    url: http://lobechat.boylenet.themfboyles.com
+    url: http://lobechat.boylenet.themfboyles.org
     target: newtab
     statusCheck: true
     statusCheckUrl: http://10.0.70.164:4095
@@ -308,9 +308,9 @@ sections:
     - studio
     - harnesses
   - title: OpenCode Web UI :4096
-    description: OpenCode Browser Coding Agent & ACP Server • Connected to 38 LiteLLM & 17 Ollama Models • No Login Required (opencode.boylenet.themfboyles.com)
+    description: OpenCode Browser Coding Agent & ACP Server • Connected to 38 LiteLLM & 17 Ollama Models • No Login Required (opencode.boylenet.themfboyles.org)
     icon: fas fa-terminal
-    url: http://opencode.boylenet.themfboyles.com
+    url: http://opencode.boylenet.themfboyles.org
     target: newtab
     statusCheck: true
     statusCheckUrl: http://10.0.70.164:4096
@@ -320,9 +320,9 @@ sections:
     - harness
     - agent
   - title: OpenClaw Control UI :4097
-    description: 'OpenClaw Gateway & Multi-Agent Control UI • Password / Token: boylenet-admin (openclaw.boylenet.themfboyles.com)'
+    description: 'OpenClaw Gateway & Multi-Agent Control UI • Password / Token: boylenet-admin (openclaw.boylenet.themfboyles.org)'
     icon: fas fa-paw
-    url: http://openclaw.boylenet.themfboyles.com
+    url: http://openclaw.boylenet.themfboyles.org
     target: newtab
     statusCheck: true
     statusCheckUrl: http://10.0.70.164:4097
@@ -332,9 +332,9 @@ sections:
     - harness
     - gateway
   - title: Hybrid Cloud + Local Burst Orchestrator :4090
-    description: $1,000 Free Cloud Session Credits ($250 x Pools A/B/C/D) • Claude Cloud (claude-opus-5-5 / fable-5-1) + OpenAI Codex Cloud (gpt-6.1-sol) + Local 4xT4 GPU Burst (cloud.boylenet.themfboyles.com)
+    description: $1,000 Free Cloud Session Credits ($250 x Pools A/B/C/D) • Claude Cloud (claude-opus-5-5 / fable-5-1) + OpenAI Codex Cloud (gpt-6.1-sol) + Local 4xT4 GPU Burst (cloud.boylenet.themfboyles.org)
     icon: fas fa-cloud-upload-alt
-    url: http://cloud.boylenet.themfboyles.com
+    url: http://cloud.boylenet.themfboyles.org
     target: newtab
     statusCheck: true
     statusCheckUrl: http://10.0.70.164:4090/health
@@ -345,9 +345,9 @@ sections:
     - codex
     - burst
   - title: Gitea Pre-Review & OffSec Red-Team Swarm :4092
-    description: Autonomous Gitea Webhook Receiver • Ruff + Tree-Sitter AST :8095 + Parallel 2-Lens GPU Review (qwen3-coder-30b-a3b & cyberstrike-offsec-35b) (prereview.boylenet.themfboyles.com)
+    description: Autonomous Gitea Webhook Receiver • Ruff + Tree-Sitter AST :8095 + Parallel 2-Lens GPU Review (qwen3-coder-30b-a3b & cyberstrike-offsec-35b) (prereview.boylenet.themfboyles.org)
     icon: fas fa-shield-alt
-    url: http://prereview.boylenet.themfboyles.com
+    url: http://prereview.boylenet.themfboyles.org
     target: newtab
     statusCheck: true
     statusCheckUrl: http://10.0.70.164:4092/health
@@ -358,9 +358,9 @@ sections:
     - security
     - redteam
   - title: Voice, Vision & Multimodal Cockpit :4093
-    description: OpenAI-Compatible STT (Whisper) + Sub-300ms TTS (tts-1/kokoro/piper • jarvis/alloy/nova/echo) + Vision Screenshot-to-Code Studio (voice.boylenet.themfboyles.com)
+    description: OpenAI-Compatible STT (Whisper) + Sub-300ms TTS (tts-1/kokoro/piper • jarvis/alloy/nova/echo) + Vision Screenshot-to-Code Studio (voice.boylenet.themfboyles.org)
     icon: fas fa-microphone-alt
-    url: http://voice.boylenet.themfboyles.com
+    url: http://voice.boylenet.themfboyles.org
     target: newtab
     statusCheck: true
     statusCheckUrl: http://10.0.70.164:4093/health
@@ -372,9 +372,9 @@ sections:
     - stt
     - multimodal
   - title: Deep Research & Dual-Oracle Studio :4094
-    description: Perplexity-Style 3-Stage Research Studio • SearXNG :8888 + Dual-Oracle CDP (.137/.181) + Qdrant :6333 + Cited Synthesis (research.boylenet.themfboyles.com)
+    description: Perplexity-Style 3-Stage Research Studio • SearXNG :8888 + Dual-Oracle CDP (.137/.181) + Qdrant :6333 + Cited Synthesis (research.boylenet.themfboyles.org)
     icon: fas fa-microscope
-    url: http://research.boylenet.themfboyles.com
+    url: http://research.boylenet.themfboyles.org
     target: newtab
     statusCheck: true
     statusCheckUrl: http://10.0.70.164:4094/health
@@ -385,9 +385,9 @@ sections:
     - oracle
     - citations
   - title: Multi-Harness AI Studio :4098 (Hermes / DeepSeek / OpenRouter)
-    description: Hermes Agent • DeepSeek <think> • OpenRouter Local • OpenCode • OpenClaw Studio (40 Roles, Effort, Context & Live tmux Launcher) (harnesses.boylenet.themfboyles.com)
+    description: Hermes Agent • DeepSeek <think> • OpenRouter Local • OpenCode • OpenClaw Studio (40 Roles, Effort, Context & Live tmux Launcher) (harnesses.boylenet.themfboyles.org)
     icon: fas fa-layer-group
-    url: http://harnesses.boylenet.themfboyles.com
+    url: http://harnesses.boylenet.themfboyles.org
     target: newtab
     statusCheck: true
     statusCheckUrl: http://10.0.70.164:4098
@@ -398,9 +398,9 @@ sections:
     - openrouter
     - harnesses
   - title: Infra Sentinel Self-Healer :4099
-    description: Zero-LLM-Token Autonomous 83-Service Health Matrix & 2-Strike Automatic Self-Healing Daemon (sentinel.boylenet.themfboyles.com)
+    description: Zero-LLM-Token Autonomous 83-Service Health Matrix & 2-Strike Automatic Self-Healing Daemon (sentinel.boylenet.themfboyles.org)
     icon: fas fa-shield-virus
-    url: http://sentinel.boylenet.themfboyles.com
+    url: http://sentinel.boylenet.themfboyles.org
     target: newtab
     statusCheck: true
     statusCheckUrl: http://10.0.70.164:4099/health
@@ -410,7 +410,7 @@ sections:
     - self-healing
     - monitoring
   - title: OpenWebUI Controller :8090
-    description: Primary AI Chat Studio on Controller • 60 Models (38 LiteLLM + 17 Ollama + 5 Custom) (openwebui.boylenet.themfboyles.com)
+    description: Primary AI Chat Studio on Controller • 60 Models (38 LiteLLM + 17 Ollama + 5 Custom) (openwebui.boylenet.themfboyles.org)
     icon: fas fa-robot
     url: http://10.0.70.164:8090
     target: newtab
@@ -422,7 +422,7 @@ sections:
     - chat
     - controller
   - title: OpenWebUI AI Vault A .72:8080
-    description: AI Vault A (ai-srv01) OpenWebUI Workspace • 45 Connected Fleet & Local Models (ai-webui.boylenet.themfboyles.com)
+    description: AI Vault A (ai-srv01) OpenWebUI Workspace • 45 Connected Fleet & Local Models (ai-webui.boylenet.themfboyles.org)
     icon: fas fa-microchip
     url: http://10.0.70.72:8080
     target: newtab
@@ -444,9 +444,9 @@ sections:
     - openwebui
     - satellite
   - title: LiteLLM Proxy Admin .164:4000/ui
-    description: 'Controller Unified LLM Gateway Admin Dashboard (PostgreSQL Connected) • Login: admin / boylenet-admin (litellm.boylenet.themfboyles.com/ui)'
+    description: 'Controller Unified LLM Gateway Admin Dashboard (PostgreSQL Connected) • Login: admin / boylenet-admin (litellm.boylenet.themfboyles.org/ui)'
     icon: fas fa-sliders-h
-    url: http://litellm.boylenet.themfboyles.com/ui
+    url: http://litellm.boylenet.themfboyles.org/ui
     target: newtab
     hotkey: 5
     statusCheck: true
@@ -457,7 +457,7 @@ sections:
     - gateway
     - admin
   - title: LiteLLM Swagger API .164:4000
-    description: 'Controller LiteLLM OpenAPI 3.1 Swagger Playground & /v1/models Catalog • API Key: sk-fleet-local (litellm.boylenet.themfboyles.com)'
+    description: 'Controller LiteLLM OpenAPI 3.1 Swagger Playground & /v1/models Catalog • API Key: sk-fleet-local (litellm.boylenet.themfboyles.org)'
     icon: fas fa-code
     url: http://10.0.70.164:4000
     target: newtab
@@ -468,7 +468,7 @@ sections:
     - openapi
     - swagger
   - title: LiteLLM Satellite .228:4000/ui
-    description: 'ai-ollama01 High-Throughput LiteLLM Proxy Admin UI (PostgreSQL Connected) • Login: admin / boylenet-admin (litellm-228.boylenet.themfboyles.com/ui)'
+    description: 'ai-ollama01 High-Throughput LiteLLM Proxy Admin UI (PostgreSQL Connected) • Login: admin / boylenet-admin (litellm-228.boylenet.themfboyles.org/ui)'
     icon: fas fa-random
     url: http://10.0.70.228:4000/ui
     target: newtab
@@ -478,7 +478,7 @@ sections:
     - litellm
     - satellite
   - title: GPU Orchestrator API :4010/status
-    description: Dynamic 4-GPU Mode & Tier Orchestrator Live Telemetry JSON (orchestrator.boylenet.themfboyles.com/status)
+    description: Dynamic 4-GPU Mode & Tier Orchestrator Live Telemetry JSON (orchestrator.boylenet.themfboyles.org/status)
     icon: fas fa-bolt
     url: http://10.0.70.164:4010/status
     target: newtab
@@ -604,9 +604,9 @@ sections:
     collapsed: false
   items:
   - title: Physical Rack, iLO4/5 & vSAN Matrix :4091
-    description: HPE iLO4/iLO5 Thermal & Power (10.0.10.10/20/30/40/252) • vSphere vc04 ESXi 01..04 • 11 vSAN DGs • 4x Tesla T4 GPUs (hardware.boylenet.themfboyles.com)
+    description: HPE iLO4/iLO5 Thermal & Power (10.0.10.10/20/30/40/252) • vSphere vc04 ESXi 01..04 • 11 vSAN DGs • 4x Tesla T4 GPUs (hardware.boylenet.themfboyles.org)
     icon: fas fa-server
-    url: http://hardware.boylenet.themfboyles.com
+    url: http://hardware.boylenet.themfboyles.org
     target: newtab
     statusCheck: true
     statusCheckUrl: http://10.0.70.164:4091/health
@@ -618,7 +618,7 @@ sections:
     - t4
     - telemetry
   - title: Grafana Dashboards :3001
-    description: Fleet Infrastructure Telemetry, GPU Sensors & cAdvisor Dashboards (grafana.boylenet.themfboyles.com)
+    description: Fleet Infrastructure Telemetry, GPU Sensors & cAdvisor Dashboards (grafana.boylenet.themfboyles.org)
     icon: fas fa-chart-area
     url: http://10.0.70.164:3001
     target: newtab
@@ -629,7 +629,7 @@ sections:
     - grafana
     - metrics
   - title: Prometheus Metrics :9090
-    description: Time-Series PromQL Query Engine & 27-Node Target Scraper (prometheus.boylenet.themfboyles.com)
+    description: Time-Series PromQL Query Engine & 27-Node Target Scraper (prometheus.boylenet.themfboyles.org)
     icon: fas fa-database
     url: http://10.0.70.164:9090/graph
     target: newtab
@@ -640,7 +640,7 @@ sections:
     - prometheus
     - promql
   - title: Alertmanager :9093
-    description: Prometheus Alert Routing, GPU Thermal Triggers & Silence Manager (alertmanager.boylenet.themfboyles.com)
+    description: Prometheus Alert Routing, GPU Thermal Triggers & Silence Manager (alertmanager.boylenet.themfboyles.org)
     icon: fas fa-bell
     url: http://10.0.70.164:9093
     target: newtab
@@ -650,7 +650,7 @@ sections:
     - alerts
     - prometheus
   - title: Langfuse LLM Observability .228:3000
-    description: LLM Trace Logging, Prompt Telemetry & Cost Analytics on ai-ollama01 (langfuse.boylenet.themfboyles.com)
+    description: LLM Trace Logging, Prompt Telemetry & Cost Analytics on ai-ollama01 (langfuse.boylenet.themfboyles.org)
     icon: fas fa-eye
     url: http://10.0.70.228:3000
     target: newtab
@@ -660,7 +660,7 @@ sections:
     - tracing
     - langfuse
   - title: cAdvisor Container Telemetry :8085
-    description: Real-Time Container CPU, Memory, Filesystem & Subcontainer Isolation Gauges (cadvisor.boylenet.themfboyles.com)
+    description: Real-Time Container CPU, Memory, Filesystem & Subcontainer Isolation Gauges (cadvisor.boylenet.themfboyles.org)
     icon: fab fa-docker
     url: http://10.0.70.164:8085/containers/
     target: newtab
@@ -698,7 +698,7 @@ sections:
     collapsed: false
   items:
   - title: Gitea Code Hosting :3000
-    description: Self-Hosted Git Service, CI Repositories & Mirror Hub (gitea.boylenet.themfboyles.com)
+    description: Self-Hosted Git Service, CI Repositories & Mirror Hub (gitea.boylenet.themfboyles.org)
     icon: fab fa-git-alt
     url: http://10.0.70.164:3000
     target: newtab
@@ -709,7 +709,7 @@ sections:
     - gitea
     - devops
   - title: Code-Server Web VSCode :8443
-    description: Browser-Based VS Code IDE Workbench on Controller (codeserver.boylenet.themfboyles.com)
+    description: Browser-Based VS Code IDE Workbench on Controller (codeserver.boylenet.themfboyles.org)
     icon: fas fa-laptop-code
     url: http://10.0.70.164:8443
     target: newtab
@@ -721,7 +721,7 @@ sections:
     - vscode
     - dev
   - title: SearXNG Meta-Search :8888
-    description: Privacy-Respecting Local Developer Metasearch Engine (searxng.boylenet.themfboyles.com)
+    description: Privacy-Respecting Local Developer Metasearch Engine (searxng.boylenet.themfboyles.org)
     icon: fas fa-search
     url: http://10.0.70.164:8888
     target: newtab
@@ -731,7 +731,7 @@ sections:
     - searxng
     - web
   - title: DevDocs API Reference :8088
-    description: Offline API Documentation Browser with 774+ Indexed Language/Framework Docsets (devdocs.boylenet.themfboyles.com)
+    description: Offline API Documentation Browser with 774+ Indexed Language/Framework Docsets (devdocs.boylenet.themfboyles.org)
     icon: fas fa-book
     url: http://10.0.70.164:8088
     target: newtab
@@ -741,7 +741,7 @@ sections:
     - devdocs
     - reference
   - title: Tree-Sitter AST Server :8095/health
-    description: Multi-Threaded ast-grep v0.45.3 Structural Code Search & Slicing Service (treesitter.boylenet.themfboyles.com/health)
+    description: Multi-Threaded ast-grep v0.45.3 Structural Code Search & Slicing Service (treesitter.boylenet.themfboyles.org/health)
     icon: fas fa-sitemap
     url: http://10.0.70.164:8095/health
     target: newtab
@@ -751,7 +751,7 @@ sections:
     - treesitter
     - code-search
   - title: Qdrant Vector DB .125:6333/dashboard
-    description: High-Speed Vector Similarity Search & Embeddings Collections Web UI (qdrant.boylenet.themfboyles.com/dashboard)
+    description: High-Speed Vector Similarity Search & Embeddings Collections Web UI (qdrant.boylenet.themfboyles.org/dashboard)
     icon: fas fa-braille
     url: http://10.0.70.125:6333/dashboard
     target: newtab
@@ -761,7 +761,7 @@ sections:
     - qdrant
     - rag
   - title: Elasticsearch :9200
-    description: Full-Text Search & Log Indexing Engine REST Endpoint (elastic.boylenet.themfboyles.com)
+    description: Full-Text Search & Log Indexing Engine REST Endpoint (elastic.boylenet.themfboyles.org)
     icon: fas fa-search-plus
     url: http://10.0.70.164:9200
     target: newtab
@@ -771,7 +771,7 @@ sections:
     - elasticsearch
     - logs
   - title: MinIO Object Storage Console :9001
-    description: S3-Compatible Object Storage Browser for bd-traces & Artifacts (minio.boylenet.themfboyles.com)
+    description: S3-Compatible Object Storage Browser for bd-traces & Artifacts (minio.boylenet.themfboyles.org)
     icon: fas fa-hdd
     url: http://10.0.70.164:9001
     target: newtab
@@ -810,7 +810,7 @@ sections:
     - docker
     - oci
   - title: Verdaccio npm Registry :4873
-    description: Local Node.js / npm Package Cache & Private Registry Portal (verdaccio.boylenet.themfboyles.com)
+    description: Local Node.js / npm Package Cache & Private Registry Portal (verdaccio.boylenet.themfboyles.org)
     icon: fab fa-npm
     url: http://10.0.70.164:4873
     target: newtab
@@ -820,7 +820,7 @@ sections:
     - npm
     - verdaccio
   - title: devpi PyPI Index :3141
-    description: Local Python Wheel & PyPI Mirror Server Web UI (devpi.boylenet.themfboyles.com)
+    description: Local Python Wheel & PyPI Mirror Server Web UI (devpi.boylenet.themfboyles.org)
     icon: fab fa-python
     url: http://10.0.70.164:3141
     target: newtab
@@ -830,7 +830,7 @@ sections:
     - pypi
     - python
   - title: apt-cacher-ng Debian Cache :3142/acng-report.html
-    description: Debian/Ubuntu APT Package Proxy Cache & Transfer Statistics Report (acng.boylenet.themfboyles.com/acng-report.html)
+    description: Debian/Ubuntu APT Package Proxy Cache & Transfer Statistics Report (acng.boylenet.themfboyles.org/acng-report.html)
     icon: fab fa-ubuntu
     url: http://10.0.70.164:3142/acng-report.html
     target: newtab
@@ -848,7 +848,7 @@ sections:
     collapsed: false
   items:
   - title: Controller noVNC Desktop .164:6080/vnc.html
-    description: HTML5 Websockify VNC Remote Desktop on Controller 10.0.70.164 (novnc.boylenet.themfboyles.com/vnc.html)
+    description: HTML5 Websockify VNC Remote Desktop on Controller 10.0.70.164 (novnc.boylenet.themfboyles.org/vnc.html)
     icon: fas fa-tv
     url: http://10.0.70.164:6080/vnc.html
     target: newtab
@@ -897,15 +897,15 @@ sections:
     collapsed: false
   items:
   - title: Physical Rack, iLO4/5 & vSAN Matrix :4091
-    description: HPE iLO4/iLO5 Thermal & Power (10.0.10.10/20/30/40/252) • vSphere vc04 ESXi 01..04 • 11 vSAN DGs • 4x Tesla T4 GPUs (hardware.boylenet.themfboyles.com)
+    description: HPE iLO4/iLO5 Thermal & Power (10.0.10.10/20/30/40/252) • vSphere vc04 ESXi 01..04 • 11 vSAN DGs • 4x Tesla T4 GPUs (hardware.boylenet.themfboyles.org)
     icon: fas fa-server
-    url: http://hardware.boylenet.themfboyles.com
+    url: http://hardware.boylenet.themfboyles.org
     target: newtab
     statusCheck: true
     statusCheckUrl: http://10.0.70.164:4091/health
     tags: *id001
   - title: vSphere Client VC04 https://10.0.20.70/ui
-    description: VMware vCenter Server Appliance (vc04.boylenet.themfboyles.com) • 4-Host Cluster Datacenter Control
+    description: VMware vCenter Server Appliance (vc04.boylenet.themfboyles.org) • 4-Host Cluster Datacenter Control
     icon: fas fa-cloud
     url: https://10.0.20.70/ui
     target: newtab
@@ -915,7 +915,7 @@ sections:
     - vcenter
     - vsphere
   - title: ESXi01 Host UI https://10.0.20.41/ui
-    description: VMware ESXi 8.0 Hypervisor Host 01 (esxi01.boylenet.themfboyles.com • 10.0.20.41)
+    description: VMware ESXi 8.0 Hypervisor Host 01 (esxi01.boylenet.themfboyles.org • 10.0.20.41)
     icon: fas fa-server
     url: https://10.0.20.41/ui
     target: newtab
@@ -925,7 +925,7 @@ sections:
     - esxi
     - hypervisor
   - title: ESXi02 Host UI https://10.0.20.42/ui
-    description: VMware ESXi 8.0 Hypervisor Host 02 (esxi02.boylenet.themfboyles.com • 10.0.20.42)
+    description: VMware ESXi 8.0 Hypervisor Host 02 (esxi02.boylenet.themfboyles.org • 10.0.20.42)
     icon: fas fa-server
     url: https://10.0.20.42/ui
     target: newtab
@@ -935,7 +935,7 @@ sections:
     - esxi
     - hypervisor
   - title: ESXi03 Host UI https://10.0.20.43/ui
-    description: VMware ESXi 8.0 Hypervisor Host 03 (esxi03.boylenet.themfboyles.com • 10.0.20.43 • Xeon Platinum 8164 52C)
+    description: VMware ESXi 8.0 Hypervisor Host 03 (esxi03.boylenet.themfboyles.org • 10.0.20.43 • Xeon Platinum 8164 52C)
     icon: fas fa-server
     url: https://10.0.20.43/ui
     target: newtab
@@ -945,7 +945,7 @@ sections:
     - esxi
     - hypervisor
   - title: ESXi04 Host UI https://10.0.20.44/ui
-    description: VMware ESXi 8.0 Hypervisor Host 04 (esxi04.boylenet.themfboyles.com • 10.0.20.44 • Xeon Platinum 8170 52C + 4x T4)
+    description: VMware ESXi 8.0 Hypervisor Host 04 (esxi04.boylenet.themfboyles.org • 10.0.20.44 • Xeon Platinum 8170 52C + 4x T4)
     icon: fas fa-server
     url: https://10.0.20.44/ui
     target: newtab
@@ -955,7 +955,7 @@ sections:
     - esxi
     - hypervisor
   - title: ESXi01 HPE iLO4 https://10.0.10.10
-    description: HPE Integrated Lights-Out 4 Baseboard Management Controller for ESXi01 (ilom-10.boylenet.themfboyles.com)
+    description: HPE Integrated Lights-Out 4 Baseboard Management Controller for ESXi01 (ilom-10.boylenet.themfboyles.org)
     icon: fas fa-thermometer-half
     url: https://10.0.10.10
     target: newtab
@@ -965,7 +965,7 @@ sections:
     - bmc
     - hardware
   - title: ESXi02 HPE iLO4 https://10.0.10.20
-    description: HPE Integrated Lights-Out 4 Baseboard Management Controller for ESXi02 (ilom-20.boylenet.themfboyles.com)
+    description: HPE Integrated Lights-Out 4 Baseboard Management Controller for ESXi02 (ilom-20.boylenet.themfboyles.org)
     icon: fas fa-thermometer-half
     url: https://10.0.10.20
     target: newtab
@@ -975,7 +975,7 @@ sections:
     - bmc
     - hardware
   - title: ESXi04 HPE iLO4 https://10.0.10.40
-    description: HPE Integrated Lights-Out 4 Baseboard Management Controller for ESXi04 (ilom-40.boylenet.themfboyles.com)
+    description: HPE Integrated Lights-Out 4 Baseboard Management Controller for ESXi04 (ilom-40.boylenet.themfboyles.org)
     icon: fas fa-thermometer-half
     url: https://10.0.10.40
     target: newtab
@@ -985,7 +985,7 @@ sections:
     - bmc
     - hardware
   - title: HPE iLO4 .252 https://10.0.10.252
-    description: HPE ProLiant DL360 Gen9 iLO4 Management Interface (ilom-252.boylenet.themfboyles.com • 10.0.10.252)
+    description: HPE ProLiant DL360 Gen9 iLO4 Management Interface (ilom-252.boylenet.themfboyles.org • 10.0.10.252)
     icon: fas fa-wrench
     url: https://10.0.10.252
     target: newtab
@@ -1003,7 +1003,7 @@ sections:
     collapsed: false
   items:
   - title: UniFi OS Gateway https://10.0.70.1
-    description: Ubiquiti UniFi OS Console, VLAN 10/20/70 Routing & Authoritative DNS Manager (unifi.boylenet.themfboyles.com)
+    description: Ubiquiti UniFi OS Console, VLAN 10/20/70 Routing & Authoritative DNS Manager (unifi.boylenet.themfboyles.org)
     icon: fas fa-shield-alt
     url: https://10.0.70.1
     target: newtab
@@ -1014,7 +1014,7 @@ sections:
     - dns
     - network
   - title: USW Pro Aggregation 280G Spine 10.0.10.111
-    description: Ubiquiti UniFi Switch Pro Aggregation 28-Port 10G / 4-Port 25G L3 Core Spine (usw-pro-agg.boylenet.themfboyles.com)
+    description: Ubiquiti UniFi Switch Pro Aggregation 28-Port 10G / 4-Port 25G L3 Core Spine (usw-pro-agg.boylenet.themfboyles.org)
     icon: fas fa-exchange-alt
     url: https://10.0.70.1
     target: newtab
@@ -1025,7 +1025,7 @@ sections:
     - 10gbe
     - spine
   - title: USW Pro 8 PoE 10.0.10.182
-    description: Ubiquiti UniFi Switch Pro 8 PoE Managed Access Switch (usw-pro-8.boylenet.themfboyles.com • 10.0.10.182)
+    description: Ubiquiti UniFi Switch Pro 8 PoE Managed Access Switch (usw-pro-8.boylenet.themfboyles.org • 10.0.10.182)
     icon: fas fa-ethernet
     url: https://10.0.70.1
     target: newtab
@@ -1042,70 +1042,70 @@ sections:
     cols: 3
     collapsed: false
   items:
-  - title: dashy.boylenet.themfboyles.com
+  - title: dashy.boylenet.themfboyles.org
     description: Port 80 DNS VirtualHost -> Dashy Command Nexus (10.0.70.164:4080) • Also portal.* / dashboard.*
     icon: fas fa-compass
-    url: http://dashy.boylenet.themfboyles.com
+    url: http://dashy.boylenet.themfboyles.org
     target: newtab
     statusCheck: false
     tags:
     - dns
     - traefik
     - portal
-  - title: jarvis.boylenet.themfboyles.com
+  - title: jarvis.boylenet.themfboyles.org
     description: Port 80 DNS VirtualHost -> Jarvis OS Fleet Cockpit (10.0.70.164:3002) • Also cockpit.*
     icon: fas fa-satellite
-    url: http://jarvis.boylenet.themfboyles.com
+    url: http://jarvis.boylenet.themfboyles.org
     target: newtab
     statusCheck: false
     tags:
     - dns
     - traefik
     - jarvis
-  - title: chat.boylenet.themfboyles.com
+  - title: chat.boylenet.themfboyles.org
     description: Port 80 DNS VirtualHost -> Jarvis Swarm Chat 4-Column Arena (10.0.70.164:3003)
     icon: fas fa-comments
-    url: http://chat.boylenet.themfboyles.com
+    url: http://chat.boylenet.themfboyles.org
     target: newtab
     statusCheck: false
     tags:
     - dns
     - traefik
     - chat
-  - title: lobechat.boylenet.themfboyles.com
+  - title: lobechat.boylenet.themfboyles.org
     description: 'Port 80 DNS VirtualHost -> LobeChat AI Studio (10.0.70.164:4095) • Access Code: boylenet-admin'
     icon: fas fa-magic
-    url: http://lobechat.boylenet.themfboyles.com
+    url: http://lobechat.boylenet.themfboyles.org
     target: newtab
     statusCheck: false
     tags:
     - dns
     - traefik
     - lobechat
-  - title: opencode.boylenet.themfboyles.com
+  - title: opencode.boylenet.themfboyles.org
     description: Port 80 DNS VirtualHost -> OpenCode Web Coding Agent (10.0.70.164:4096) • No Login Required
     icon: fas fa-terminal
-    url: http://opencode.boylenet.themfboyles.com
+    url: http://opencode.boylenet.themfboyles.org
     target: newtab
     statusCheck: false
     tags:
     - dns
     - traefik
     - opencode
-  - title: openclaw.boylenet.themfboyles.com
+  - title: openclaw.boylenet.themfboyles.org
     description: 'Port 80 DNS VirtualHost -> OpenClaw Gateway Control UI (10.0.70.164:4097) • Token: boylenet-admin'
     icon: fas fa-paw
-    url: http://openclaw.boylenet.themfboyles.com
+    url: http://openclaw.boylenet.themfboyles.org
     target: newtab
     statusCheck: false
     tags:
     - dns
     - traefik
     - openclaw
-  - title: prereview.boylenet.themfboyles.com
+  - title: prereview.boylenet.themfboyles.org
     description: Port 80 DNS VirtualHost -> Gitea Pre-Review & OffSec Red-Team Swarm (10.0.70.164:4092)
     icon: fas fa-shield-alt
-    url: http://prereview.boylenet.themfboyles.com
+    url: http://prereview.boylenet.themfboyles.org
     target: newtab
     statusCheck: false
     tags:
@@ -1113,10 +1113,10 @@ sections:
     - traefik
     - prereview
     - gitea
-  - title: voice.boylenet.themfboyles.com
+  - title: voice.boylenet.themfboyles.org
     description: Port 80 DNS VirtualHost -> Unified Voice, Vision & Multimodal Cockpit Bridge (10.0.70.164:4093) • Also multimodal.*
     icon: fas fa-microphone-alt
-    url: http://voice.boylenet.themfboyles.com
+    url: http://voice.boylenet.themfboyles.org
     target: newtab
     statusCheck: false
     tags:
@@ -1124,100 +1124,100 @@ sections:
     - traefik
     - voice
     - multimodal
-  - title: harnesses.boylenet.themfboyles.com
+  - title: harnesses.boylenet.themfboyles.org
     description: Port 80 DNS VirtualHost -> Multi-Harness AI Studio (10.0.70.164:4098) • Also hermes.* / deepseek.* / openrouter.*
     icon: fas fa-layer-group
-    url: http://harnesses.boylenet.themfboyles.com
+    url: http://harnesses.boylenet.themfboyles.org
     target: newtab
     statusCheck: false
     tags:
     - dns
     - traefik
     - harnesses
-  - title: sentinel.boylenet.themfboyles.com
+  - title: sentinel.boylenet.themfboyles.org
     description: Port 80 DNS VirtualHost -> Infra Sentinel 83-Service Self-Healer (10.0.70.164:4099)
     icon: fas fa-shield-virus
-    url: http://sentinel.boylenet.themfboyles.com
+    url: http://sentinel.boylenet.themfboyles.org
     target: newtab
     statusCheck: false
     tags:
     - dns
     - traefik
     - sentinel
-  - title: openwebui.boylenet.themfboyles.com
+  - title: openwebui.boylenet.themfboyles.org
     description: Port 80 DNS VirtualHost -> Controller OpenWebUI 60-Model Studio (10.0.70.164:8090)
     icon: fas fa-robot
-    url: http://openwebui.boylenet.themfboyles.com
+    url: http://openwebui.boylenet.themfboyles.org
     target: newtab
     statusCheck: false
     tags:
     - dns
     - traefik
     - openwebui
-  - title: litellm.boylenet.themfboyles.com/ui
+  - title: litellm.boylenet.themfboyles.org/ui
     description: 'Port 80 DNS VirtualHost -> LiteLLM Unified Proxy Admin UI (10.0.70.164:4000/ui) • Login: admin / boylenet-admin'
     icon: fas fa-sliders-h
-    url: http://litellm.boylenet.themfboyles.com/ui
+    url: http://litellm.boylenet.themfboyles.org/ui
     target: newtab
     statusCheck: false
     tags:
     - dns
     - traefik
     - litellm
-  - title: litellm-228.boylenet.themfboyles.com/ui
+  - title: litellm-228.boylenet.themfboyles.org/ui
     description: 'Port 80 DNS VirtualHost -> Satellite LiteLLM Admin UI (10.0.70.228:4000/ui) • Login: admin / boylenet-admin'
     icon: fas fa-random
-    url: http://litellm-228.boylenet.themfboyles.com/ui
+    url: http://litellm-228.boylenet.themfboyles.org/ui
     target: newtab
     statusCheck: false
     tags:
     - dns
     - traefik
     - litellm
-  - title: grafana.boylenet.themfboyles.com
+  - title: grafana.boylenet.themfboyles.org
     description: Port 80 DNS VirtualHost -> Grafana v13 Telemetry Dashboards (10.0.70.164:3001)
     icon: fas fa-chart-pie
-    url: http://grafana.boylenet.themfboyles.com
+    url: http://grafana.boylenet.themfboyles.org
     target: newtab
     statusCheck: false
     tags:
     - dns
     - traefik
     - grafana
-  - title: gitea.boylenet.themfboyles.com
+  - title: gitea.boylenet.themfboyles.org
     description: Port 80 DNS VirtualHost -> Gitea Git Hosting (10.0.70.164:3000) • Also git.*
     icon: fas fa-code-branch
-    url: http://gitea.boylenet.themfboyles.com
+    url: http://gitea.boylenet.themfboyles.org
     target: newtab
     statusCheck: false
     tags:
     - dns
     - traefik
     - gitea
-  - title: codeserver.boylenet.themfboyles.com
+  - title: codeserver.boylenet.themfboyles.org
     description: Port 80 DNS VirtualHost -> Code-Server Browser VSCode IDE (10.0.70.164:8443) • Also ide.*
     icon: fas fa-terminal
-    url: http://codeserver.boylenet.themfboyles.com
+    url: http://codeserver.boylenet.themfboyles.org
     target: newtab
     statusCheck: false
     tags:
     - dns
     - traefik
     - ide
-  - title: searxng.boylenet.themfboyles.com
+  - title: searxng.boylenet.themfboyles.org
     description: Port 80 DNS VirtualHost -> SearXNG Meta-Search (10.0.70.164:8888) • Also search.*
     icon: fas fa-search
-    url: http://searxng.boylenet.themfboyles.com
+    url: http://searxng.boylenet.themfboyles.org
     target: newtab
     statusCheck: false
     tags:
     - dns
     - traefik
     - search
-  - title: hardware.boylenet.themfboyles.com
+  - title: hardware.boylenet.themfboyles.org
     description: Port 80 DNS VirtualHost -> Physical Rack, HPE iLO4/5, ESXi 01..04 & vSAN Telemetry Matrix (10.0.70.164:4091)
     icon: fas fa-microchip
-    url: http://hardware.boylenet.themfboyles.com
+    url: http://hardware.boylenet.themfboyles.org
     target: newtab
     statusCheck: false
     tags:
@@ -1226,10 +1226,10 @@ sections:
     - hardware
     - ilo
     - vsan
-  - title: vault.boylenet.themfboyles.com
+  - title: vault.boylenet.themfboyles.org
     description: Port 80 DNS VirtualHost -> Unified Credentials, API Key & 27-Node SSH Health Vault (10.0.70.164:4087)
     icon: fas fa-key
-    url: http://vault.boylenet.themfboyles.com
+    url: http://vault.boylenet.themfboyles.org
     target: newtab
     statusCheck: false
     tags:
@@ -1238,10 +1238,10 @@ sections:
     - vault
     - credentials
     - ssh
-  - title: topology.boylenet.themfboyles.com
+  - title: topology.boylenet.themfboyles.org
     description: Port 80 DNS VirtualHost -> 3D/2D Architecture Topology & Live Swarm Visualizer (10.0.70.164:4088)
     icon: fas fa-project-diagram
-    url: http://topology.boylenet.themfboyles.com
+    url: http://topology.boylenet.themfboyles.org
     target: newtab
     statusCheck: false
     tags:
@@ -1249,10 +1249,10 @@ sections:
     - traefik
     - topology
     - 3d
-  - title: mobile.boylenet.themfboyles.com
+  - title: mobile.boylenet.themfboyles.org
     description: Port 80 DNS VirtualHost -> Mobile & Tablet PWA Command Deck (10.0.70.164:4086)
     icon: fas fa-mobile-alt
-    url: http://mobile.boylenet.themfboyles.com
+    url: http://mobile.boylenet.themfboyles.org
     target: newtab
     statusCheck: false
     tags:
@@ -1260,10 +1260,10 @@ sections:
     - traefik
     - mobile
     - pwa
-  - title: ops.boylenet.themfboyles.com
+  - title: ops.boylenet.themfboyles.org
     description: Port 80 DNS VirtualHost -> Natural-Language Ops Shell & Kimi Code Translator (10.0.70.164:4089)
     icon: fas fa-terminal
-    url: http://ops.boylenet.themfboyles.com
+    url: http://ops.boylenet.themfboyles.org
     target: newtab
     statusCheck: false
     tags:
@@ -1271,10 +1271,10 @@ sections:
     - traefik
     - ops
     - kimi
-  - title: cloud.boylenet.themfboyles.com
+  - title: cloud.boylenet.themfboyles.org
     description: Port 80 DNS VirtualHost -> Hybrid Cloud + Local Burst Orchestrator ($1,000 Credit Pool • 10.0.70.164:4090)
     icon: fas fa-cloud-upload-alt
-    url: http://cloud.boylenet.themfboyles.com
+    url: http://cloud.boylenet.themfboyles.org
     target: newtab
     statusCheck: false
     tags:
@@ -1282,10 +1282,10 @@ sections:
     - traefik
     - cloud
     - burst
-  - title: research.boylenet.themfboyles.com
+  - title: research.boylenet.themfboyles.org
     description: Port 80 DNS VirtualHost -> Deep Research & Dual-Oracle Studio (10.0.70.164:4094)
     icon: fas fa-microscope
-    url: http://research.boylenet.themfboyles.com
+    url: http://research.boylenet.themfboyles.org
     target: newtab
     statusCheck: false
     tags:
@@ -1293,10 +1293,10 @@ sections:
     - traefik
     - research
     - oracle
-  - title: os.boylenet.themfboyles.com
+  - title: os.boylenet.themfboyles.org
     description: Port 80 DNS VirtualHost -> Boylenet Unified OS Desktop Shell (10.0.70.164:4085)
     icon: fas fa-desktop
-    url: http://os.boylenet.themfboyles.com
+    url: http://os.boylenet.themfboyles.org
     target: newtab
     statusCheck: false
     tags:
@@ -1304,10 +1304,10 @@ sections:
     - traefik
     - os
     - shell
-  - title: models.boylenet.themfboyles.com
+  - title: models.boylenet.themfboyles.org
     description: Port 80 DNS VirtualHost -> 86-Model AI Vault Storefront (10.0.70.164:4084)
     icon: fas fa-store
-    url: http://models.boylenet.themfboyles.com
+    url: http://models.boylenet.themfboyles.org
     target: newtab
     statusCheck: false
     tags:
@@ -1315,10 +1315,10 @@ sections:
     - traefik
     - models
     - storefront
-  - title: terminal.boylenet.themfboyles.com
+  - title: terminal.boylenet.themfboyles.org
     description: Port 80 DNS VirtualHost -> Multi-Node Web Terminal & Agent TV Wall (10.0.70.164:4083)
     icon: fas fa-tv
-    url: http://terminal.boylenet.themfboyles.com
+    url: http://terminal.boylenet.themfboyles.org
     target: newtab
     statusCheck: false
     tags:
@@ -1326,10 +1326,10 @@ sections:
     - traefik
     - terminal
     - tv-wall
-  - title: sso.boylenet.themfboyles.com
+  - title: sso.boylenet.themfboyles.org
     description: Port 80 DNS VirtualHost -> Zero-Friction SSO, QR Handoff & Root CA Portal (10.0.70.164:4082)
     icon: fas fa-qrcode
-    url: http://sso.boylenet.themfboyles.com
+    url: http://sso.boylenet.themfboyles.org
     target: newtab
     statusCheck: false
     tags:
@@ -1337,10 +1337,10 @@ sections:
     - traefik
     - sso
     - qr
-  - title: ca.boylenet.themfboyles.com
+  - title: ca.boylenet.themfboyles.org
     description: Port 80 DNS VirtualHost -> Boylenet Root CA Trust Certificate Portal (10.0.70.164:4082)
     icon: fas fa-certificate
-    url: http://ca.boylenet.themfboyles.com
+    url: http://ca.boylenet.themfboyles.org
     target: newtab
     statusCheck: false
     tags:
@@ -1348,10 +1348,10 @@ sections:
     - traefik
     - ca
     - tls
-  - title: briefing.boylenet.themfboyles.com
+  - title: briefing.boylenet.themfboyles.org
     description: Port 80 DNS VirtualHost -> Executive Briefing, Universal Search & Cluster Doctor (10.0.70.164:4081)
     icon: fas fa-newspaper
-    url: http://briefing.boylenet.themfboyles.com
+    url: http://briefing.boylenet.themfboyles.org
     target: newtab
     statusCheck: false
     tags:
@@ -1359,10 +1359,10 @@ sections:
     - traefik
     - briefing
     - executive
-  - title: doctor.boylenet.themfboyles.com
+  - title: doctor.boylenet.themfboyles.org
     description: Port 80 DNS VirtualHost -> 1-Click Automated Cluster Doctor & Diagnostic Engine (10.0.70.164:4081)
     icon: fas fa-stethoscope
-    url: http://doctor.boylenet.themfboyles.com
+    url: http://doctor.boylenet.themfboyles.org
     target: newtab
     statusCheck: false
     tags:
@@ -1378,7 +1378,7 @@ sections:
     cols: 3
     collapsed: false
   items:
-  - title: controller.boylenet.themfboyles.com
+  - title: controller.boylenet.themfboyles.org
     description: 10.0.70.164 (hub-mesh01 / test5) • Primary Swarm Controller, Traefik Ingress, Dashy, Jarvis Cockpit & Chat
     icon: fas fa-crown
     url: http://10.0.70.164:3002
@@ -1388,7 +1388,7 @@ sections:
     - node
     - vlan70
     - controller
-  - title: ai.boylenet.themfboyles.com
+  - title: ai.boylenet.themfboyles.org
     description: 10.0.70.72 (ai-srv01) • AI Vault A • 52 vCPUs (2x26C Skylake AVX-512), 320 GB DDR4, 2x Tesla T4 (32GB VRAM)
     icon: fas fa-brain
     url: http://10.0.70.72:8080
@@ -1400,7 +1400,7 @@ sections:
     - vlan70
     - vault-a
     - gpu
-  - title: aidev.boylenet.themfboyles.com
+  - title: aidev.boylenet.themfboyles.org
     description: 10.0.70.83 (wrk-test01 / test) • AI Vault B • 52 vCPUs (2x26C Skylake AVX-512), 386 GB DDR4 MoE Host
     icon: fas fa-warehouse
     url: http://10.0.70.164:3002
@@ -1411,7 +1411,7 @@ sections:
     - vlan70
     - vault-b
     - avx512
-  - title: ai-infer01.boylenet.themfboyles.com
+  - title: ai-infer01.boylenet.themfboyles.org
     description: 10.0.70.125 (ai-infer01) • GPU Inference Node • 48 vCPUs, 576 GB DDR4, 2x Tesla T4 (32GB VRAM) + Qdrant
     icon: fas fa-bolt
     url: http://10.0.70.125:8081
@@ -1423,7 +1423,7 @@ sections:
     - vlan70
     - infer01
     - gpu
-  - title: ai-ollama01.boylenet.themfboyles.com
+  - title: ai-ollama01.boylenet.themfboyles.org
     description: 10.0.70.228 (ai-ollama01) • Satellite AI Node • 64 vCPUs, 448 GB DDR4, LiteLLM :4000, Langfuse :3000, Ollama :11434
     icon: fas fa-rocket
     url: http://10.0.70.228:4000/ui
@@ -1435,7 +1435,7 @@ sections:
     - ollama01
     - satellite
   - title: bd1..bd4 (wrk-bd01..05)
-    description: 10.0.70.50 (bd), .51 (bd1), .52 (bd2), .53 (bd3), .54 (bd4) • Dedicated Builder & Harness Execution Fleet (*.boylenet.themfboyles.com)
+    description: 10.0.70.50 (bd), .51 (bd1), .52 (bd2), .53 (bd3), .54 (bd4) • Dedicated Builder & Harness Execution Fleet (*.boylenet.themfboyles.org)
     icon: fas fa-hammer
     url: http://10.0.70.164:3002
     target: newtab
@@ -1455,7 +1455,7 @@ sections:
     - node
     - vlan70
     - test-workers
-  - title: test3big.boylenet.themfboyles.com
+  - title: test3big.boylenet.themfboyles.org
     description: 10.0.70.82 (wrk-test04) • 64-vCPU High-Concurrency RAG Indexing & Heavy Verification Node
     icon: fas fa-layer-group
     url: http://10.0.70.164:3002
@@ -1476,7 +1476,7 @@ sections:
     - node
     - vlan70
     - spares
-  - title: bittorrent.boylenet.themfboyles.com
+  - title: bittorrent.boylenet.themfboyles.org
     description: 10.0.70.181 (ora-win01) • Windows Chrome CDP Browser Oracle Node 1 (:9222)
     icon: fab fa-windows
     url: http://10.0.70.181:9222/json/version
@@ -1487,7 +1487,7 @@ sections:
     - vlan70
     - oracle
     - bittorrent
-  - title: battlestation.boylenet.themfboyles.com
+  - title: battlestation.boylenet.themfboyles.org
     description: 10.0.10.137 (ora-gpu01) • Windows Chrome CDP Browser Oracle Node 2 (:9222) + Ryzen 9 & RTX 2080 Ti Ollama (:11434)
     icon: fas fa-gamepad
     url: http://10.0.10.137:9222/json/version

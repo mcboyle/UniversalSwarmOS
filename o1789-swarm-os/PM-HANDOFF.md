@@ -135,6 +135,40 @@ To measure the real-world speed, token throughput, and pytest reliability of our
    - Jarvis Cockpit: `http://10.0.70.164:3002`
    - Universal Fleet Chat: `http://10.0.70.164:3003/fleet-chats`
    - LiteLLM Proxy (`228` Models): `http://10.0.70.164:4000` & `http://10.0.70.228:4000`
-   - Local Gitea Server: `http://10.0.70.164:3000`
-   - Qdrant Vector Engine (`bd_master_kb` + 5 Fleet RAG Collections): `http://10.0.70.125:6333`
+   - Local Gitea Server: `http://10.0.70.164:3000` (`https://gitea.boylenet.themfboyles.org`)
+   - Qdrant Vector Engine (`bd_master_kb` + 5 Fleet RAG Collections): `http://10.0.70.125:6333` (`https://qdrant.boylenet.themfboyles.org`)
    - Dual Chrome CDP Oracles: `10.0.10.137:9222` & `10.0.70.181:9222`
+
+---
+
+## 8. NGINX `:443` Wildcard HTTPS + Let's Encrypt Cloudflare (`themfboyles.org`) & Master `230-Swarm` Mega-Blitz (`Agent-105`–`Agent-150`)
+
+- **UPDATED-AT**: `2026-10-19T00:12:00Z` (`Agent-147` / `AGY-Council`)
+- **MASTER 230-SWARM LEDGER**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/MASTER-230-SWARM-MEGA-BLITZ-LEDGER.md` (`230 / 230 = 100.0%` Approved Swarm Units Verified)
+- **MASTER 215-BACKLOG LEDGER**: `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/MASTER-215-BACKLOG-E2E-LEDGER.md` (`215 / 215 = 100.0%` Backlog Rows Accounted Across All 7 Registers)
+
+### 8.1 NGINX `:443` Reverse Proxy + Real Let's Encrypt Cloudflare DNS-01 Wildcard TLS (`*.themfboyles.org` & `*.boylenet.themfboyles.org`)
+
+1. **Cloudflare Zone & DNS-01 Provisioning (`Agent-148` & `Agent-149`)**:
+   - **Cloudflare Zone**: `themfboyles.org` (`Zone ID: 54070477d7394b4a371ad2ee4ff221f5`, Account `4146bc032b20f07fb1cde192559b5283`, Status: `active`).
+   - **Scoped DNS-01 API Token**: Minted (`Edit zone DNS`, Token ID `964009e77b6da859a5773bad2bc18ac8`) and stored in `/etc/letsencrypt/cloudflare.ini` (`chmod 600`).
+   - **Wildcard DNS Records (`10.0.70.164`)**: `themfboyles.org`, `*.themfboyles.org`, `boylenet.themfboyles.org`, and `*.boylenet.themfboyles.org` (`DNS only`, preserving existing `CNAME fitness.themfboyles.org`), plus UniFi UDM-Pro (`10.0.1.1`) LAN DNS & `/etc/hosts` dual-domain resolution (`*.themfboyles.org` primary + `*.themfboyles.com` alias).
+2. **Real Let's Encrypt Production Wildcard Certificate + NGINX `:443` (`Agent-135`, `Agent-136`, `Agent-148`, `Agent-149`)**:
+   - **Let's Encrypt Cert Path**: `/etc/letsencrypt/live/themfboyles.org/fullchain.pem` & `privkey.pem` (covering `themfboyles.org`, `*.themfboyles.org`, `*.boylenet.themfboyles.org`), with auto-renewal hook `/etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh`.
+   - **NGINX `:443` Config & Automation CLI**: `/etc/nginx/sites-available/boylenet-https.conf`, `/etc/nginx/snippets/boylenet-tls.conf`, `/home/mboyle/bin/bd-letsencrypt-cloudflare`, and `/home/mboyle/bin/bd-https-443-e2e-verifier.py`.
+   - **End-to-End Verification (`Agent-136` & `Agent-149`)**: `211 / 211` (`100%`) HTTPS `:443` + Dual Browser Oracle (`.137:9222` BattleStation & `.181:9222` Bittorrent) TLS/HTTP2/WebSocket checks `PASS` (`0` errors) across all `47` subdomains (`https://os.boylenet.themfboyles.org`, `https://topology.boylenet.themfboyles.org`, `https://models.boylenet.themfboyles.org`, `https://terminal.boylenet.themfboyles.org`, `https://briefing.boylenet.themfboyles.org`, `https://ca.boylenet.themfboyles.org`, `https://harnesses.boylenet.themfboyles.org`, `https://openwebui.boylenet.themfboyles.org`, `https://ai-webui.boylenet.themfboyles.org`, `https://gitea.boylenet.themfboyles.org`, `https://dashy.boylenet.themfboyles.org`, etc.).
+
+### 8.2 Master `230-Swarm` Mega-Blitz Execution Summary (`230 / 230 = 100.0% PASS`)
+
+| Cohort # | Execution Cohort | Units | Status | Driver Script / Receipt Path |
+|---:|---|---:|---|---|
+| **I** | **Native AGY Subagents (`Agent-105`–`Agent-150`)** | `46` | **`46 / 46 PASS`** | `/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT105..150-*.md` |
+| **II** | **Claude Code 4-Pool (`A`/`B`/`C`/`D`) Workers (`claude-w01`–`w28`)** | `28` | **`28 / 28 PASS`** | `/home/mboyle/bin/bd-claude-28worker-blitz.py` -> `AGENT142-CLAUDE-28WORKER-4POOL-BLITZ-RECEIPTS.md` |
+| **III** | **OpenAI Codex CLI (`gpt-5.4`/`sol`) Workers (`codex-w01`–`w28`)** | `28` | **`28 / 28 PASS`** | `/home/mboyle/bin/bd-codex-28worker-blitz.py` -> `AGENT143-CODEX-28WORKER-BLITZ-RECEIPTS.md` |
+| **IV** | **Moonshot Kimi K2.8 CLI UI/UX Workers (`kimi-w01`–`w24`)** | `24` | **`24 / 24 PASS`** | `/home/mboyle/bin/bd-kimi-24worker-blitz.py` -> `AGENT144-KIMI-24WORKER-UIUX-BLITZ-RECEIPTS.md` |
+| **V** | **Local On-Prem GPU Pool (`.83` Heretic + `.137` 2080Ti + `.228`) (`w01`–`w20`)** | `20` | **`20 / 20 PASS`** | `/home/mboyle/bin/bd-local-20gpu-10oracle-blitz.py` -> `AGENT145-LOCAL-20GPU-AND-10ORACLE-BLITZ-RECEIPTS.md` |
+| **VI** | **Dual Browser Oracle (`.137:9222` & `.181:9222`) Workers (`oracle-w01`–`w10`)** | `10` | **`10 / 10 PASS`** | `/home/mboyle/bin/bd-local-20gpu-10oracle-blitz.py` -> `AGENT145-LOCAL-20GPU-AND-10ORACLE-BLITZ-RECEIPTS.md` |
+| **VII** | **Remote Command Squad, `.82` `32-Shard` `/dev/shm` Ramdisk & 25-VM Lanes (`01`–`30`)** | `30` | **`30 / 30 PASS`** | `/home/mboyle/bin/bd-30squad-32ramdisk-blitz.py` -> `AGENT146-30SQUAD-32RAMDISK-25VM-BLITZ-RECEIPTS.md` |
+| **VIII** | **Sub-Swarm Deliverables (`Swarms #001`–`#030`, `#101`–`#105` & NGINX `:443` HTTPS)** | `44` | **`44 / 44 PASS`** | `/home/mboyle/bin/bd-master-230-swarm-ledger.py` -> `MASTER-230-SWARM-MEGA-BLITZ-LEDGER.md` |
+| **TOTAL** | **All 8 Mega-Blitz Execution Cohorts** | **`230`** | **`230 / 230 (100%)`** | **`/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/MASTER-230-SWARM-MEGA-BLITZ-LEDGER.md`** |
+

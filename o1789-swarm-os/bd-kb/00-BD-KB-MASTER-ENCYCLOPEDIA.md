@@ -6,7 +6,7 @@
 
 ---
 
-## 1. Master Volume Index (`BD KB` Books 00–05)
+## 1. Master Volume Index (`BD KB` Books 00–06)
 
 | Volume | Native KB ID | Filename | Core Domain |
 |---|---|---|---|
@@ -16,6 +16,7 @@
 | **Vol. 03** | `bd-kb-86-models` | `03-86-MODEL-VAULT-BENCHMARKS-AND-AIRGAP.md` | 86-Model Local AI Vault (`8.9+ TB` across `.72` & `.83`), real-weight `llama-bench` (`b11716`) `pp512`/`tg128` speeds, Category Winners, `bd-airgap` WAN isolation, and `bd-raw-ai` |
 | **Vol. 04** | `bd-kb-fleet-law` | `04-FLEET-LAW-RULES-1-86-AND-O1740-ROUTING.md` | Fleet Law (Rules 1–86), O1740 Dynamic Capability Routing, HUB-GATE (`20%` iowait ceiling, O1741), Rule 22 Anti-Hallucination Shield, Rule 86 Mutation Coverage Severance, and Cut/Train Workflow |
 | **Vol. 05** | `bd-kb-ci-and-uis` | `05-CI-TAXONOMY-RECOVERY-AND-MCP-TOOLS.md` | CI Failure Taxonomy (`BD-CI-01`..`BD-CI-09`), Gridlock Recovery playbooks, 14 Fleet MCP servers (`99` tools), 8 OpenWebUI Pipelines, and 50 Native OpenWebUI Toolkits |
+| **Vol. 06** | `bd-kb-5platform-mods` | `06-5PLATFORM-MCP-MODS-HTTPS-AND-215-LEDGER.md` | 20-Tool `boylenet-infra` MCP Server across 5 platforms, Autonomous Mods 1–5 (`bd-swarm-mod`), 22 Slash Commands/Skills, `.83:18080` `Qwen3.6-Heretic` Coding Pool, NGINX/Cloudflare DNS-01 HTTPS, and `215/215` Reconciled Backlog Ledger |
 
 ---
 

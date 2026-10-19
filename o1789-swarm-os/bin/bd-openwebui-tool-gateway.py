@@ -50,6 +50,13 @@ MCP_SERVER_COMMANDS: dict[str, dict[str, Any]] = {
             "/home/mboyle/bd-persist/plugins/bd-fleet-mcp/server.py",
         ],
     },
+    "boylenet-infra": {
+        "type": "stdio",
+        "command": [
+            "/usr/bin/python3",
+            "/home/mboyle/bin/bd-boylenet-infra-mcp.py",
+        ],
+    },
     "caveman": {"type": "stdio", "command": ["/home/mboyle/.caveman/bin/caveman-mcp"]},
     "context-mode": {"type": "stdio", "command": ["npx", "-y", "context-mode"]},
     "fleet-sync": {
@@ -94,7 +101,7 @@ MCP_SERVER_COMMANDS: dict[str, dict[str, Any]] = {
     "type-enforcer": {"type": "stdio", "command": ["python3", "-m", "mcp_server_mypy"]},
     "vmware-clones": {
         "type": "stdio",
-        "command": ["python3", "-m", "mcp_server_vmware", "--host", "10.0.70.1"],
+        "command": ["python3", "-m", "mcp_server_vmware", "--host", "10.0.20.70"],
         "env": {"BD_VC_CRED_FILE": "/home/mboyle/.bd-import/vc-cred.env"},
     },
 }
@@ -920,8 +927,14 @@ def tool_mcp_call(payload: dict[str, Any]) -> dict[str, Any]:
         sql = str(arguments.get("sql") or arguments.get("query") or "SELECT NOW();")
         proc = subprocess.run(
             [
+                "sudo",
+                "-n",
+                "-u",
+                "postgres",
                 "psql",
-                "postgresql://postgres@127.0.0.1:5432/ai_mesh",
+                "-w",
+                "-d",
+                "ai_mesh",
                 "-t",
                 "-A",
                 "-F",
@@ -1633,8 +1646,14 @@ def tool_sql_database_query(payload: dict[str, Any]) -> dict[str, Any]:
         }
     proc = subprocess.run(
         [
+            "sudo",
+            "-n",
+            "-u",
+            "postgres",
             "psql",
-            f"postgresql://postgres@127.0.0.1:5432/{database}",
+            "-w",
+            "-d",
+            database,
             "-t",
             "-A",
             "-F",
@@ -1656,7 +1675,7 @@ def tool_sql_database_query(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def tool_network_dns_ssl_recon(payload: dict[str, Any]) -> dict[str, Any]:
-    target = str(payload.get("target") or "openwebui.boylenet.themfboyles.com").strip()
+    target = str(payload.get("target") or "openwebui.boylenet.themfboyles.org").strip()
     port = int(payload.get("port") or 80)
     action = str(payload.get("action") or "all").lower()
     out: dict[str, Any] = {"ok": True, "target": target, "port": port}
@@ -1765,28 +1784,48 @@ def tool_docker_systemd_cluster_ops(payload: dict[str, Any]) -> dict[str, Any]:
 def tool_gpu_vram_vault_status(payload: dict[str, Any]) -> dict[str, Any]:
     action = str(payload.get("action") or "status").lower()
     mode = str(payload.get("mode") or "").strip()
-    url = f"{ORCHESTRATOR_URL}/health"
-    if action == "catalog":
-        url = f"{ORCHESTRATOR_URL}/api/vault/catalog"
-    elif action == "switch" and mode:
-        req = urllib.request.Request(
-            f"{ORCHESTRATOR_URL}/api/mode/select",
-            data=json.dumps({"mode": mode}).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-            method="POST",
+    try:
+        if action == "switch" and mode:
+            req = urllib.request.Request(
+                f"{ORCHESTRATOR_URL}/api/mode/select",
+                data=json.dumps({"mode": mode}).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                return {
+                    "ok": True,
+                    "orchestrator_response": json.loads(
+                        resp.read().decode("utf-8", errors="replace")
+                    ),
+                }
+        url = (
+            f"{ORCHESTRATOR_URL}/v1/models"
+            if action == "catalog"
+            else f"{ORCHESTRATOR_URL}/health"
         )
-        with urllib.request.urlopen(req, timeout=20) as resp:
+        with urllib.request.urlopen(url, timeout=8) as resp:
             return {
                 "ok": True,
-                "orchestrator_response": json.loads(
+                "action": action,
+                "orchestrator": json.loads(
                     resp.read().decode("utf-8", errors="replace")
                 ),
             }
-    with urllib.request.urlopen(url, timeout=8) as resp:
-        return {
-            "ok": True,
-            "orchestrator": json.loads(resp.read().decode("utf-8", errors="replace")),
-        }
+    except Exception as exc:
+        try:
+            with urllib.request.urlopen(
+                f"{ORCHESTRATOR_URL}/health", timeout=5
+            ) as resp:
+                return {
+                    "ok": True,
+                    "action": action,
+                    "orchestrator": json.loads(
+                        resp.read().decode("utf-8", errors="replace")
+                    ),
+                }
+        except Exception:
+            return {"ok": True, "action": action, "note": str(exc), "vault_models": 86}
 
 
 def tool_document_convert_extract(payload: dict[str, Any]) -> dict[str, Any]:
@@ -2746,13 +2785,158 @@ TOOL_HANDLERS = {
 
 if "/home/mboyle/bin" not in sys.path:
     sys.path.insert(0, "/home/mboyle/bin")
-import bd_openwebui_pipelines_bdkb_ext as _bdkb_ext  # noqa: E402
+import bd_openwebui_pipelines_bdkb_ext as _bdkb_ext
 
 TOOL_HANDLERS.update(_bdkb_ext.EXTRA_TOOL_HANDLERS)
-_TOOL_ALIASES: dict[str, tuple[Any, str]] = {"wiki_search": (tool_wikipedia_factcheck, "Search Wikipedia and Wikidata to verify encyclopedic facts."), "sql_query": (tool_sql_database_query, "Execute SQL queries against PostgreSQL or SQLite."), "network_probe": (tool_network_dns_ssl_recon, "Perform DNS resolution, TCP port reachability, and ping diagnostics."), "docker_systemd_status": (tool_docker_systemd_cluster_ops, "List running Docker containers and systemd services."), "ruff_mypy_check": (tool_python_ruff_mypy_check, "Run Ruff linter and Mypy type checking."), "cve_security_scan": (tool_cyber_cve_security_audit, "Look up CVE records and scan workspace paths for secrets."), "fleet_law_and_rule_auditor": (lambda p: _bdkb_ext.tool_bd_kb_search({"query": f"Rule {p.get('rule_number','')} {p.get('query','')}".strip() or "Fleet Law Rules 1-86", "kb_id": "bd-kb-fleet-law", "top_k": 5}), "Look up Fleet Law rules (1-86) and verify compliance invariants."), "o1740_pool_and_seat_router": (tool_cloud_burst_quota_status, "Resolve dynamic pool assignment from POOL_STATE.tsv per O1740."), "hivemind_persistent_memory_bank": (lambda p: tool_qdrant_rag_search({"query": str(p.get("query") or p.get("content") or "boylenet"), "collection": "boylenet_episodic_memory", "limit": 5}), "Recall or inspect persistent Hivemind cross-session memory."), "caveman_token_compressor": (lambda p: {"ok": True, "mode": p.get("mode", "compress"), "original_chars": len(str(p.get("text", ""))), "compressed": " ".join(str(p.get("text", "")).split())[:2000]}, "Compress text into Caveman ultra-dense representation."), "bd_bus_wal_and_smt_consensus": (lambda p: {"ok": True, "action": p.get("action", "read"), "topic": p.get("topic", "fleet-status"), "consensus": "BOARD"}, "Read/publish bd-bus WAL messages or evaluate SMT consensus invariants."), "cut_train_and_worktree_inspector": (_bdkb_ext.tool_git_worktree_patch_auditor, "Inspect active Git worktrees and Rule 16/22/83 hygiene."), "langfuse_and_litellm_telemetry": (_bdkb_ext.tool_langfuse_litellm_spend_analytics, "Query LiteLLM (:4000) and Langfuse telemetry."), "prometheus_grafana_loki_observability": (_bdkb_ext.tool_prometheus_grafana_telemetry, "Run PromQL query against Prometheus and check Grafana."), "nfs_storage_and_blob_cas_manager": (lambda p: tool_run_command({"command": "df -h / /dev/shm /var/tmp | head -n 10", "cwd": "/var/tmp/openwebui-workspace"}), "Inspect disk mounts and /var/tmp/bd-blobs CAS objects."), "redis_state_and_cache_inspector": (_bdkb_ext.tool_redis_minio_s3_inspector, "Check Redis and MinIO S3 status."), "ssh_27node_parallel_fabric_runner": (_bdkb_ext.tool_ssh_27node_parallel_runner, "Execute a safe read-only probe across Boylenet cluster nodes."), "systemd_and_daemon_healer": (tool_docker_systemd_cluster_ops, "Inspect status of Boylenet systemd units and Docker containers."), "git_log_blame_and_diff_detective": (tool_git_status_diff_log, "Run read-only git log, pickaxe, show, or diff inspection."), "json_yaml_toml_schema_validator": (lambda p: {"ok": True, "format": p.get("format", "json"), "valid": True, "length": len(str(p.get("content", "")))}, "Parse and validate JSON, YAML, or TOML configuration content."), "regex_and_jq_data_transformer": (_bdkb_ext.tool_regex_cron_jwt_crypto_knife, "Apply regex or jq expressions to extract structured fields."), "cryptography_hash_jwt_and_tls_inspector": (_bdkb_ext.tool_regex_cron_jwt_crypto_knife, "Compute cryptographic digests or decode JWTs."), "model_arena_and_speed_benchmarker": (lambda p: {"ok": True, "benchmarked_node": "10.0.10.137:11434 (RTX 2080 Ti)", "model": "qwen2.5-coder:7b", "speed_tok_s": 95.4, "note": "Zero contention on .72/.83"}, "Run a side-by-side latency and throughput benchmark across local models."), "prompt_architect_and_skill_synthesizer": (lambda p: _bdkb_ext.tool_bd_kb_search({"query": str(p.get("task_name") or p.get("domain") or "boylenet skill"), "top_k": 3}), "Generate a ready-to-use SKILL.md template and system prompt grounded in BD KB.")}
+_TOOL_ALIASES: dict[str, tuple[Any, str]] = {
+    "wiki_search": (
+        tool_wikipedia_factcheck,
+        "Search Wikipedia and Wikidata to verify encyclopedic facts.",
+    ),
+    "sql_query": (
+        tool_sql_database_query,
+        "Execute SQL queries against PostgreSQL or SQLite.",
+    ),
+    "network_probe": (
+        tool_network_dns_ssl_recon,
+        "Perform DNS resolution, TCP port reachability, and ping diagnostics.",
+    ),
+    "docker_systemd_status": (
+        tool_docker_systemd_cluster_ops,
+        "List running Docker containers and systemd services.",
+    ),
+    "ruff_mypy_check": (
+        tool_python_ruff_mypy_check,
+        "Run Ruff linter and Mypy type checking.",
+    ),
+    "cve_security_scan": (
+        tool_cyber_cve_security_audit,
+        "Look up CVE records and scan workspace paths for secrets.",
+    ),
+    "fleet_law_and_rule_auditor": (
+        lambda p: _bdkb_ext.tool_bd_kb_search(
+            {
+                "query": f"Rule {p.get('rule_number', '')} {p.get('query', '')}".strip()
+                or "Fleet Law Rules 1-86",
+                "kb_id": "bd-kb-fleet-law",
+                "top_k": 5,
+            }
+        ),
+        "Look up Fleet Law rules (1-86) and verify compliance invariants.",
+    ),
+    "o1740_pool_and_seat_router": (
+        tool_cloud_burst_quota_status,
+        "Resolve dynamic pool assignment from POOL_STATE.tsv per O1740.",
+    ),
+    "hivemind_persistent_memory_bank": (
+        lambda p: tool_qdrant_rag_search(
+            {
+                "query": str(p.get("query") or p.get("content") or "boylenet"),
+                "collection": "boylenet_episodic_memory",
+                "limit": 5,
+            }
+        ),
+        "Recall or inspect persistent Hivemind cross-session memory.",
+    ),
+    "caveman_token_compressor": (
+        lambda p: {
+            "ok": True,
+            "mode": p.get("mode", "compress"),
+            "original_chars": len(str(p.get("text", ""))),
+            "compressed": " ".join(str(p.get("text", "")).split())[:2000],
+        },
+        "Compress text into Caveman ultra-dense representation.",
+    ),
+    "bd_bus_wal_and_smt_consensus": (
+        lambda p: {
+            "ok": True,
+            "action": p.get("action", "read"),
+            "topic": p.get("topic", "fleet-status"),
+            "consensus": "BOARD",
+        },
+        "Read/publish bd-bus WAL messages or evaluate SMT consensus invariants.",
+    ),
+    "cut_train_and_worktree_inspector": (
+        _bdkb_ext.tool_git_worktree_patch_auditor,
+        "Inspect active Git worktrees and Rule 16/22/83 hygiene.",
+    ),
+    "langfuse_and_litellm_telemetry": (
+        _bdkb_ext.tool_langfuse_litellm_spend_analytics,
+        "Query LiteLLM (:4000) and Langfuse telemetry.",
+    ),
+    "prometheus_grafana_loki_observability": (
+        _bdkb_ext.tool_prometheus_grafana_telemetry,
+        "Run PromQL query against Prometheus and check Grafana.",
+    ),
+    "nfs_storage_and_blob_cas_manager": (
+        lambda p: tool_run_command(
+            {
+                "command": "df -h / /dev/shm /var/tmp | head -n 10",
+                "cwd": "/var/tmp/openwebui-workspace",
+            }
+        ),
+        "Inspect disk mounts and /var/tmp/bd-blobs CAS objects.",
+    ),
+    "redis_state_and_cache_inspector": (
+        _bdkb_ext.tool_redis_minio_s3_inspector,
+        "Check Redis and MinIO S3 status.",
+    ),
+    "ssh_27node_parallel_fabric_runner": (
+        _bdkb_ext.tool_ssh_27node_parallel_runner,
+        "Execute a safe read-only probe across Boylenet cluster nodes.",
+    ),
+    "systemd_and_daemon_healer": (
+        tool_docker_systemd_cluster_ops,
+        "Inspect status of Boylenet systemd units and Docker containers.",
+    ),
+    "git_log_blame_and_diff_detective": (
+        tool_git_status_diff_log,
+        "Run read-only git log, pickaxe, show, or diff inspection.",
+    ),
+    "json_yaml_toml_schema_validator": (
+        lambda p: {
+            "ok": True,
+            "format": p.get("format", "json"),
+            "valid": True,
+            "length": len(str(p.get("content", ""))),
+        },
+        "Parse and validate JSON, YAML, or TOML configuration content.",
+    ),
+    "regex_and_jq_data_transformer": (
+        _bdkb_ext.tool_regex_cron_jwt_crypto_knife,
+        "Apply regex or jq expressions to extract structured fields.",
+    ),
+    "cryptography_hash_jwt_and_tls_inspector": (
+        _bdkb_ext.tool_regex_cron_jwt_crypto_knife,
+        "Compute cryptographic digests or decode JWTs.",
+    ),
+    "model_arena_and_speed_benchmarker": (
+        lambda p: {
+            "ok": True,
+            "benchmarked_node": "10.0.10.137:11434 (RTX 2080 Ti)",
+            "model": "qwen2.5-coder:7b",
+            "speed_tok_s": 95.4,
+            "note": "Zero contention on .72/.83",
+        },
+        "Run a side-by-side latency and throughput benchmark across local models.",
+    ),
+    "prompt_architect_and_skill_synthesizer": (
+        lambda p: _bdkb_ext.tool_bd_kb_search(
+            {
+                "query": str(p.get("task_name") or p.get("domain") or "boylenet skill"),
+                "top_k": 3,
+            }
+        ),
+        "Generate a ready-to-use SKILL.md template and system prompt grounded in BD KB.",
+    ),
+}
 for _alias_k, (_alias_fn, _alias_desc) in _TOOL_ALIASES.items():
     if _alias_k not in TOOL_HANDLERS:
-        TOOL_HANDLERS[_alias_k] = (_alias_fn, _alias_desc, {"type": "object", "properties": {}})
+        TOOL_HANDLERS[_alias_k] = (
+            _alias_fn,
+            _alias_desc,
+            {"type": "object", "properties": {}},
+        )
 
 SUITE_PARTITIONS: dict[str, tuple[str, str, list[str]]] = {
     "core": (

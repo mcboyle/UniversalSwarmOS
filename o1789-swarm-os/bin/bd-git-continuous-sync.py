@@ -14,65 +14,32 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-LOG_PATH = Path("/var/tmp/bd-headless-streams/agent124-master-backlog-and-git-sync.log")
+LOG_PATH = Path("/var/tmp/bd-headless-streams/agent147-230swarm-ledger-and-gitsync.log")
+LOG_PATH_124 = Path("/var/tmp/bd-headless-streams/agent124-master-backlog-and-git-sync.log")
 GIT_REPOS_ROOT = Path("/home/mboyle/git-repos")
 GITEA_BASE = "http://10.0.70.164:3000"
 GITEA_USER = "mboyle"
 GITHUB_USER = "mcboyle"
 
-
 def log(msg: str) -> None:
     ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     line = f"[{ts}] {msg}"
     print(line, flush=True)
-    LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with LOG_PATH.open("a", encoding="utf-8") as f:
-        f.write(line + "\n")
-
+    for lp in (LOG_PATH, LOG_PATH_124):
+        lp.parent.mkdir(parents=True, exist_ok=True)
+        with lp.open("a", encoding="utf-8") as f:
+            f.write(line + "\n")
 
 def load_gitea_token() -> str:
-    for p in (
-        "/home/mboyle/.config/bd/gitea-token-write",
-        "/home/mboyle/.config/bd/gitea-token",
-    ):
+    for p in ("/home/mboyle/.config/bd/gitea-token-write", "/home/mboyle/.config/bd/gitea-token"):
         path = Path(p)
         if path.is_file():
             tok = path.read_text(encoding="utf-8").strip()
             if tok:
                 return tok
-    raise RuntimeError(
-        "No Gitea token found in /home/mboyle/.config/bd/gitea-token-write"
-    )
-
-
+    raise RuntimeError("No Gitea token found in /home/mboyle/.config/bd/gitea-token-write")
 GITEA_TOKEN = load_gitea_token()
-SECRET_REGEXES: list[tuple[str, re.Pattern[str]]] = [
-    ("anthropic_key", re.compile(r"sk-ant-[A-Za-z0-9_\-]{10,}")),
-    ("openai_proj_key", re.compile(r"sk-(?:proj|svcacct)-[A-Za-z0-9_\-]{10,}")),
-    ("openrouter_key", re.compile(r"sk-or-(?:v1-)?[A-Za-z0-9_\-]{10,}")),
-    ("kimi_key", re.compile(r"sk-kimi-[A-Za-z0-9_\-]{10,}")),
-    ("generic_sk_key", re.compile(r"\bsk-[A-Za-z0-9]{24,}\b")),
-    (
-        "github_oauth_pat",
-        re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9_]{16,}|github_pat_[A-Za-z0-9_]{16,})\b"),
-    ),
-    ("google_api_key", re.compile(r"\bAIza[0-9A-Za-z_\-]{25,}\b")),
-    ("google_oauth", re.compile(r"\bGOCSPX-[A-Za-z0-9_\-]{15,}\b")),
-    ("xai_key", re.compile(r"\bxai-[A-Za-z0-9_\-]{16,}\b")),
-    ("hf_token", re.compile(r"\bhf_[A-Za-z0-9]{20,}\b")),
-    ("slack_token", re.compile(r"\bxox[baprs]-[0-9A-Za-z\-]{10,}\b")),
-    ("aws_key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
-    (
-        "private_key_block",
-        re.compile(
-            r"-----BEGIN (?:RSA |OPENSSH |EC |DSA |)?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |OPENSSH |EC |DSA |)?PRIVATE KEY-----"
-        ),
-    ),
-    ("gitea_live_tok", re.compile(re.escape(GITEA_TOKEN))),
-    ("gitea_old_tok", re.compile(r"<REDACTED_BY_BOYLENET_SECRET_GUARD>")),
-    ("webui_jwt_secret_164", re.compile(r"<REDACTED_BY_BOYLENET_SECRET_GUARD>")),
-    ("webui_jwt_secret_72", re.compile(r"<REDACTED_BY_BOYLENET_SECRET_GUARD>")),
-]
+SECRET_REGEXES: list[tuple[str, re.Pattern[str]]] = [("anthropic_key", re.compile(r"sk-ant-[A-Za-z0-9_\-]{10,}")), ("openai_proj_key", re.compile(r"sk-(?:proj|svcacct)-[A-Za-z0-9_\-]{10,}")), ("openrouter_key", re.compile(r"sk-or-(?:v1-)?[A-Za-z0-9_\-]{10,}")), ("kimi_key", re.compile(r"sk-kimi-[A-Za-z0-9_\-]{10,}")), ("generic_sk_key", re.compile(r"\bsk-[A-Za-z0-9]{24,}\b")), ("github_oauth_pat", re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9_]{16,}|github_pat_[A-Za-z0-9_]{16,})\b")), ("google_api_key", re.compile(r"\bAIza[0-9A-Za-z_\-]{25,}\b")), ("google_oauth", re.compile(r"\bGOCSPX-[A-Za-z0-9_\-]{15,}\b")), ("xai_key", re.compile(r"\bxai-[A-Za-z0-9_\-]{16,}\b")), ("hf_token", re.compile(r"\bhf_[A-Za-z0-9]{20,}\b")), ("slack_token", re.compile(r"\bxox[baprs]-[0-9A-Za-z\-]{10,}\b")), ("aws_key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")), ("cloudflare_ini_token", re.compile(r"(dns_cloudflare_api_(?:token|key)\s*=\s*)[^\s#]+")), ("private_key_block", re.compile(r"-----BEGIN (?:RSA |OPENSSH |EC |DSA |)?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |OPENSSH |EC |DSA |)?PRIVATE KEY-----")), ("gitea_live_tok", re.compile(re.escape(GITEA_TOKEN))), ("gitea_old_tok", re.compile(r"<REDACTED_BY_BOYLENET_SECRET_GUARD>")), ("webui_jwt_secret_164", re.compile(r"<REDACTED_BY_BOYLENET_SECRET_GUARD>")), ("webui_jwt_secret_72", re.compile(r"<REDACTED_BY_BOYLENET_SECRET_GUARD>"))]
 
 
 def sanitize_content(text: str) -> tuple[str, int]:
@@ -541,12 +508,13 @@ def build_repo_3_bd_kb_and_receipts() -> dict[str, Any]:
     receipt_count = 0
     infra_up = Path("/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade")
     for src in sorted(infra_up.glob("AGENT*.md")) + sorted(
-        infra_up.glob("MASTER-215-BACKLOG*.md")
+        infra_up.glob("MASTER-*.md")
     ):
         if src.is_file():
             stage_and_sanitize_file(src, repo_dir / "receipts" / src.name)
             receipt_count += 1
     for jname in (
+        "master_230_swarm_mega_blitz_ledger.json",
         "master_215_backlog_ledger.json",
         "O1670-69ROW-RECONCILIATION.json",
         "O1670-69ROW-RECONCILIATION.tsv",
@@ -568,12 +536,16 @@ def build_repo_3_bd_kb_and_receipts() -> dict[str, Any]:
             infra_up / "MASTER-215-BACKLOG-E2E-LEDGER.md",
             "MASTER-215-BACKLOG-E2E-LEDGER.md",
         ),
+        (
+            infra_up / "MASTER-230-SWARM-MEGA-BLITZ-LEDGER.md",
+            "MASTER-230-SWARM-MEGA-BLITZ-LEDGER.md",
+        ),
     ]:
         if doc_src.is_file():
             stage_and_sanitize_file(doc_src, repo_dir / dst_rel)
-    readme = f"""# Boylenet Master Knowledge Base (`BD KB`), 215-Backlog E2E Ledger & O1789 Verification Receipts (`boylenet-bd-kb-and-receipts`)
+    readme = f"""# Boylenet Master Knowledge Base (`BD KB`), 230-Swarm Mega-Blitz Ledger, 215-Backlog E2E Ledger & O1789 Verification Receipts (`boylenet-bd-kb-and-receipts`)
 
-Authoritative 6-Volume Boylenet & BulkDownloader Master Encyclopedia (`bd-kb/`), `MASTER-215-BACKLOG-E2E-LEDGER.md` (`215 / 215 = 100%` accounted across all 7 registers), `{receipt_count}` O1789 Agent Verification Receipts (`receipts/`), `PM-HANDOFF.md`, `WATCHDOG-STATUS.md`, and `CHECKPOINT.md`.
+Authoritative Boylenet & BulkDownloader Master Encyclopedia (`bd-kb/`), `MASTER-230-SWARM-MEGA-BLITZ-LEDGER.md` (`230 / 230 = 100%` swarm units verified), `MASTER-215-BACKLOG-E2E-LEDGER.md` (`215 / 215 = 100%` accounted across all 7 registers), `{receipt_count}` O1789 Agent Verification Receipts (`receipts/`), `PM-HANDOFF.md`, `WATCHDOG-STATUS.md`, and `CHECKPOINT.md`.
 
 - **GitHub Mirror**: `https://github.com/mcboyle/boylenet-bd-kb-and-receipts`
 - **Local Gitea Canonical**: `http://10.0.70.164:3000/mboyle/boylenet-bd-kb-and-receipts`
@@ -582,8 +554,8 @@ Authoritative 6-Volume Boylenet & BulkDownloader Master Encyclopedia (`bd-kb/`),
     return git_commit_and_push(
         repo_dir,
         repo_name,
-        "Boylenet Master 6-Volume Knowledge Base (BD KB), Master 215-Backlog E2E Ledger (100%), O1789 Receipts & PM-HANDOFF",
-        "feat(o1789): add MASTER-215-BACKLOG-E2E-LEDGER.md (215/215=100%) and latest AGENT106..134 verification receipts",
+        "Boylenet Master Knowledge Base (BD KB), Master 230-Swarm Mega-Blitz Ledger (230/230), 215-Backlog Ledger (100%), O1789 Receipts & PM-HANDOFF",
+        "feat(o1789): add MASTER-230-SWARM-MEGA-BLITZ-LEDGER.md (230/230=100%), NGINX :443 HTTPS & AGENT105..150 receipts",
     )
 
 
@@ -603,11 +575,30 @@ def build_repo_4_infra_configs() -> dict[str, Any]:
             Path("/home/mboyle/infra/expansion-layer/dynamic/boylenet-dns-ingress.yml"),
             "traefik/boylenet-dns-ingress.yml",
         ),
+        (
+            Path("/home/mboyle/infra/expansion-layer/dynamic/boylenet-sso-ca.yml"),
+            "traefik/boylenet-sso-ca.yml",
+        ),
         (Path("/home/mboyle/infra/dashy/conf.yml"), "dashy/conf.yml"),
+        (
+            Path("/etc/nginx/sites-available/boylenet-https.conf"),
+            "nginx/boylenet-https.conf",
+        ),
+        (
+            Path("/home/mboyle/bin/bd-letsencrypt-cloudflare"),
+            "nginx/bd-letsencrypt-cloudflare",
+        ),
+        (
+            Path("/home/mboyle/bin/bd-https-443-e2e-verifier.py"),
+            "nginx/bd-https-443-e2e-verifier.py",
+        ),
     ]
     for src, rel in configs:
         if src.is_file():
             stage_and_sanitize_file(src, repo_dir / rel)
+    for ng_conf in sorted(Path("/etc/nginx/conf.d").glob("*.conf")):
+        if ng_conf.is_file():
+            stage_and_sanitize_file(ng_conf, repo_dir / "nginx" / "conf.d" / ng_conf.name)
     infra_scripts_dir = Path("/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade")
     script_names = [
         "agent6_surgical_regroup.py",
@@ -633,7 +624,7 @@ def build_repo_4_infra_configs() -> dict[str, Any]:
             staged_scripts += 1
     readme = f"""# Boylenet Infrastructure Configurations (`boylenet-infra-configs`) — O1789 / O3322
 
-Sanitized production infrastructure configurations and VMware ESXi 8.0 / vSAN NVMe / UniFi 25GbE LACP automation scripts (`{staged_scripts}` scripts) for the 27-node Boylenet cluster.
+Sanitized production infrastructure configurations including NGINX `:443` Wildcard HTTPS + Let's Encrypt Cloudflare DNS-01 (`*.boylenet.themfboyles.org`, `*.themfboyles.org`, `*.boylenet.themfboyles.com`), Traefik Ingress, LiteLLM Router, Dashy NOC, and VMware ESXi 8.0 / vSAN NVMe / UniFi 25GbE LACP automation scripts (`{staged_scripts}` scripts) for the 27-node Boylenet cluster.
 
 - **GitHub Mirror**: `https://github.com/mcboyle/boylenet-infra-configs`
 - **Local Gitea Canonical**: `http://10.0.70.164:3000/mboyle/boylenet-infra-configs`
@@ -642,8 +633,8 @@ Sanitized production infrastructure configurations and VMware ESXi 8.0 / vSAN NV
     return git_commit_and_push(
         repo_dir,
         repo_name,
-        "Boylenet Infra Configs: Sanitized LiteLLM Router, Traefik DNS Ingress, Dashy NOC Config & vSAN/25GbE Surgical Scripts",
-        "feat(o1789): sync sanitized LiteLLM config, Traefik DNS ingress, Dashy config and vSAN/25GbE scripts",
+        "Boylenet Infra Configs: Sanitized NGINX :443 Let's Encrypt Cloudflare HTTPS, LiteLLM Router, Traefik DNS Ingress, Dashy NOC & vSAN/25GbE Scripts",
+        "feat(o1789): sync NGINX :443 Let's Encrypt Cloudflare HTTPS configs, Traefik .org/.com ingress, LiteLLM & vSAN scripts",
     )
 
 
@@ -681,40 +672,45 @@ def sync_repo_5_universal_swarm_os() -> dict[str, Any]:
     shutil.copytree(infra_src / "litellm", target_sub / "infra" / "litellm")
     shutil.copytree(infra_src / "traefik", target_sub / "infra" / "traefik")
     shutil.copytree(infra_src / "dashy", target_sub / "infra" / "dashy")
+    if (infra_src / "nginx").is_dir():
+        shutil.copytree(infra_src / "nginx", target_sub / "infra" / "nginx")
     shutil.copytree(
         infra_src / "vsan-25gbe-scripts", target_sub / "infra" / "vsan-25gbe-scripts"
     )
     for fn in (
         "PM-HANDOFF.md",
         "WATCHDOG-STATUS.md",
+        "CHECKPOINT.md",
         "MASTER-215-BACKLOG-E2E-LEDGER.md",
+        "MASTER-230-SWARM-MEGA-BLITZ-LEDGER.md",
     ):
         if (bdkb_src / fn).is_file():
             shutil.copy2(bdkb_src / fn, target_sub / fn)
     write_sanitized_text(
         target_sub / "README.md",
-        """# UniversalSwarmOS — O1789 / O3322 Boylenet Swarm OS, 5-Platform Integration, 215-Backlog Ledger & Master BD KB Sync
+        """# UniversalSwarmOS — O1789 / O3322 Boylenet Swarm OS, 230-Swarm Mega-Blitz Ledger, NGINX :443 HTTPS, 215-Backlog Ledger & Master BD KB Sync
 
 Synchronized O1789/O3322 release bundle containing:
-- `bin/`, `systemd/`, `skills/`, `mcp-schemas/`: All Boylenet Swarm OS scripts, 5-platform skills, and MCP server schemas
+- `bin/`, `systemd/`, `skills/`, `mcp-schemas/`: All Boylenet Swarm OS scripts (including `230-Swarm` blitz runners & `bd-letsencrypt-cloudflare`), 5-platform skills, and MCP server schemas
+- `MASTER-230-SWARM-MEGA-BLITZ-LEDGER.md`: `230 / 230 (100%)` approved swarm units ledger across all 8 cohorts
 - `MASTER-215-BACKLOG-E2E-LEDGER.md`: `215 / 215 (100%)` backlog ledger across all 7 registers
 - `openwebui-exports/`: Exported JSON catalogs for all 50 Toolkits, 128 Skills, 128 Prompts, 20 Functions/Pipelines, 11 Knowledge Bases, and 260 Local/Cloud Models
-- `bd-kb/`: All 6 Volumes of the Master Boylenet & BulkDownloader Knowledge Base (`00`–`05`) + `manifest.json`
-- `infra/`: Sanitized LiteLLM `config.yaml`, Traefik DNS ingress, Dashy config, and vSAN/25GbE scripts
+- `bd-kb/`: Master Boylenet & BulkDownloader Knowledge Base (`00`–`06`) + `manifest.json`
+- `infra/`: Sanitized NGINX `:443` HTTPS + Let's Encrypt Cloudflare configs, LiteLLM `config.yaml`, Traefik DNS ingress, Dashy config, and vSAN/25GbE scripts
 """,
     )
     return git_commit_and_push(
         repo_dir,
         repo_name,
-        "UniversalSwarmOS: Master Boylenet Swarm OS, 5-Platform Integration, 215-Backlog Ledger, OpenWebUI Super-Suite & 6-Volume BD KB",
-        "feat(o1789): sync 5-platform scripts/skills/MCPs, MASTER-215-BACKLOG-E2E-LEDGER.md and latest receipts",
+        "UniversalSwarmOS: Master Boylenet Swarm OS, 230-Swarm Mega-Blitz Ledger, NGINX :443 HTTPS, 215-Backlog Ledger, OpenWebUI Super-Suite & BD KB",
+        "feat(o1789): sync MASTER-230-SWARM-MEGA-BLITZ-LEDGER.md, NGINX :443 HTTPS configs, 230-swarm scripts & AGENT105..150 receipts",
     )
 
 
 def main() -> None:
     GIT_REPOS_ROOT.mkdir(parents=True, exist_ok=True)
     log(
-        "Starting Agent-124 Continuous Multi-Repo Secret-Scrub (`BOYLENET_SECRET_GUARD`) & Dual-Platform Push (GitHub + Gitea)..."
+        "Starting Agent-147 Continuous 5-Repo Secret-Scrub (`BOYLENET_SECRET_GUARD`) & Dual-Platform Push (GitHub + Gitea)..."
     )
     results = []
     results.append(build_repo_1_swarm_os())
@@ -722,12 +718,13 @@ def main() -> None:
     results.append(build_repo_3_bd_kb_and_receipts())
     results.append(build_repo_4_infra_configs())
     results.append(sync_repo_5_universal_swarm_os())
-    out_path = Path(
-        "/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/agent124_repo_sync_results.json"
-    )
-    out_path.write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
+    for fname in ("agent147_repo_sync_results.json", "agent124_repo_sync_results.json"):
+        out_path = Path(
+            f"/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/{fname}"
+        )
+        out_path.write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
     log(
-        f"All 5 repositories built, sanitized, and pushed to GitHub & Gitea! Summary written to {out_path}"
+        "All 5 repositories built, sanitized, and pushed to GitHub & Gitea! Summary written to agent147_repo_sync_results.json"
     )
 
 

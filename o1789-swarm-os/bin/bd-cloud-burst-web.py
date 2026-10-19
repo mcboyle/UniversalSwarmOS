@@ -272,11 +272,11 @@ HTML_PAGE = """<!DOCTYPE html>
     </div>
   </div>
   <div class="nav-links">
-    <a href="http://harnesses.boylenet.themfboyles.com" target="_blank">Multi-Harness Arena (:4098)</a>
-    <a href="http://sentinel.boylenet.themfboyles.com" target="_blank">Sentinel (:4099)</a>
-    <a href="http://jarvis.boylenet.themfboyles.com" target="_blank">Jarvis Cockpit (:3002)</a>
-    <a href="http://litellm.boylenet.themfboyles.com/ui" target="_blank">LiteLLM (:4000)</a>
-    <a href="http://dashy.boylenet.themfboyles.com" target="_blank">Dashy Portal (:4080)</a>
+    <a href="http://harnesses.boylenet.themfboyles.org" target="_blank">Multi-Harness Arena (:4098)</a>
+    <a href="http://sentinel.boylenet.themfboyles.org" target="_blank">Sentinel (:4099)</a>
+    <a href="http://jarvis.boylenet.themfboyles.org" target="_blank">Jarvis Cockpit (:3002)</a>
+    <a href="http://litellm.boylenet.themfboyles.org/ui" target="_blank">LiteLLM (:4000)</a>
+    <a href="http://dashy.boylenet.themfboyles.org" target="_blank">Dashy Portal (:4080)</a>
   </div>
 </header>
 
@@ -292,7 +292,40 @@ HTML_PAGE = """<!DOCTYPE html>
     <div style="text-align:right;">
       <div class="chip ok" style="font-size:11px;">Overage Protection: OFF ($0.00 Risk)</div>
       <div style="font-size:11px;color:#94a3b8;margin-top:4px;">Pool A: $250 • Pool B: $250 • Pool C: $250 • Pool D: $250</div>
+      <div style="margin-top:6px;display:flex;gap:8px;justify-content:flex-end;align-items:center;">
+        <span id="quotaObservedAtBadge" class="chip" style="font-size:10.5px;">quota_observed_at: loading...</span>
+        <button id="btnRefreshUsage" class="btn-ghost" style="padding:4px 10px;font-size:11px;" onclick="refreshUsageNow()">🔄 Refresh Usage</button>
+      </div>
     </div>
+  </div>
+</div>
+
+<!-- 5 Provider Interactive Cards / Tabs Strip -->
+<div style="max-width:1760px;margin:12px auto 0;padding:0 24px;">
+  <div id="providerCardsStrip" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;">
+    <div class="lane-card provider-tab-card active" id="provCard-claude" data-provider="claude" onclick="selectProviderCard('claude')" style="cursor:pointer;border-color:#38bdf8;">
+      <div class="lane-hdr"><span>🟣 Anthropic Claude $500</span><span class="chip ok" id="provState-claude">OK</span></div>
+      <div style="font-size:11px;color:var(--muted);" id="provSub-claude">Pools A/B/C/D ($250x4 Cloud Credits)</div>
+    </div>
+    <div class="lane-card provider-tab-card" id="provCard-codex" data-provider="codex" onclick="selectProviderCard('codex')" style="cursor:pointer;">
+      <div class="lane-hdr"><span>🟢 OpenAI Codex $500</span><span class="chip ok" id="provState-codex">OK</span></div>
+      <div style="font-size:11px;color:var(--muted);" id="provSub-codex">GPT-6.1 Sol Ultra Cloud</div>
+    </div>
+    <div class="lane-card provider-tab-card" id="provCard-kimi" data-provider="kimi" onclick="selectProviderCard('kimi')" style="cursor:pointer;">
+      <div class="lane-hdr"><span>🌙 Moonshot Kimi</span><span class="chip ok" id="provState-kimi">OK</span></div>
+      <div style="font-size:11px;color:var(--muted);" id="provSub-kimi">kimi-for-coding / Kimi K2.8</div>
+    </div>
+    <div class="lane-card provider-tab-card" id="provCard-grok" data-provider="grok" onclick="selectProviderCard('grok')" style="cursor:pointer;">
+      <div class="lane-hdr"><span>⚡ xAI Grok</span><span class="chip ok" id="provState-grok">OK</span></div>
+      <div style="font-size:11px;color:var(--muted);" id="provSub-grok">grok-4.20 / grok-code-fast-1</div>
+    </div>
+    <div class="lane-card provider-tab-card" id="provCard-local" data-provider="local" onclick="selectProviderCard('local')" style="cursor:pointer;">
+      <div class="lane-hdr"><span>🖥️ Local 4xT4 + 2080Ti</span><span class="chip ok" id="provState-local">ONLINE</span></div>
+      <div style="font-size:11px;color:var(--muted);" id="provSub-local">64GB T4 Swarm (.125/.228) + 11GB 2080Ti (.137)</div>
+    </div>
+  </div>
+  <div id="providerActiveDetail" style="margin-top:8px;padding:8px 14px;border-radius:8px;background:rgba(15,23,42,0.85);border:1px solid rgba(56,189,248,0.22);font-size:12px;color:#e2e8f0;">
+    Active Provider Focus: <strong>Anthropic Claude $500</strong> — Pools A/B/C/D ($250x4 Cloud Session Credits • O1740 Dynamic Routing)
   </div>
 </div>
 
@@ -529,6 +562,30 @@ HTML_PAGE = """<!DOCTYPE html>
 </div>
 
 <script>
+const PROVIDER_DESCRIPTIONS = {
+  claude: {title: 'Anthropic Claude $500', detail: 'Pools A/B/C/D ($250x4 Cloud Session Credits • O1740 Dynamic Routing • claude-opus-5-5 / claude-sonnet-5-5 / fable-5-1)', tab: 'claude'},
+  codex: {title: 'OpenAI Codex $500', detail: 'OpenAI Codex Cloud Engine (gpt-6.1-sol Ultra / gpt-6-astra / gpt-5.6-terra • Best-of-N Cloud Containers)', tab: 'codex'},
+  kimi: {title: 'Moonshot Kimi', detail: 'Kimi Code CLI Cloud (kimi-for-coding / Kimi K2.8) + Local Vault .72 Kimi-K3-2.8T MoE', tab: 'hybrid'},
+  grok: {title: 'xAI Grok', detail: 'xAI Grok Cloud & Fast Code Lane (grok-4.20 / grok-code-fast-1 via LiteLLM & Hybrid Burst)', tab: 'hybrid'},
+  local: {title: 'Local 4xT4 + 2080Ti', detail: '64GB 4xT4 GPU Swarm (.125/.228) + 11GB RTX 2080 Ti (.137) — $0 Marginal Cost Local GPU Lanes', tab: 'hybrid'}
+};
+
+function selectProviderCard(prov) {
+  ['claude', 'codex', 'kimi', 'grok', 'local'].forEach(p => {
+    const el = document.getElementById('provCard-' + p);
+    if (el) {
+      el.classList.toggle('active', p === prov);
+      el.style.borderColor = (p === prov) ? '#38bdf8' : 'rgba(56, 189, 248, 0.25)';
+    }
+  });
+  const info = PROVIDER_DESCRIPTIONS[prov] || PROVIDER_DESCRIPTIONS.claude;
+  const detEl = document.getElementById('providerActiveDetail');
+  if (detEl) {
+    detEl.innerHTML = `Active Provider Focus: <strong>${esc(info.title)}</strong> — ${esc(info.detail)}`;
+  }
+  if (info.tab) switchTab(info.tab);
+}
+
 function switchTab(tab) {
   ['hybrid', 'claude', 'codex', 'setup'].forEach(t => {
     document.getElementById('tab-' + t).style.display = (t === tab) ? 'block' : 'none';
@@ -541,6 +598,16 @@ function esc(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+async function refreshUsageNow() {
+  const btn = document.getElementById('btnRefreshUsage');
+  if (btn) btn.textContent = '⏳ Refreshing...';
+  try {
+    await fetch('/api/refresh-usage', {method: 'POST'});
+  } catch (e) {}
+  await loadStatus();
+  if (btn) btn.textContent = '🔄 Refresh Usage';
+}
+
 async function loadStatus() {
   try {
     const r = await fetch('/api/status');
@@ -548,11 +615,22 @@ async function loadStatus() {
     if (d.cloud_session_credits && d.cloud_session_credits.banner) {
       document.getElementById('creditBannerTitle').textContent = d.cloud_session_credits.banner;
     }
+    const qBadge = document.getElementById('quotaObservedAtBadge');
+    if (qBadge && d.quota_observed_at) {
+      qBadge.textContent = 'quota_observed_at: ' + d.quota_observed_at;
+    }
+    (d.providers || []).forEach(pr => {
+      const stEl = document.getElementById('provState-' + pr.id);
+      const subEl = document.getElementById('provSub-' + pr.id);
+      if (stEl) stEl.textContent = pr.state || 'OK';
+      if (subEl && pr.subtitle) subEl.textContent = pr.subtitle;
+    });
     document.getElementById('recPoolBadge').textContent = 'Rec: Pool ' + (d.recommended_claude_pool || 'A');
     const poolHtml = (d.claude_pools || []).map(p => {
       const color = p.state === 'OK' ? '#10b981' : '#f59e0b';
       const credBadge = p.cloud_credit_remaining_usd ? ` • <span style="color:#38bdf8">$${esc(p.cloud_credit_remaining_usd)} credit</span>` : '';
-      return `<div class="pool-pill"><span style="color:${color};font-weight:700;">● Pool ${esc(p.pool)} (${esc(p.state)})</span><span>5h: ${esc(p.five_hour_pct)}% • wk: ${esc(p.weekly_pct)}%${credBadge}</span></div>`;
+      const obsSpan = p.quota_observed_at ? ` • <span style="color:#94a3b8;font-size:10px;">obs: ${esc(p.quota_observed_at)}</span>` : '';
+      return `<div class="pool-pill" data-pool="${esc(p.pool)}"><span style="color:${color};font-weight:700;">● Pool ${esc(p.pool)} (${esc(p.state)})</span><span>5h: ${esc(p.five_hour_pct)}% • wk: ${esc(p.weekly_pct)}%${credBadge}${obsSpan}</span></div>`;
     }).join('');
     document.getElementById('poolList').innerHTML = poolHtml;
 
@@ -740,6 +818,7 @@ async function runCodexTaskAction(action) {
 window.addEventListener('DOMContentLoaded', async () => {
   await loadStatus();
   await refreshSetupBundle();
+  setInterval(loadStatus, 2500);
 });
 </script>
 </body>
@@ -772,7 +851,7 @@ class CloudBurstHandler(BaseHTTPRequestHandler):
                     "status": "ok",
                     "service": "bd-cloud-burst-web",
                     "port": PORT,
-                    "url": "http://cloud.boylenet.themfboyles.com",
+                    "url": "http://cloud.boylenet.themfboyles.org",
                     "cloud_session_credits_usd": 1000.0,
                     "cloud_session_credits_banner": "$1,000 Free Cloud Session Credit Pool ($250 x Pools A/B/C/D • Expires Nov 5)",
                     "overage_protection": "OFF ($0.00 risk)",
@@ -783,7 +862,7 @@ class CloudBurstHandler(BaseHTTPRequestHandler):
                 }
             )
             return
-        if parsed.path == "/api/status":
+        if parsed.path in ("/api/status", "/api/refresh-usage"):
             self._send_json(cb.get_orchestrator_status())
             return
         if parsed.path == "/api/setup-script":
@@ -802,6 +881,9 @@ class CloudBurstHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         length = int(self.headers.get("Content-Length", "0"))
         data = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+        if self.path == "/api/refresh-usage":
+            self._send_json(cb.get_orchestrator_status())
+            return
         if self.path == "/api/hybrid-burst":
             prompt = str(data.get("prompt") or "Say PONG")
             raw_pools = str(data.get("pools") or "auto").strip()

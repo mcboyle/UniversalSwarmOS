@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Boylenet Browser Multi-Node Terminal, Live Agent TV Wall (Headless + tmux) & Receipt Explorer (:4083)
-Host: 10.0.70.164 | Port: 0.0.0.0:4083 | Ingress: http://terminal.boylenet.themfboyles.com
+Host: 10.0.70.164 | Port: 0.0.0.0:4083 | Ingress: http://terminal.boylenet.themfboyles.org
 
 Provides 3 integrated developer tools in one sleek UI on :4083:
   1) #UX-23 Live 2x2 / 3x3 Agent TV Wall (Streams BOTH Zero-Token Headless Subagents/Models AND Interactive tmux Sessions!):
@@ -1290,7 +1290,7 @@ HTML_UI = r"""<!DOCTYPE html>
       <button class="mode-btn active" onclick="switchTab('tvwall', this)">📺 #UX-23 Live Agent TV Wall (Headless + tmux)</button>
       <button class="mode-btn" onclick="switchTab('console', this)">⚡ #UX-22 Multi-Node Command Console</button>
       <button class="mode-btn" onclick="switchTab('explorer', this)">📜 #UX-24 Receipt & Markdown Explorer</button>
-      <a class="mode-btn" href="http://models.boylenet.themfboyles.com" target="_blank" style="text-decoration:none;">🧠 86-Model Storefront (:4084)</a>
+      <a class="mode-btn" href="http://models.boylenet.themfboyles.org" target="_blank" style="text-decoration:none;">🧠 86-Model Storefront (:4084)</a>
     </div>
   </div>
 </header>
@@ -1773,6 +1773,12 @@ class TerminalDrawerHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
+    def do_HEAD(self) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+
     def do_OPTIONS(self) -> None:
         self.send_response(204)
         self.send_header("Access-Control-Allow-Origin", "*")
@@ -1785,6 +1791,45 @@ class TerminalDrawerHandler(BaseHTTPRequestHandler):
         path = parsed.path.rstrip("/") or "/"
         qs = urllib.parse.parse_qs(parsed.query)
 
+        upgrade_hdr = (self.headers.get("Upgrade") or "").strip().lower()
+        ws_key = (self.headers.get("Sec-WebSocket-Key") or "").strip()
+        if upgrade_hdr == "websocket" and ws_key:
+            import base64
+            import hashlib
+
+            accept_val = base64.b64encode(
+                hashlib.sha1(
+                    (ws_key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode("ascii")
+                ).digest()
+            ).decode("ascii")
+            self.protocol_version = "HTTP/1.1"
+            self.send_response(101, "Switching Protocols")
+            self.send_header("Upgrade", "websocket")
+            self.send_header("Connection", "Upgrade")
+            self.send_header("Sec-WebSocket-Accept", accept_val)
+            self.end_headers()
+            msg_bytes = json.dumps(
+                {
+                    "type": "terminal_ws_ready",
+                    "service": "bd-web-terminal-drawer",
+                    "port": PORT,
+                    "timestamp": _now_iso(),
+                }
+            ).encode("utf-8")
+            frame = bytearray([0x81])
+            length = len(msg_bytes)
+            if length < 126:
+                frame.append(length)
+            else:
+                frame.extend([126, (length >> 8) & 0xFF, length & 0xFF])
+            frame.extend(msg_bytes)
+            try:
+                self.wfile.write(bytes(frame))
+                self.wfile.flush()
+            except Exception:
+                pass
+            return
+
         if path == "/health":
             wall = get_unified_tv_wall(lines=10)
             docs = list_receipts_and_blobs()
@@ -1794,7 +1839,7 @@ class TerminalDrawerHandler(BaseHTTPRequestHandler):
                     "status": "ok",
                     "service": "bd-web-terminal-drawer",
                     "port": PORT,
-                    "url": "http://terminal.boylenet.themfboyles.com",
+                    "url": "http://terminal.boylenet.themfboyles.org",
                     "zero_extra_tokens": True,
                     "features": [
                         "#UX-22 Multi-Node Command Console",
@@ -1878,7 +1923,7 @@ def main() -> None:
     _ensure_seed_headless_streams()
     server = ThreadingHTTPServer(("0.0.0.0", PORT), TerminalDrawerHandler)
     print(
-        f"[bd-web-terminal-drawer] Listening on 0.0.0.0:{PORT} (http://terminal.boylenet.themfboyles.com)",
+        f"[bd-web-terminal-drawer] Listening on 0.0.0.0:{PORT} (http://terminal.boylenet.themfboyles.org)",
         flush=True,
     )
     server.serve_forever()

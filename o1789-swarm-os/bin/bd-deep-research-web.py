@@ -584,11 +584,11 @@ HTML_STUDIO = r"""<!DOCTYPE html>
     <span class="status-pill"><span class="dot"></span>4xT4 .228:4000</span>
   </div>
   <div class="nav-links">
-    <a href="http://dashy.boylenet.themfboyles.com" target="_blank">Dashy (:4080)</a>
-    <a href="http://harnesses.boylenet.themfboyles.com" target="_blank">Harnesses (:4098)</a>
-    <a href="http://searxng.boylenet.themfboyles.com" target="_blank">SearXNG (:8888)</a>
-    <a href="http://qdrant.boylenet.themfboyles.com" target="_blank">Qdrant (:6333)</a>
-    <a href="http://jarvis.boylenet.themfboyles.com" target="_blank">Cockpit (:3002)</a>
+    <a href="http://dashy.boylenet.themfboyles.org" target="_blank">Dashy (:4080)</a>
+    <a href="http://harnesses.boylenet.themfboyles.org" target="_blank">Harnesses (:4098)</a>
+    <a href="http://searxng.boylenet.themfboyles.org" target="_blank">SearXNG (:8888)</a>
+    <a href="http://qdrant.boylenet.themfboyles.org" target="_blank">Qdrant (:6333)</a>
+    <a href="http://jarvis.boylenet.themfboyles.org" target="_blank">Cockpit (:3002)</a>
   </div>
 </header>
 

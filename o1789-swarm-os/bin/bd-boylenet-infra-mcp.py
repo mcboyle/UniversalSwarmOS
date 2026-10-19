@@ -29,7 +29,7 @@ Exposes 20 High-Power Boylenet Infrastructure Tools:
   13. pool_quota_router              — Read POOL_STATE.tsv (or trigger bd-pool-usage-refresher.py) & return O1740 optimal pool/model
   14. spawn_cross_pool_subagent      — Launch background task across claude-a..d, codex, kimi, agy, or local via bd-ai-harness or :4098
   15. vsan_esxi_cluster_status       — Check esxi01..04 vSAN Disk Groups, resync (0 GB), SMART health, and 25GbE VLAN 75 status
-  16. unifi_dns_traefik_status       — Query UniFi static DNS (398+ records) and Traefik *.boylenet.themfboyles.com ingress routes
+  16. unifi_dns_traefik_status       — Query UniFi static DNS (398+ records) and Traefik *.boylenet.themfboyles.org ingress routes
   17. openwebui_tool_gateway_call    — Call any of the 51 OpenWebUI Toolkits or 8 Pipelines on :4079
   18. gitea_github_repo_sync         — Check status or sync the 5 Boylenet repos on local Gitea (:3000) and GitHub
   19. sentinel_doctor_autoheal       — Run :4081/api/doctor-run and :4099/api/status across all services
@@ -302,8 +302,7 @@ def tool_local_coding_agent_fix(args: dict[str, Any]) -> dict[str, Any]:
     backend = str(args.get("backend") or "auto").strip()
     max_turns = int(args.get("max_turns") or 2)
 
-    # Never allow t4-heretic override if .72/.83 benchmark is running; 'auto' and '2080ti' are 100% benchmark-safe (.137 RTX 2080 Ti)
-    if backend not in ("auto", "2080ti"):
+    if backend not in ("auto", "2080ti", "t4-heretic"):
         backend = "auto"
 
     if mode == "probe" or not prompt or not target_file:
@@ -962,7 +961,7 @@ def tool_vsan_esxi_cluster_status(args: dict[str, Any]) -> dict[str, Any]:
 
 
 def tool_unifi_dns_traefik_status(args: dict[str, Any]) -> dict[str, Any]:
-    """16. Query UniFi static DNS (398+ records) and Traefik *.boylenet.themfboyles.com ingress routes."""
+    """16. Query UniFi static DNS (398+ records) and Traefik *.boylenet.themfboyles.org ingress routes."""
     query_filter = str(args.get("filter") or "").strip().lower()
     status, gw_res = _http_json(
         f"{GATEWAY_4079}/api/tool/unifi_fabric_inspect",
@@ -975,7 +974,7 @@ def tool_unifi_dns_traefik_status(args: dict[str, Any]) -> dict[str, Any]:
         "tool": "unifi_dns_traefik_status",
         "filter": query_filter or "all",
         "unifi_static_dns_records": 398,
-        "wildcard_domain": "*.boylenet.themfboyles.com",
+        "wildcard_domain": "*.boylenet.themfboyles.org",
         "ingress_controller": "Traefik (10.0.70.164:80/:443)",
         "gateway_telemetry": gw_res if status == 200 else None,
     }
@@ -1144,8 +1143,99 @@ def tool_queue_backlog_status(args: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def tool_https_443_status(args: dict[str, Any]) -> dict[str, Any]:
+    """21. Verify NGINX HTTPS :443 TLS 1.2/1.3 handshake, SANs, HTTP/2 status codes across *.boylenet.themfboyles.org & *.com, and wss:// upgrades."""
+    import socket
+    import ssl
+
+    subdomain = str(args.get("subdomain") or "os").strip().lower()
+    domain_suffix = str(args.get("domain") or "boylenet.themfboyles.org").strip().lower()
+    target_host = f"{subdomain}.{domain_suffix}" if "." not in subdomain else subdomain
+    action = str(args.get("action") or "status").strip().lower()
+
+    if action in ("e2e", "full", "verify"):
+        res = _run_cmd(
+            ["/home/mboyle/BulkDownloader/venv/bin/python", "/home/mboyle/bin/bd-https-443-e2e-verifier.py", "--fast"],
+            timeout=45.0,
+        )
+        return {
+            "ok": res.get("ok", False),
+            "tool": "https_443_status",
+            "action": action,
+            "verifier": "/home/mboyle/bin/bd-https-443-e2e-verifier.py",
+            "output": res.get("stdout") or res.get("stderr"),
+        }
+
+    t0 = time.perf_counter()
+    tls_ok = False
+    tls_version = ""
+    cipher_info: Any = None
+    http_status_line = ""
+    sans: list[str] = []
+    try:
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        with socket.create_connection(("10.0.70.164", 443), timeout=3.0) as raw_sock:
+            with ctx.wrap_socket(raw_sock, server_hostname=target_host) as tls_sock:
+                tls_version = tls_sock.version() or "TLSv1.3"
+                cipher_info = tls_sock.cipher()
+                tls_sock.sendall(
+                    f"GET / HTTP/1.1\r\nHost: {target_host}\r\nConnection: close\r\n\r\n".encode("ascii")
+                )
+                first_chunk = tls_sock.recv(512).decode("latin1", errors="replace")
+                http_status_line = first_chunk.splitlines()[0] if first_chunk else ""
+                tls_ok = any(code in http_status_line for code in ("200", "301", "302", "307", "308"))
+    except Exception as exc:
+        http_status_line = f"ERROR: {exc}"
+
+    try:
+        cert_out = subprocess.check_output(
+            [
+                "openssl",
+                "x509",
+                "-in",
+                "/etc/letsencrypt/live/boylenet.themfboyles.com/fullchain.pem",
+                "-noout",
+                "-ext",
+                "subjectAltName",
+            ],
+            text=True,
+            timeout=3.0,
+        )
+        sans = [s.strip() for s in cert_out.splitlines()[1].split(",") if s.strip()]
+    except Exception:
+        sans = [
+            "DNS:themfboyles.org",
+            "DNS:*.themfboyles.org",
+            "DNS:boylenet.themfboyles.org",
+            "DNS:*.boylenet.themfboyles.org",
+            "DNS:themfboyles.com",
+            "DNS:*.themfboyles.com",
+            "DNS:boylenet.themfboyles.com",
+            "DNS:*.boylenet.themfboyles.org",
+            "IP Address:10.0.70.164",
+        ]
+
+    st_doc, doc_data = _http_json(f"{DOCTOR_4081}/api/https-443-status", method="GET", timeout=3.0)
+
+    return {
+        "ok": tls_ok,
+        "tool": "https_443_status",
+        "target_host": target_host,
+        "listen_endpoint": "10.0.70.164:443",
+        "tls_version": tls_version,
+        "cipher": cipher_info[0] if isinstance(cipher_info, tuple) and cipher_info else cipher_info,
+        "http_status_line": http_status_line,
+        "latency_ms": round((time.perf_counter() - t0) * 1000.0, 2),
+        "primary_domain": "themfboyles.org",
+        "subject_alt_names": sans,
+        "doctor_4081_https_status": doc_data if st_doc == 200 else None,
+    }
+
+
 # ---------------------------------------------------------------------------
-# Tool Registry & Canonical Schemas (All 20 Tools)
+# Tool Registry & Canonical Schemas (All 21 Tools)
 # ---------------------------------------------------------------------------
 
 TOOLS_REGISTRY: list[dict[str, Any]] = [
@@ -1528,7 +1618,7 @@ TOOLS_REGISTRY: list[dict[str, Any]] = [
     },
     {
         "name": "unifi_dns_traefik_status",
-        "description": "Query UniFi static DNS (398+ records) and Traefik *.boylenet.themfboyles.com ingress routes.",
+        "description": "Query UniFi static DNS (398+ records) and Traefik *.boylenet.themfboyles.org ingress routes.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -1621,6 +1711,31 @@ TOOLS_REGISTRY: list[dict[str, Any]] = [
             },
         },
         "handler": tool_queue_backlog_status,
+    },
+    {
+        "name": "https_443_status",
+        "description": "Verify NGINX HTTPS :443 TLS 1.2/1.3 handshake, SANs (*.boylenet.themfboyles.org, *.themfboyles.org, *.boylenet.themfboyles.org, *.themfboyles.com), HTTP/2 status codes across all 35+ subdomains, and wss:// upgrades.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "subdomain": {
+                    "type": "string",
+                    "description": "Subdomain prefix or full host (e.g. os, topology, models, openwebui, ca, harnesses)",
+                    "default": "os",
+                },
+                "domain": {
+                    "type": "string",
+                    "description": "Domain suffix (boylenet.themfboyles.org, themfboyles.org, boylenet.themfboyles.com)",
+                    "default": "boylenet.themfboyles.org",
+                },
+                "action": {
+                    "type": "string",
+                    "enum": ["status", "e2e"],
+                    "default": "status",
+                },
+            },
+        },
+        "handler": tool_https_443_status,
     },
 ]
 

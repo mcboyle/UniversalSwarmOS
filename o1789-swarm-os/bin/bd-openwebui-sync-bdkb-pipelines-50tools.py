@@ -52,7 +52,7 @@ INSTANCES = [
     {
         "name": "OpenWebUI-Controller-164:8090",
         "base_url": "http://127.0.0.1:8090",
-        "public_url": "http://openwebui.boylenet.themfboyles.com",
+        "public_url": "http://openwebui.boylenet.themfboyles.org",
         "admin_id": "a12463df-370f-4948-b488-9437da254b15",
         "secret": "<REDACTED_BY_BOYLENET_SECRET_GUARD>",
         "ssh_host": None,
@@ -60,7 +60,7 @@ INSTANCES = [
     {
         "name": "OpenWebUI-VaultA-72:8080",
         "base_url": "http://10.0.70.72:8080",
-        "public_url": "http://ai-webui.boylenet.themfboyles.com",
+        "public_url": "http://ai-webui.boylenet.themfboyles.org",
         "admin_id": "c1658bb0-ad7c-48c2-a18a-7c000dd6a04e",
         "secret": "<REDACTED_BY_BOYLENET_SECRET_GUARD>",
         "ssh_host": "10.0.70.72",

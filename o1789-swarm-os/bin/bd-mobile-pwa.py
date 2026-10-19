@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Boylenet Mobile & Tablet PWA Command Deck (bd-mobile-pwa.py)
-Port: 4086 (http://mobile.boylenet.themfboyles.com)
+Port: 4086 (http://mobile.boylenet.themfboyles.org)
 Swarms #25 & #C12: Touch-optimized iOS/Android Progressive Web App designed for
 iPhone, iPad, and Android over Boylenet Mobile / Site Magic VPN.
 
@@ -10,7 +10,7 @@ Features 5 Bottom-Bar Tabs:
   2. 1-Tap Launch & Remote Control (tap to launch or open claude.ai/code/session_... RC links directly on iPhone/iPad)
   3. 4xT4 GPUs & Model Switcher (live VRAM/temps + 1-tap model switching via :4010)
   4. Sentinel & Quick Heal (live 83-service health from :4099 + 1-tap Heal All)
-  5. All Web UIs Launcher (mobile-friendly launcher for all .boylenet.themfboyles.com apps)
+  5. All Web UIs Launcher (mobile-friendly launcher for all .boylenet.themfboyles.org apps)
 """
 
 from __future__ import annotations
@@ -62,28 +62,28 @@ def http_post_json(url: str, payload: Dict[str, Any], timeout: float = 90.0) -> 
 
 
 WEB_APPS_CATALOG: List[Dict[str, str]] = [
-    {"title": "Mobile Command Deck", "port": ":4086", "url": "http://mobile.boylenet.themfboyles.com", "cat": "Core", "desc": "iOS/Android Touch PWA Command Deck", "icon": "📱"},
-    {"title": "NL Ops Shell", "port": ":4089", "url": "http://ops.boylenet.themfboyles.com", "cat": "Core", "desc": "Natural-Language Ops & Playbook Runner", "icon": "⚡"},
-    {"title": "Dashy Portal", "port": ":4080", "url": "http://dashy.boylenet.themfboyles.com", "cat": "Core", "desc": "Boylenet Unified Service Portal", "icon": "🧭"},
-    {"title": "Jarvis OS Cockpit", "port": ":3002", "url": "http://jarvis.boylenet.themfboyles.com", "cat": "Core", "desc": "27-Node Swarm & GPU Cockpit", "icon": "🛰️"},
-    {"title": "Jarvis Swarm Chat", "port": ":3003", "url": "http://chat.boylenet.themfboyles.com", "cat": "AI Studio", "desc": "4-Column Local LLM Arena", "icon": "💬"},
-    {"title": "Cloud Burst Studio", "port": ":4090", "url": "http://cloud.boylenet.themfboyles.com", "cat": "AI Studio", "desc": "$1,000 Free Cloud Credits + Local 4xT4 Burst", "icon": "☁️"},
-    {"title": "Multi-Harness Studio", "port": ":4098", "url": "http://harnesses.boylenet.themfboyles.com", "cat": "AI Studio", "desc": "Hermes, DeepSeek, Claude ABCD, Codex, Kimi", "icon": "🎛️"},
-    {"title": "Voice & Vision Cockpit", "port": ":4093", "url": "http://voice.boylenet.themfboyles.com", "cat": "AI Studio", "desc": "Whisper STT, Sub-300ms TTS & Vision-to-Code", "icon": "🎙️"},
-    {"title": "Deep Research Studio", "port": ":4094", "url": "http://research.boylenet.themfboyles.com", "cat": "AI Studio", "desc": "SearXNG + Dual-Oracle CDP + Qdrant RAG", "icon": "🔬"},
-    {"title": "LobeChat Studio", "port": ":4095", "url": "http://lobechat.boylenet.themfboyles.com", "cat": "AI Studio", "desc": "Tier 1/2/3 Workbench (Code: boylenet-admin)", "icon": "✨"},
-    {"title": "OpenCode Web UI", "port": ":4096", "url": "http://opencode.boylenet.themfboyles.com", "cat": "AI Studio", "desc": "Browser Coding Agent (38 LiteLLM Models)", "icon": "💻"},
-    {"title": "OpenClaw Control UI", "port": ":4097", "url": "http://openclaw.boylenet.themfboyles.com", "cat": "AI Studio", "desc": "Multi-Agent Gateway (Token: boylenet-admin)", "icon": "🐾"},
-    {"title": "OpenWebUI", "port": ":8090", "url": "http://openwebui.boylenet.themfboyles.com", "cat": "AI Studio", "desc": "Local RAG & Ollama Chat Workspace", "icon": "🌐"},
-    {"title": "Infra Sentinel", "port": ":4099", "url": "http://sentinel.boylenet.themfboyles.com", "cat": "Infra & Ops", "desc": "83-Service Health Matrix & Self-Healer", "icon": "🛡️"},
-    {"title": "Hardware iLO & vSAN", "port": ":4091", "url": "http://hardware.boylenet.themfboyles.com", "cat": "Infra & Ops", "desc": "HP iLO 4 Temps/Watts + vSAN 328TiB + 4xT4", "icon": "🌡️"},
-    {"title": "Gitea Pre-Review", "port": ":4092", "url": "http://prereview.boylenet.themfboyles.com", "cat": "Infra & Ops", "desc": "2-Lens GPU Review & OffSec Red-Team", "icon": "🔍"},
-    {"title": "GPU Orchestrator", "port": ":4010", "url": "http://orchestrator.boylenet.themfboyles.com/status", "cat": "Infra & Ops", "desc": "4x Tesla T4 + 1.73TB DDR4 Tier Router", "icon": "🧠"},
-    {"title": "LiteLLM Gateway", "port": ":4000", "url": "http://litellm.boylenet.themfboyles.com/ui", "cat": "Infra & Ops", "desc": "Unified LLM Router & Spend Dashboard", "icon": "🔀"},
-    {"title": "Grafana Dashboards", "port": ":3001", "url": "http://grafana.boylenet.themfboyles.com", "cat": "Infra & Ops", "desc": "Cluster Metrics & Prometheus Graphs", "icon": "📊"},
-    {"title": "Prometheus", "port": ":9090", "url": "http://prometheus.boylenet.themfboyles.com", "cat": "Infra & Ops", "desc": "Time-Series Metrics Engine", "icon": "📈"},
-    {"title": "Gitea Git Server", "port": ":3000", "url": "http://gitea.boylenet.themfboyles.com", "cat": "Infra & Ops", "desc": "Self-Hosted Git & CI Mirrors", "icon": "🦊"},
-    {"title": "NoVNC Desktop", "port": ":6080", "url": "http://novnc.boylenet.themfboyles.com", "cat": "Infra & Ops", "desc": "Browser VNC Console on Controller", "icon": "🖥️"},
+    {"title": "Mobile Command Deck", "port": ":4086", "url": "http://mobile.boylenet.themfboyles.org", "cat": "Core", "desc": "iOS/Android Touch PWA Command Deck", "icon": "📱"},
+    {"title": "NL Ops Shell", "port": ":4089", "url": "http://ops.boylenet.themfboyles.org", "cat": "Core", "desc": "Natural-Language Ops & Playbook Runner", "icon": "⚡"},
+    {"title": "Dashy Portal", "port": ":4080", "url": "http://dashy.boylenet.themfboyles.org", "cat": "Core", "desc": "Boylenet Unified Service Portal", "icon": "🧭"},
+    {"title": "Jarvis OS Cockpit", "port": ":3002", "url": "http://jarvis.boylenet.themfboyles.org", "cat": "Core", "desc": "27-Node Swarm & GPU Cockpit", "icon": "🛰️"},
+    {"title": "Jarvis Swarm Chat", "port": ":3003", "url": "http://chat.boylenet.themfboyles.org", "cat": "AI Studio", "desc": "4-Column Local LLM Arena", "icon": "💬"},
+    {"title": "Cloud Burst Studio", "port": ":4090", "url": "http://cloud.boylenet.themfboyles.org", "cat": "AI Studio", "desc": "$1,000 Free Cloud Credits + Local 4xT4 Burst", "icon": "☁️"},
+    {"title": "Multi-Harness Studio", "port": ":4098", "url": "http://harnesses.boylenet.themfboyles.org", "cat": "AI Studio", "desc": "Hermes, DeepSeek, Claude ABCD, Codex, Kimi", "icon": "🎛️"},
+    {"title": "Voice & Vision Cockpit", "port": ":4093", "url": "http://voice.boylenet.themfboyles.org", "cat": "AI Studio", "desc": "Whisper STT, Sub-300ms TTS & Vision-to-Code", "icon": "🎙️"},
+    {"title": "Deep Research Studio", "port": ":4094", "url": "http://research.boylenet.themfboyles.org", "cat": "AI Studio", "desc": "SearXNG + Dual-Oracle CDP + Qdrant RAG", "icon": "🔬"},
+    {"title": "LobeChat Studio", "port": ":4095", "url": "http://lobechat.boylenet.themfboyles.org", "cat": "AI Studio", "desc": "Tier 1/2/3 Workbench (Code: boylenet-admin)", "icon": "✨"},
+    {"title": "OpenCode Web UI", "port": ":4096", "url": "http://opencode.boylenet.themfboyles.org", "cat": "AI Studio", "desc": "Browser Coding Agent (38 LiteLLM Models)", "icon": "💻"},
+    {"title": "OpenClaw Control UI", "port": ":4097", "url": "http://openclaw.boylenet.themfboyles.org", "cat": "AI Studio", "desc": "Multi-Agent Gateway (Token: boylenet-admin)", "icon": "🐾"},
+    {"title": "OpenWebUI", "port": ":8090", "url": "http://openwebui.boylenet.themfboyles.org", "cat": "AI Studio", "desc": "Local RAG & Ollama Chat Workspace", "icon": "🌐"},
+    {"title": "Infra Sentinel", "port": ":4099", "url": "http://sentinel.boylenet.themfboyles.org", "cat": "Infra & Ops", "desc": "83-Service Health Matrix & Self-Healer", "icon": "🛡️"},
+    {"title": "Hardware iLO & vSAN", "port": ":4091", "url": "http://hardware.boylenet.themfboyles.org", "cat": "Infra & Ops", "desc": "HP iLO 4 Temps/Watts + vSAN 328TiB + 4xT4", "icon": "🌡️"},
+    {"title": "Gitea Pre-Review", "port": ":4092", "url": "http://prereview.boylenet.themfboyles.org", "cat": "Infra & Ops", "desc": "2-Lens GPU Review & OffSec Red-Team", "icon": "🔍"},
+    {"title": "GPU Orchestrator", "port": ":4010", "url": "http://orchestrator.boylenet.themfboyles.org/status", "cat": "Infra & Ops", "desc": "4x Tesla T4 + 1.73TB DDR4 Tier Router", "icon": "🧠"},
+    {"title": "LiteLLM Gateway", "port": ":4000", "url": "http://litellm.boylenet.themfboyles.org/ui", "cat": "Infra & Ops", "desc": "Unified LLM Router & Spend Dashboard", "icon": "🔀"},
+    {"title": "Grafana Dashboards", "port": ":3001", "url": "http://grafana.boylenet.themfboyles.org", "cat": "Infra & Ops", "desc": "Cluster Metrics & Prometheus Graphs", "icon": "📊"},
+    {"title": "Prometheus", "port": ":9090", "url": "http://prometheus.boylenet.themfboyles.org", "cat": "Infra & Ops", "desc": "Time-Series Metrics Engine", "icon": "📈"},
+    {"title": "Gitea Git Server", "port": ":3000", "url": "http://gitea.boylenet.themfboyles.org", "cat": "Infra & Ops", "desc": "Self-Hosted Git & CI Mirrors", "icon": "🦊"},
+    {"title": "NoVNC Desktop", "port": ":6080", "url": "http://novnc.boylenet.themfboyles.org", "cat": "Infra & Ops", "desc": "Browser VNC Console on Controller", "icon": "🖥️"},
 ]
 
 
@@ -641,7 +641,7 @@ MOBILE_HTML = """<!DOCTYPE html>
     <span>Boylenet Mobile Deck & Memory Dreamer</span>
   </div>
   <div style="display:flex;gap:8px;align-items:center;">
-    <a href="http://ops.boylenet.themfboyles.com" style="color:var(--cyan);font-size:0.76rem;text-decoration:none;border:1px solid var(--border);padding:6px 10px;border-radius:10px;">NL Ops :4089</a>
+    <a href="http://ops.boylenet.themfboyles.org" style="color:var(--cyan);font-size:0.76rem;text-decoration:none;border:1px solid var(--border);padding:6px 10px;border-radius:10px;">NL Ops :4089</a>
     <button class="refresh-btn" id="sync-live-btn" onclick="refreshDeck()">Sync Live</button>
   </div>
 </div>
@@ -1054,7 +1054,7 @@ class MobilePWAHandler(http.server.BaseHTTPRequestHandler):
                     "status": "ok",
                     "service": "bd-mobile-pwa",
                     "port": PORT,
-                    "url": "http://mobile.boylenet.themfboyles.com",
+                    "url": "http://mobile.boylenet.themfboyles.org",
                     "pwa_manifest": "/manifest.json",
                     "service_worker": "/sw.js",
                     "tabs": [
@@ -1162,7 +1162,7 @@ def main() -> int:
     ap.add_argument("--port", type=int, default=PORT)
     args = ap.parse_args()
     srv = ThreadedHTTPServer(("0.0.0.0", args.port), MobilePWAHandler)
-    print(f"[bd-mobile-pwa] Listening on http://0.0.0.0:{args.port} (http://mobile.boylenet.themfboyles.com)", flush=True)
+    print(f"[bd-mobile-pwa] Listening on http://0.0.0.0:{args.port} (http://mobile.boylenet.themfboyles.org)", flush=True)
     srv.serve_forever()
     return 0
 

@@ -1,222 +1,222 @@
 http:
   routers:
     boylenet-dashy:
-      rule: Host(`dashy.boylenet.themfboyles.com`) || Host(`dashy`) || Host(`portal.boylenet.themfboyles.com`) || Host(`portal`) || Host(`dashboard.boylenet.themfboyles.com`) || Host(`dashboard`) || Host(`controller.boylenet.themfboyles.com`)
+      rule: Host(`dashy.boylenet.themfboyles.org`) || Host(`dashy.themfboyles.org`) || Host(`dashy.boylenet.themfboyles.com`) || Host(`dashy.themfboyles.com`) || Host(`dashy`) || Host(`portal.boylenet.themfboyles.org`) || Host(`portal.themfboyles.org`) || Host(`portal.boylenet.themfboyles.com`) || Host(`portal.themfboyles.com`) || Host(`portal`) || Host(`dashboard.boylenet.themfboyles.org`) || Host(`dashboard.themfboyles.org`) || Host(`dashboard.boylenet.themfboyles.com`) || Host(`dashboard.themfboyles.com`) || Host(`dashboard`) || Host(`controller.boylenet.themfboyles.org`) || Host(`controller.themfboyles.org`) || Host(`controller.boylenet.themfboyles.com`) || Host(`controller.themfboyles.com`) || Host(`controller`) || Host(`boylenet.themfboyles.org`) || Host(`themfboyles.org`) || Host(`boylenet.themfboyles.com`) || Host(`themfboyles.com`)
       service: boylenet-dashy-svc
       entryPoints:
       - web
     boylenet-jarvis:
-      rule: Host(`jarvis.boylenet.themfboyles.com`) || Host(`jarvis`) || Host(`cockpit.boylenet.themfboyles.com`) || Host(`cockpit`)
+      rule: Host(`jarvis.boylenet.themfboyles.org`) || Host(`jarvis.themfboyles.org`) || Host(`jarvis.boylenet.themfboyles.com`) || Host(`jarvis.themfboyles.com`) || Host(`jarvis`) || Host(`cockpit.boylenet.themfboyles.org`) || Host(`cockpit.themfboyles.org`) || Host(`cockpit.boylenet.themfboyles.com`) || Host(`cockpit.themfboyles.com`) || Host(`cockpit`)
       service: boylenet-jarvis-svc
       entryPoints:
       - web
     boylenet-chat:
-      rule: Host(`chat.boylenet.themfboyles.com`) || Host(`chat`)
+      rule: Host(`chat.boylenet.themfboyles.org`) || Host(`chat.themfboyles.org`) || Host(`chat.boylenet.themfboyles.com`) || Host(`chat.themfboyles.com`) || Host(`chat`)
       service: boylenet-chat-svc
       entryPoints:
       - web
     boylenet-openwebui:
-      rule: Host(`openwebui.boylenet.themfboyles.com`) || Host(`openwebui`)
+      rule: Host(`openwebui.boylenet.themfboyles.org`) || Host(`openwebui.themfboyles.org`) || Host(`openwebui.boylenet.themfboyles.com`) || Host(`openwebui.themfboyles.com`) || Host(`openwebui`)
       service: boylenet-openwebui-svc
       entryPoints:
       - web
     boylenet-litellm:
-      rule: Host(`litellm.boylenet.themfboyles.com`) || Host(`litellm`)
+      rule: Host(`litellm.boylenet.themfboyles.org`) || Host(`litellm.themfboyles.org`) || Host(`litellm.boylenet.themfboyles.com`) || Host(`litellm.themfboyles.com`) || Host(`litellm`)
       service: boylenet-litellm-svc
       entryPoints:
       - web
     boylenet-orchestrator:
-      rule: Host(`orchestrator.boylenet.themfboyles.com`) || Host(`orchestrator`)
+      rule: Host(`orchestrator.boylenet.themfboyles.org`) || Host(`orchestrator.themfboyles.org`) || Host(`orchestrator.boylenet.themfboyles.com`) || Host(`orchestrator.themfboyles.com`) || Host(`orchestrator`)
       service: boylenet-orchestrator-svc
       entryPoints:
       - web
     boylenet-gitea:
-      rule: Host(`gitea.boylenet.themfboyles.com`) || Host(`gitea`) || Host(`git.boylenet.themfboyles.com`) || Host(`git`)
+      rule: Host(`gitea.boylenet.themfboyles.org`) || Host(`gitea.themfboyles.org`) || Host(`gitea.boylenet.themfboyles.com`) || Host(`gitea.themfboyles.com`) || Host(`gitea`) || Host(`git.boylenet.themfboyles.org`) || Host(`git.themfboyles.org`) || Host(`git.boylenet.themfboyles.com`) || Host(`git.themfboyles.com`) || Host(`git`)
       service: boylenet-gitea-svc
       entryPoints:
       - web
     boylenet-grafana:
-      rule: Host(`grafana.boylenet.themfboyles.com`) || Host(`grafana`)
+      rule: Host(`grafana.boylenet.themfboyles.org`) || Host(`grafana.themfboyles.org`) || Host(`grafana.boylenet.themfboyles.com`) || Host(`grafana.themfboyles.com`) || Host(`grafana`)
       service: boylenet-grafana-svc
       entryPoints:
       - web
     boylenet-prometheus:
-      rule: Host(`prometheus.boylenet.themfboyles.com`) || Host(`prometheus`)
+      rule: Host(`prometheus.boylenet.themfboyles.org`) || Host(`prometheus.themfboyles.org`) || Host(`prometheus.boylenet.themfboyles.com`) || Host(`prometheus.themfboyles.com`) || Host(`prometheus`)
       service: boylenet-prometheus-svc
       entryPoints:
       - web
     boylenet-alertmanager:
-      rule: Host(`alertmanager.boylenet.themfboyles.com`) || Host(`alertmanager`)
+      rule: Host(`alertmanager.boylenet.themfboyles.org`) || Host(`alertmanager.themfboyles.org`) || Host(`alertmanager.boylenet.themfboyles.com`) || Host(`alertmanager.themfboyles.com`) || Host(`alertmanager`)
       service: boylenet-alertmanager-svc
       entryPoints:
       - web
     boylenet-minio:
-      rule: Host(`minio.boylenet.themfboyles.com`) || Host(`minio`)
+      rule: Host(`minio.boylenet.themfboyles.org`) || Host(`minio.themfboyles.org`) || Host(`minio.boylenet.themfboyles.com`) || Host(`minio.themfboyles.com`) || Host(`minio`)
       service: boylenet-minio-svc
       entryPoints:
       - web
     boylenet-cadvisor:
-      rule: Host(`cadvisor.boylenet.themfboyles.com`) || Host(`cadvisor`)
+      rule: Host(`cadvisor.boylenet.themfboyles.org`) || Host(`cadvisor.themfboyles.org`) || Host(`cadvisor.boylenet.themfboyles.com`) || Host(`cadvisor.themfboyles.com`) || Host(`cadvisor`)
       service: boylenet-cadvisor-svc
       entryPoints:
       - web
     boylenet-devdocs:
-      rule: Host(`devdocs.boylenet.themfboyles.com`) || Host(`devdocs`)
+      rule: Host(`devdocs.boylenet.themfboyles.org`) || Host(`devdocs.themfboyles.org`) || Host(`devdocs.boylenet.themfboyles.com`) || Host(`devdocs.themfboyles.com`) || Host(`devdocs`)
       service: boylenet-devdocs-svc
       entryPoints:
       - web
     boylenet-searxng:
-      rule: Host(`searxng.boylenet.themfboyles.com`) || Host(`searxng`) || Host(`search.boylenet.themfboyles.com`) || Host(`search`)
+      rule: Host(`searxng.boylenet.themfboyles.org`) || Host(`searxng.themfboyles.org`) || Host(`searxng.boylenet.themfboyles.com`) || Host(`searxng.themfboyles.com`) || Host(`searxng`) || Host(`search.boylenet.themfboyles.org`) || Host(`search.themfboyles.org`) || Host(`search.boylenet.themfboyles.com`) || Host(`search.themfboyles.com`) || Host(`search`)
       service: boylenet-searxng-svc
       entryPoints:
       - web
     boylenet-codeserver:
-      rule: Host(`codeserver.boylenet.themfboyles.com`) || Host(`codeserver`) || Host(`ide.boylenet.themfboyles.com`) || Host(`ide`)
+      rule: Host(`codeserver.boylenet.themfboyles.org`) || Host(`codeserver.themfboyles.org`) || Host(`codeserver.boylenet.themfboyles.com`) || Host(`codeserver.themfboyles.com`) || Host(`codeserver`) || Host(`ide.boylenet.themfboyles.org`) || Host(`ide.themfboyles.org`) || Host(`ide.boylenet.themfboyles.com`) || Host(`ide.themfboyles.com`) || Host(`ide`)
       service: boylenet-codeserver-svc
       entryPoints:
       - web
     boylenet-verdaccio:
-      rule: Host(`verdaccio.boylenet.themfboyles.com`) || Host(`verdaccio`) || Host(`npm.boylenet.themfboyles.com`) || Host(`npm`)
+      rule: Host(`verdaccio.boylenet.themfboyles.org`) || Host(`verdaccio.themfboyles.org`) || Host(`verdaccio.boylenet.themfboyles.com`) || Host(`verdaccio.themfboyles.com`) || Host(`verdaccio`) || Host(`npm.boylenet.themfboyles.org`) || Host(`npm.themfboyles.org`) || Host(`npm.boylenet.themfboyles.com`) || Host(`npm.themfboyles.com`) || Host(`npm`)
       service: boylenet-verdaccio-svc
       entryPoints:
       - web
     boylenet-devpi:
-      rule: Host(`devpi.boylenet.themfboyles.com`) || Host(`devpi`) || Host(`pypi.boylenet.themfboyles.com`) || Host(`pypi`)
+      rule: Host(`devpi.boylenet.themfboyles.org`) || Host(`devpi.themfboyles.org`) || Host(`devpi.boylenet.themfboyles.com`) || Host(`devpi.themfboyles.com`) || Host(`devpi`) || Host(`pypi.boylenet.themfboyles.org`) || Host(`pypi.themfboyles.org`) || Host(`pypi.boylenet.themfboyles.com`) || Host(`pypi.themfboyles.com`) || Host(`pypi`)
       service: boylenet-devpi-svc
       entryPoints:
       - web
     boylenet-acng:
-      rule: Host(`acng.boylenet.themfboyles.com`) || Host(`acng`) || Host(`apt.boylenet.themfboyles.com`) || Host(`apt`)
+      rule: Host(`acng.boylenet.themfboyles.org`) || Host(`acng.themfboyles.org`) || Host(`acng.boylenet.themfboyles.com`) || Host(`acng.themfboyles.com`) || Host(`acng`) || Host(`apt.boylenet.themfboyles.org`) || Host(`apt.themfboyles.org`) || Host(`apt.boylenet.themfboyles.com`) || Host(`apt.themfboyles.com`) || Host(`apt`)
       service: boylenet-acng-svc
       entryPoints:
       - web
     boylenet-elastic:
-      rule: Host(`elastic.boylenet.themfboyles.com`) || Host(`elastic`)
+      rule: Host(`elastic.boylenet.themfboyles.org`) || Host(`elastic.themfboyles.org`) || Host(`elastic.boylenet.themfboyles.com`) || Host(`elastic.themfboyles.com`) || Host(`elastic`)
       service: boylenet-elastic-svc
       entryPoints:
       - web
     boylenet-treesitter:
-      rule: Host(`treesitter.boylenet.themfboyles.com`) || Host(`treesitter`) || Host(`ast.boylenet.themfboyles.com`) || Host(`ast`)
+      rule: Host(`treesitter.boylenet.themfboyles.org`) || Host(`treesitter.themfboyles.org`) || Host(`treesitter.boylenet.themfboyles.com`) || Host(`treesitter.themfboyles.com`) || Host(`treesitter`) || Host(`ast.boylenet.themfboyles.org`) || Host(`ast.themfboyles.org`) || Host(`ast.boylenet.themfboyles.com`) || Host(`ast.themfboyles.com`) || Host(`ast`)
       service: boylenet-treesitter-svc
       entryPoints:
       - web
     boylenet-novnc:
-      rule: Host(`novnc.boylenet.themfboyles.com`) || Host(`novnc`)
+      rule: Host(`novnc.boylenet.themfboyles.org`) || Host(`novnc.themfboyles.org`) || Host(`novnc.boylenet.themfboyles.com`) || Host(`novnc.themfboyles.com`) || Host(`novnc`)
       service: boylenet-novnc-svc
       entryPoints:
       - web
     boylenet-langfuse:
-      rule: Host(`langfuse.boylenet.themfboyles.com`) || Host(`langfuse`)
+      rule: Host(`langfuse.boylenet.themfboyles.org`) || Host(`langfuse.themfboyles.org`) || Host(`langfuse.boylenet.themfboyles.com`) || Host(`langfuse.themfboyles.com`) || Host(`langfuse`)
       service: boylenet-langfuse-svc
       entryPoints:
       - web
     boylenet-qdrant:
-      rule: Host(`qdrant.boylenet.themfboyles.com`) || Host(`qdrant`)
+      rule: Host(`qdrant.boylenet.themfboyles.org`) || Host(`qdrant.themfboyles.org`) || Host(`qdrant.boylenet.themfboyles.com`) || Host(`qdrant.themfboyles.com`) || Host(`qdrant`)
       service: boylenet-qdrant-svc
       entryPoints:
       - web
     boylenet-ai-webui:
-      rule: Host(`ai-webui.boylenet.themfboyles.com`) || Host(`ai-webui`)
+      rule: Host(`ai-webui.boylenet.themfboyles.org`) || Host(`ai-webui.themfboyles.org`) || Host(`ai-webui.boylenet.themfboyles.com`) || Host(`ai-webui.themfboyles.com`) || Host(`ai-webui`)
       service: boylenet-ai-webui-svc
       entryPoints:
       - web
     boylenet-opencode:
-      rule: Host(`opencode.boylenet.themfboyles.com`) || Host(`opencode`)
+      rule: Host(`opencode.boylenet.themfboyles.org`) || Host(`opencode.themfboyles.org`) || Host(`opencode.boylenet.themfboyles.com`) || Host(`opencode.themfboyles.com`) || Host(`opencode`)
       service: boylenet-opencode-svc
       entryPoints:
       - web
     boylenet-openclaw:
-      rule: Host(`openclaw.boylenet.themfboyles.com`) || Host(`openclaw`)
+      rule: Host(`openclaw.boylenet.themfboyles.org`) || Host(`openclaw.themfboyles.org`) || Host(`openclaw.boylenet.themfboyles.com`) || Host(`openclaw.themfboyles.com`) || Host(`openclaw`)
       service: boylenet-openclaw-svc
       entryPoints:
       - web
     boylenet-harnesses:
-      rule: Host(`harnesses.boylenet.themfboyles.com`) || Host(`harnesses`) || Host(`hermes.boylenet.themfboyles.com`) || Host(`hermes`) || Host(`deepseek.boylenet.themfboyles.com`) || Host(`deepseek`) || Host(`openrouter.boylenet.themfboyles.com`) || Host(`openrouter`)
+      rule: Host(`harnesses.boylenet.themfboyles.org`) || Host(`harnesses.themfboyles.org`) || Host(`harnesses.boylenet.themfboyles.com`) || Host(`harnesses.themfboyles.com`) || Host(`harnesses`) || Host(`hermes.boylenet.themfboyles.org`) || Host(`hermes.themfboyles.org`) || Host(`hermes.boylenet.themfboyles.com`) || Host(`hermes.themfboyles.com`) || Host(`hermes`) || Host(`deepseek.boylenet.themfboyles.org`) || Host(`deepseek.themfboyles.org`) || Host(`deepseek.boylenet.themfboyles.com`) || Host(`deepseek.themfboyles.com`) || Host(`deepseek`) || Host(`openrouter.boylenet.themfboyles.org`) || Host(`openrouter.themfboyles.org`) || Host(`openrouter.boylenet.themfboyles.com`) || Host(`openrouter.themfboyles.com`) || Host(`openrouter`)
       service: boylenet-harnesses-svc
       entryPoints:
       - web
     boylenet-lobechat:
-      rule: Host(`lobechat.boylenet.themfboyles.com`) || Host(`lobechat`)
+      rule: Host(`lobechat.boylenet.themfboyles.org`) || Host(`lobechat.themfboyles.org`) || Host(`lobechat.boylenet.themfboyles.com`) || Host(`lobechat.themfboyles.com`) || Host(`lobechat`)
       service: boylenet-lobechat-svc
       entryPoints:
       - web
     boylenet-litellm-228:
-      rule: Host(`litellm-228.boylenet.themfboyles.com`) || Host(`litellm-228`)
+      rule: Host(`litellm-228.boylenet.themfboyles.org`) || Host(`litellm-228.themfboyles.org`) || Host(`litellm-228.boylenet.themfboyles.com`) || Host(`litellm-228.themfboyles.com`) || Host(`litellm-228`)
       service: boylenet-litellm-228-svc
       entryPoints:
       - web
     boylenet-sentinel:
-      rule: Host(`sentinel.boylenet.themfboyles.com`) || Host(`sentinel`)
+      rule: Host(`sentinel.boylenet.themfboyles.org`) || Host(`sentinel.themfboyles.org`) || Host(`sentinel.boylenet.themfboyles.com`) || Host(`sentinel.themfboyles.com`) || Host(`sentinel`)
       service: boylenet-sentinel-svc
       entryPoints:
       - web
     boylenet-prereview:
-      rule: Host(`prereview.boylenet.themfboyles.com`) || Host(`prereview`) || Host(`offsec.boylenet.themfboyles.com`) || Host(`offsec`)
+      rule: Host(`prereview.boylenet.themfboyles.org`) || Host(`prereview.themfboyles.org`) || Host(`prereview.boylenet.themfboyles.com`) || Host(`prereview.themfboyles.com`) || Host(`prereview`) || Host(`offsec.boylenet.themfboyles.org`) || Host(`offsec.themfboyles.org`) || Host(`offsec.boylenet.themfboyles.com`) || Host(`offsec.themfboyles.com`) || Host(`offsec`)
       service: boylenet-prereview-svc
       entryPoints:
       - web
     boylenet-multimodal:
-      rule: Host(`voice.boylenet.themfboyles.com`) || Host(`voice`) || Host(`multimodal.boylenet.themfboyles.com`) || Host(`multimodal`)
+      rule: Host(`voice.boylenet.themfboyles.org`) || Host(`voice.themfboyles.org`) || Host(`voice.boylenet.themfboyles.com`) || Host(`voice.themfboyles.com`) || Host(`voice`) || Host(`multimodal.boylenet.themfboyles.org`) || Host(`multimodal.themfboyles.org`) || Host(`multimodal.boylenet.themfboyles.com`) || Host(`multimodal.themfboyles.com`) || Host(`multimodal`)
       service: boylenet-multimodal-svc
       entryPoints:
       - web
     boylenet-research:
-      rule: Host(`research.boylenet.themfboyles.com`) || Host(`research`)
+      rule: Host(`research.boylenet.themfboyles.org`) || Host(`research.themfboyles.org`) || Host(`research.boylenet.themfboyles.com`) || Host(`research.themfboyles.com`) || Host(`research`)
       service: boylenet-research-svc
       entryPoints:
       - web
     boylenet-hardware:
-      rule: Host(`hardware.boylenet.themfboyles.com`) || Host(`hardware`)
+      rule: Host(`hardware.boylenet.themfboyles.org`) || Host(`hardware.themfboyles.org`) || Host(`hardware.boylenet.themfboyles.com`) || Host(`hardware.themfboyles.com`) || Host(`hardware`)
       service: boylenet-hardware-svc
       entryPoints:
       - web
     boylenet-cloud:
-      rule: Host(`cloud.boylenet.themfboyles.com`) || Host(`cloud`) || Host(`burst.boylenet.themfboyles.com`) || Host(`burst`)
+      rule: Host(`cloud.boylenet.themfboyles.org`) || Host(`cloud.themfboyles.org`) || Host(`cloud.boylenet.themfboyles.com`) || Host(`cloud.themfboyles.com`) || Host(`cloud`) || Host(`burst.boylenet.themfboyles.org`) || Host(`burst.themfboyles.org`) || Host(`burst.boylenet.themfboyles.com`) || Host(`burst.themfboyles.com`) || Host(`burst`)
       service: boylenet-cloud-svc
       entryPoints:
       - web
     boylenet-vault:
-      rule: Host(`vault.boylenet.themfboyles.com`) || Host(`vault`) || Host(`credentials.boylenet.themfboyles.com`) || Host(`credentials`)
+      rule: Host(`vault.boylenet.themfboyles.org`) || Host(`vault.themfboyles.org`) || Host(`vault.boylenet.themfboyles.com`) || Host(`vault.themfboyles.com`) || Host(`vault`) || Host(`credentials.boylenet.themfboyles.org`) || Host(`credentials.themfboyles.org`) || Host(`credentials.boylenet.themfboyles.com`) || Host(`credentials.themfboyles.com`) || Host(`credentials`)
       service: boylenet-vault-svc
       entryPoints:
       - web
     boylenet-ops:
-      rule: Host(`ops.boylenet.themfboyles.com`) || Host(`ops`)
+      rule: Host(`ops.boylenet.themfboyles.org`) || Host(`ops.themfboyles.org`) || Host(`ops.boylenet.themfboyles.com`) || Host(`ops.themfboyles.com`) || Host(`ops`)
       service: boylenet-ops-svc
       entryPoints:
       - web
     boylenet-mobile:
-      rule: Host(`mobile.boylenet.themfboyles.com`) || Host(`mobile`) || Host(`pwa.boylenet.themfboyles.com`) || Host(`pwa`)
+      rule: Host(`mobile.boylenet.themfboyles.org`) || Host(`mobile.themfboyles.org`) || Host(`mobile.boylenet.themfboyles.com`) || Host(`mobile.themfboyles.com`) || Host(`mobile`) || Host(`pwa.boylenet.themfboyles.org`) || Host(`pwa.themfboyles.org`) || Host(`pwa.boylenet.themfboyles.com`) || Host(`pwa.themfboyles.com`) || Host(`pwa`)
       service: boylenet-mobile-svc
       entryPoints:
       - web
     boylenet-topology:
-      rule: Host(`topology.boylenet.themfboyles.com`) || Host(`topology`)
+      rule: Host(`topology.boylenet.themfboyles.org`) || Host(`topology.themfboyles.org`) || Host(`topology.boylenet.themfboyles.com`) || Host(`topology.themfboyles.com`) || Host(`topology`)
       service: boylenet-topology-svc
       entryPoints:
       - web
     boylenet-os:
-      rule: Host(`os.boylenet.themfboyles.com`) || Host(`os`)
+      rule: Host(`os.boylenet.themfboyles.org`) || Host(`os.themfboyles.org`) || Host(`os.boylenet.themfboyles.com`) || Host(`os.themfboyles.com`) || Host(`os`)
       service: boylenet-os-svc
       entryPoints:
       - web
     boylenet-models:
-      rule: Host(`models.boylenet.themfboyles.com`) || Host(`models`)
+      rule: Host(`models.boylenet.themfboyles.org`) || Host(`models.themfboyles.org`) || Host(`models.boylenet.themfboyles.com`) || Host(`models.themfboyles.com`) || Host(`models`)
       service: boylenet-models-svc
       entryPoints:
       - web
     boylenet-terminal:
-      rule: Host(`terminal.boylenet.themfboyles.com`) || Host(`terminal`)
+      rule: Host(`terminal.boylenet.themfboyles.org`) || Host(`terminal.themfboyles.org`) || Host(`terminal.boylenet.themfboyles.com`) || Host(`terminal.themfboyles.com`) || Host(`terminal`)
       service: boylenet-terminal-svc
       entryPoints:
       - web
     boylenet-sso-ca:
-      rule: Host(`ca.boylenet.themfboyles.com`) || Host(`ca`) || Host(`sso.boylenet.themfboyles.com`) || Host(`sso`)
+      rule: Host(`ca.boylenet.themfboyles.org`) || Host(`ca.themfboyles.org`) || Host(`ca.boylenet.themfboyles.com`) || Host(`ca.themfboyles.com`) || Host(`ca`) || Host(`sso.boylenet.themfboyles.org`) || Host(`sso.themfboyles.org`) || Host(`sso.boylenet.themfboyles.com`) || Host(`sso.themfboyles.com`) || Host(`sso`)
       service: boylenet-sso-ca-svc
       entryPoints:
       - web
     boylenet-briefing-doctor:
-      rule: Host(`briefing.boylenet.themfboyles.com`) || Host(`briefing`) || Host(`doctor.boylenet.themfboyles.com`) || Host(`doctor`)
+      rule: Host(`briefing.boylenet.themfboyles.org`) || Host(`briefing.themfboyles.org`) || Host(`briefing.boylenet.themfboyles.com`) || Host(`briefing.themfboyles.com`) || Host(`briefing`) || Host(`doctor.boylenet.themfboyles.org`) || Host(`doctor.themfboyles.org`) || Host(`doctor.boylenet.themfboyles.com`) || Host(`doctor.themfboyles.com`) || Host(`doctor`)
       service: boylenet-briefing-doctor-svc
       entryPoints:
       - web

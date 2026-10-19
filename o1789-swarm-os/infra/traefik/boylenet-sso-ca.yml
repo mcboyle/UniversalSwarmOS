@@ -1,0 +1,22 @@
+tls:
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /etc/traefik/dynamic/certs/boylenet-wildcard.crt
+        keyFile: /etc/traefik/dynamic/certs/boylenet-wildcard.key
+  certificates:
+    - certFile: /etc/traefik/dynamic/certs/boylenet-wildcard.crt
+      keyFile: /etc/traefik/dynamic/certs/boylenet-wildcard.key
+
+http:
+  routers:
+    boylenet-ca-sso:
+      rule: Host(`ca.boylenet.themfboyles.org`) || Host(`ca.themfboyles.org`) || Host(`ca.boylenet.themfboyles.com`) || Host(`ca.themfboyles.com`) || Host(`ca`) || Host(`sso.boylenet.themfboyles.org`) || Host(`sso.themfboyles.org`) || Host(`sso.boylenet.themfboyles.com`) || Host(`sso.themfboyles.com`) || Host(`sso`)
+      service: boylenet-ca-sso-svc
+      entryPoints:
+      - web
+  services:
+    boylenet-ca-sso-svc:
+      loadBalancer:
+        servers:
+        - url: http://10.0.70.164:4082

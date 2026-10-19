@@ -1,0 +1,296 @@
+#!/usr/bin/env python3
+"""
+bd-letsencrypt-cloudflare — Automated Let's Encrypt + Cloudflare DNS-01 Wildcard TLS Provisioner
+Manages wildcard certificates for *.boylenet.themfboyles.org, *.themfboyles.org,
+*.boylenet.themfboyles.com, and *.themfboyles.com on NGINX :443.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime
+import json
+import os
+import shutil
+import subprocess
+import sys
+from typing import Any, Dict, List
+
+CERT_NAME = "boylenet.themfboyles.com"
+LIVE_DIR = f"/etc/letsencrypt/live/{CERT_NAME}"
+ALT_LIVE_DIRS = [
+    "/etc/letsencrypt/live/boylenet.themfboyles.org",
+    "/etc/letsencrypt/live/themfboyles.org",
+]
+RENEWAL_CONF = f"/etc/letsencrypt/renewal/{CERT_NAME}.conf"
+BACKUP_DIR = "/etc/letsencrypt/boylenet-ca-backup"
+CF_INI_PATH = "/etc/letsencrypt/cloudflare.ini"
+DEPLOY_HOOK_PATH = "/etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh"
+CA_DIR = "/home/mboyle/infra/ca"
+WILDCARD_CRT = os.path.join(CA_DIR, "boylenet-wildcard.crt")
+WILDCARD_KEY = os.path.join(CA_DIR, "boylenet-wildcard.key")
+ROOT_CA_CRT = os.path.join(CA_DIR, "boylenet-root-ca.crt")
+
+
+def _run(cmd: List[str], timeout: int = 180) -> subprocess.CompletedProcess:
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+
+
+def _find_active_cert_path() -> str:
+    for d in ALT_LIVE_DIRS + [LIVE_DIR]:
+        p = os.path.join(d, "fullchain.pem")
+        if os.path.exists(p) or _run(["sudo", "test", "-f", p], timeout=5).returncode == 0:
+            return p
+    return os.path.join(LIVE_DIR, "fullchain.pem")
+
+
+def ensure_hooks_and_timer() -> None:
+    os.makedirs(os.path.dirname(DEPLOY_HOOK_PATH), exist_ok=True)
+    hook_script = """#!/usr/bin/env bash
+set -euo pipefail
+# Sync any newly issued themfboyles.org cert into /etc/letsencrypt/live/boylenet.themfboyles.com if needed
+for candidate in /etc/letsencrypt/live/themfboyles.org /etc/letsencrypt/live/boylenet.themfboyles.org; do
+    if [ -f "$candidate/fullchain.pem" ] && [ -f "$candidate/privkey.pem" ]; then
+        mkdir -p /etc/letsencrypt/live/boylenet.themfboyles.com
+        cp -fL "$candidate/fullchain.pem" /etc/letsencrypt/live/boylenet.themfboyles.com/fullchain.pem
+        cp -fL "$candidate/privkey.pem" /etc/letsencrypt/live/boylenet.themfboyles.com/privkey.pem
+        break
+    fi
+done
+systemctl reload nginx
+"""
+    with open(DEPLOY_HOOK_PATH, "w", encoding="utf-8") as f:
+        f.write(hook_script)
+    os.chmod(DEPLOY_HOOK_PATH, 0o755)
+    _run(["systemctl", "enable", "--now", "certbot.timer"], timeout=15)
+
+
+def get_status() -> Dict[str, Any]:
+    nginx_active = _run(["systemctl", "is-active", "nginx"], timeout=5).stdout.strip() == "active"
+    timer_active = _run(["systemctl", "is-active", "certbot.timer"], timeout=5).stdout.strip() == "active"
+    ss_out = _run(["ss", "-tln"], timeout=5).stdout
+    port_443_listening = ":443 " in ss_out or ":443\t" in ss_out or ":443\n" in ss_out
+
+    cf_configured = False
+    if os.path.exists(CF_INI_PATH):
+        try:
+            with open(CF_INI_PATH, "r", encoding="utf-8") as f:
+                txt = f.read()
+            cf_configured = ("dns_cloudflare_api_token" in txt or "dns_cloudflare_api_key" in txt) and "REPLACE" not in txt
+        except PermissionError:
+            # Non-root check via sudo test
+            cf_configured = _run(["sudo", "test", "-s", CF_INI_PATH], timeout=5).returncode == 0
+
+    cert_path = _find_active_cert_path()
+    subject = ""
+    issuer = ""
+    not_after = ""
+    sans: List[str] = []
+    cert_exists = os.path.exists(cert_path) or _run(["sudo", "test", "-f", cert_path], timeout=5).returncode == 0
+    if cert_exists:
+        proc = _run(["sudo", "openssl", "x509", "-in", cert_path, "-noout", "-subject", "-issuer", "-enddate", "-ext", "subjectAltName"], timeout=10)
+        for line in proc.stdout.splitlines():
+            s = line.strip()
+            if s.startswith("subject="):
+                subject = s.split("=", 1)[1].strip()
+            elif s.startswith("issuer="):
+                issuer = s.split("=", 1)[1].strip()
+            elif s.startswith("notAfter="):
+                not_after = s.split("=", 1)[1].strip()
+            elif "DNS:" in s or "IP Address:" in s:
+                sans.extend([p.strip() for p in s.split(",") if p.strip()])
+
+    is_letsencrypt = "Let's Encrypt" in issuer or "R3" in issuer or "E1" in issuer or "E5" in issuer or "E6" in issuer or "R10" in issuer or "R11" in issuer
+    return {
+        "status": "ok" if (nginx_active and port_443_listening and cert_exists) else "degraded",
+        "checked_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "nginx_active": nginx_active,
+        "port_443_listening": port_443_listening,
+        "certbot_timer_active": timer_active,
+        "cloudflare_credentials_configured": cf_configured,
+        "cloudflare_ini_path": CF_INI_PATH,
+        "deploy_hook_installed": os.path.exists(DEPLOY_HOOK_PATH),
+        "cert_path": cert_path,
+        "cert_exists": cert_exists,
+        "cert_provider": "Let's Encrypt (DNS-01)" if is_letsencrypt else "Boylenet Root CA (Zero-Downtime Wildcard)",
+        "is_letsencrypt": is_letsencrypt,
+        "subject": subject,
+        "issuer": issuer,
+        "expires": not_after,
+        "sans": sans,
+        "primary_domain": "themfboyles.org",
+        "legacy_domain": "themfboyles.com",
+    }
+
+
+def _restore_bootstrap_cert() -> None:
+    os.makedirs(LIVE_DIR, exist_ok=True)
+    if os.path.exists(WILDCARD_CRT) and os.path.exists(WILDCARD_KEY):
+        with open(os.path.join(LIVE_DIR, "fullchain.pem"), "wb") as out_f:
+            with open(WILDCARD_CRT, "rb") as w_f:
+                out_f.write(w_f.read())
+            if os.path.exists(ROOT_CA_CRT):
+                with open(ROOT_CA_CRT, "rb") as ca_f:
+                    out_f.write(b"\n" + ca_f.read())
+        shutil.copy2(WILDCARD_KEY, os.path.join(LIVE_DIR, "privkey.pem"))
+        os.chmod(os.path.join(LIVE_DIR, "privkey.pem"), 0o600)
+
+
+def provision_letsencrypt(
+    token: str,
+    domain: str = "themfboyles.org",
+    email: str = "",
+    global_key: str = "",
+    staging: bool = False,
+) -> Dict[str, Any]:
+    if os.geteuid() != 0:
+        cmd = ["sudo", sys.executable, __file__, "--set-token", token, "--domain", domain, "--json"]
+        if email:
+            cmd.extend(["--email", email])
+        if global_key:
+            cmd.extend(["--global-key", global_key])
+        if staging:
+            cmd.append("--staging")
+        proc = _run(cmd, timeout=240)
+        try:
+            return json.loads(proc.stdout)
+        except Exception:
+            return {
+                "ok": proc.returncode == 0,
+                "returncode": proc.returncode,
+                "stdout": proc.stdout,
+                "stderr": proc.stderr,
+            }
+
+    ensure_hooks_and_timer()
+    os.makedirs("/etc/letsencrypt", exist_ok=True)
+    if global_key and email:
+        ini_content = f"dns_cloudflare_email = {email.strip()}\n<REDACTED_BY_BOYLENET_SECRET_GUARD>
+    else:
+        ini_content = f"<REDACTED_BY_BOYLENET_SECRET_GUARD>
+    with open(CF_INI_PATH, "w", encoding="utf-8") as f:
+        f.write(ini_content)
+    os.chmod(CF_INI_PATH, 0o600)
+
+    # If LIVE_DIR is a bootstrap directory without a renewal conf, back it up so certbot can create its symlink lineage
+    if os.path.exists(LIVE_DIR) and not os.path.exists(RENEWAL_CONF):
+        os.makedirs(BACKUP_DIR, exist_ok=True)
+        for fn in ("fullchain.pem", "privkey.pem"):
+            src = os.path.join(LIVE_DIR, fn)
+            if os.path.exists(src):
+                shutil.copy2(src, os.path.join(BACKUP_DIR, fn))
+        shutil.rmtree(LIVE_DIR, ignore_errors=True)
+
+    domains = [
+        domain,
+        f"*.{domain}",
+        f"*.boylenet.{domain}",
+    ]
+    certbot_cmd = [
+        "certbot",
+        "certonly",
+        "--dns-cloudflare",
+        "--dns-cloudflare-credentials",
+        CF_INI_PATH,
+        "--dns-cloudflare-propagation-seconds",
+        "20",
+        "--non-interactive",
+        "--agree-tos",
+        "--register-unsafely-without-email",
+        "--cert-name",
+        CERT_NAME,
+        "--force-renewal",
+    ]
+    if staging:
+        certbot_cmd.append("--staging")
+    for d in domains:
+        certbot_cmd.extend(["-d", d])
+
+    proc = _run(certbot_cmd, timeout=210)
+    if proc.returncode != 0:
+        # Restore bootstrap CA cert so NGINX never fails
+        if not os.path.exists(os.path.join(LIVE_DIR, "fullchain.pem")):
+            _restore_bootstrap_cert()
+        _run(["systemctl", "reload", "nginx"], timeout=15)
+        return {
+            "ok": False,
+            "domain": domain,
+            "domains_requested": domains,
+            "returncode": proc.returncode,
+            "error": (proc.stderr or proc.stdout).strip()[-800:],
+            "fallback_active": True,
+            "status": get_status(),
+        }
+
+    _run(["systemctl", "reload", "nginx"], timeout=15)
+    return {
+        "ok": True,
+        "domain": domain,
+        "domains_requested": domains,
+        "returncode": 0,
+        "stdout": proc.stdout.strip()[-600:],
+        "status": get_status(),
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Boylenet Let's Encrypt + Cloudflare DNS-01 Wildcard HTTPS Provisioner"
+    )
+    parser.add_argument("--status", action="store_true", help="Check NGINX :443, TLS cert SANs/expiry, and certbot.timer")
+    parser.add_argument("--set-token", metavar="CF_API_TOKEN", help="Configure Cloudflare API token and run certbot DNS-01")
+    parser.add_argument("--domain", default="themfboyles.org", help="Base Cloudflare domain (default: themfboyles.org)")
+    parser.add_argument("--email", default="", help="Cloudflare account email (optional, if using Global API Key)")
+    parser.add_argument("--global-key", default="", help="Cloudflare Global API Key (optional alternative to API token)")
+    parser.add_argument("--staging", action="store_true", help="Use Let's Encrypt staging environment")
+    parser.add_argument("--ensure-hooks", action="store_true", help="Install deploy hook and enable certbot.timer")
+    parser.add_argument("--json", action="store_true", help="Emit JSON output")
+    args = parser.parse_args()
+
+    if args.ensure_hooks:
+        if os.geteuid() != 0:
+            subprocess.check_call(["sudo", sys.executable, __file__, "--ensure-hooks"])
+        else:
+            ensure_hooks_and_timer()
+        if not args.status and not args.set_token:
+            return 0
+
+    if args.set_token or args.global_key:
+        res = provision_letsencrypt(
+            token=args.set_token or "",
+            domain=args.domain,
+            email=args.email,
+            global_key=args.global_key,
+            staging=args.staging,
+        )
+        if args.json:
+            print(json.dumps(res, indent=2))
+        else:
+            if res.get("ok"):
+                print(f"[OK] Let's Encrypt DNS-01 wildcard cert provisioned for {args.domain} and NGINX reloaded!")
+            else:
+                print(f"[WARN] Let's Encrypt certbot exited {res.get('returncode')}: {res.get('error')}")
+                print("[INFO] Zero-downtime Boylenet Root CA wildcard cert remains active on :443.")
+        return 0 if res.get("ok") else 1
+
+    st = get_status()
+    if args.json:
+        print(json.dumps(st, indent=2))
+    else:
+        print("=" * 88)
+        print(" BOYLENET NGINX :443 + LET'S ENCRYPT CLOUDFLARE DNS-01 STATUS")
+        print("=" * 88)
+        print(f"  NGINX Service (:443) : {'ACTIVE' if st['nginx_active'] and st['port_443_listening'] else 'DOWN'}")
+        print(f"  Certbot Auto-Timer   : {'ACTIVE' if st['certbot_timer_active'] else 'INACTIVE'}")
+        print(f"  Cloudflare Token INI : {'CONFIGURED' if st['cloudflare_credentials_configured'] else 'AWAITING TOKEN'} ({st['cloudflare_ini_path']})")
+        print(f"  Active Cert Provider : {st['cert_provider']}")
+        print(f"  Cert Path            : {st['cert_path']}")
+        print(f"  Subject / Issuer     : {st['subject']}  |  {st['issuer']}")
+        print(f"  Expires              : {st['expires']}")
+        print(f"  SANs ({len(st['sans'])})           : {', '.join(st['sans'][:8])}{' ...' if len(st['sans']) > 8 else ''}")
+        print("=" * 88)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

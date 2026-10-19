@@ -534,6 +534,54 @@ VERIFIED_LANDINGS: dict[str, dict[str, str]] = {
         "blob_repo": "harness",
         "evidence": "G1 REFUTE superseded by bh2-45-codex-r127c landed in harness e1f68dd",
     },
+    "p5-failopen-cache009-bd-worker-B2-B": {
+        "classification": "ALREADY_LANDED",
+        "repo": "harness",
+        "commit": "48ca78fe",
+        "blob_path": "bd-cache-ttl-guard.sh",
+        "blob_repo": "harness",
+        "evidence": "Superseded by p5-cache009-LENSOBJ landed in harness 48ca78fe",
+    },
+    "p5-opusb003-LENSOBJ": {
+        "classification": "ALREADY_LANDED",
+        "repo": "harness",
+        "commit": "12af20f",
+        "blob_path": "bd-cache-ttl-guard.sh",
+        "blob_repo": "harness",
+        "evidence": "Landed in harness 12af20f (P5 opusb003 G3 cache-ttl guard non-object env -> COULD NOT LOOK)",
+    },
+    "bh2-40-bd-agy-sonnet-2": {
+        "classification": "ALREADY_LANDED",
+        "repo": "harness",
+        "commit": "a5665f6",
+        "blob_path": "bd-relay.sh",
+        "blob_repo": "harness",
+        "evidence": "Superseded by bh2-21 G2 (harness a5665f6 on bd-relay.sh WAKE/DEFERRED)",
+    },
+    "bh2-08-G2-bd-agy-worker-1": {
+        "classification": "ALREADY_LANDED",
+        "repo": "harness",
+        "commit": "72d1b06",
+        "blob_path": "bd-verdict-route.sh",
+        "blob_repo": "harness",
+        "evidence": "Landed in harness 72d1b06 (bh2-08 r3: bd-verdict-route.sh owner_of agy/kimi/fixer owners + test)",
+    },
+    "bh1-38-codex-r127c": {
+        "classification": "ALREADY_LANDED",
+        "repo": "harness",
+        "commit": "a0e3a34d",
+        "blob_path": "bd-main-guard.sh",
+        "blob_repo": "harness",
+        "evidence": "Landed in harness a0e3a34d (O1479-MAINGUARD skips nested git worktrees; LANDED-BY-BLOB-bh1-38.md)",
+    },
+    "bh1-29-bd-cx-worker-2": {
+        "classification": "ALREADY_LANDED",
+        "repo": "harness",
+        "commit": "efacfc7",
+        "blob_path": "bd-finish-check.sh",
+        "blob_repo": "harness",
+        "evidence": "Landed in harness efacfc7 (BH1-29 finish-check strips full Markdown spans)",
+    },
     "H185-A2-A": {
         "classification": "ALREADY_LANDED",
         "repo": "harness",
@@ -845,7 +893,7 @@ def update_live_p3_queue(rows: list[dict[str, str]]) -> int:
         for line in f:
             raw = line.rstrip("\n")
             parts = raw.split("\t")
-            if not parts or parts[0] == "cut_id":
+            if not parts or parts[0] in ("cut_id", "cut"):
                 new_lines.append(raw)
                 continue
             cid = parts[0]
@@ -854,17 +902,21 @@ def update_live_p3_queue(rows: list[dict[str, str]]) -> int:
                 status_col = parts[3]
                 if r[
                     "classification"
-                ] == "ALREADY_LANDED" and not status_col.startswith("LANDED"):
+                ] == "ALREADY_LANDED" and not status_col.startswith(
+                    ("LANDED", "CLOSED-LANDED", "SUPERSEDED", "CLOSED-STALE")
+                ):
                     parts[3] = (
-                        f"LANDED ({r['landed_commit_sha']} blob={r['landed_blob_sha']}; "
+                        f"CLOSED-LANDED ({r['landed_commit_sha']} blob={r['landed_blob_sha']}; "
                         f"reconciled by Agent-114 bd-backlog-reconciler; was: {status_col})"
                     )
                     updated += 1
                 elif r[
                     "classification"
-                ] == "CLOSED_STALE" and not status_col.startswith("CLOSED"):
+                ] == "CLOSED_STALE" and not status_col.startswith(
+                    ("CLOSED", "LANDED", "SUPERSEDED")
+                ):
                     parts[3] = (
-                        f"CLOSED_STALE (reconciled by Agent-114 bd-backlog-reconciler: "
+                        f"CLOSED-STALE (reconciled by Agent-114 bd-backlog-reconciler: "
                         f"INDEX TREE N/A / no patch; was: {status_col})"
                     )
                     updated += 1

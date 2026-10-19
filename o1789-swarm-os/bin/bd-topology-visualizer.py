@@ -2762,7 +2762,7 @@ def _build_topology_snapshot() -> dict[str, Any]:
             "layer": layer,
             "category": cat,
             "ip": ip,
-            "dns": f"{nid}.boylenet.themfboyles.com",
+            "dns": f"{nid}.boylenet.themfboyles.org",
             "role_badge": role,
             "doing_now": doing,
             "status": "standby" if cat == "worker-cold" else "online",
@@ -2819,7 +2819,7 @@ def _build_topology_snapshot() -> dict[str, Any]:
             [
                 {
                     "label": "Cloud Burst (:4090)",
-                    "url": "http://cloud.boylenet.themfboyles.com",
+                    "url": "http://cloud.boylenet.themfboyles.org",
                 }
             ],
             "SFGPE-----",
@@ -2846,7 +2846,7 @@ def _build_topology_snapshot() -> dict[str, Any]:
             [
                 {
                     "label": "Cloud Burst (:4090)",
-                    "url": "http://cloud.boylenet.themfboyles.com",
+                    "url": "http://cloud.boylenet.themfboyles.org",
                 }
             ],
             "SFGPUH----",
@@ -2873,7 +2873,7 @@ def _build_topology_snapshot() -> dict[str, Any]:
             [
                 {
                     "label": "Cloud Burst (:4090)",
-                    "url": "http://cloud.boylenet.themfboyles.com",
+                    "url": "http://cloud.boylenet.themfboyles.org",
                 }
             ],
             "SFGPE-----",
@@ -2900,7 +2900,7 @@ def _build_topology_snapshot() -> dict[str, Any]:
             [
                 {
                     "label": "Cloud Burst (:4090)",
-                    "url": "http://cloud.boylenet.themfboyles.com",
+                    "url": "http://cloud.boylenet.themfboyles.org",
                 }
             ],
             "SFGPE-----",
@@ -2927,7 +2927,7 @@ def _build_topology_snapshot() -> dict[str, Any]:
             [
                 {
                     "label": "Cloud Burst (:4090)",
-                    "url": "http://cloud.boylenet.themfboyles.com",
+                    "url": "http://cloud.boylenet.themfboyles.org",
                 }
             ],
             "SFGPE-----",
@@ -2954,7 +2954,7 @@ def _build_topology_snapshot() -> dict[str, Any]:
             [
                 {
                     "label": "Multi-Harness (:4098)",
-                    "url": "http://harnesses.boylenet.themfboyles.com",
+                    "url": "http://harnesses.boylenet.themfboyles.org",
                 }
             ],
             "SFGPUH----",
@@ -2982,7 +2982,7 @@ def _build_topology_snapshot() -> dict[str, Any]:
             [
                 {
                     "label": "Gitea CI (:3000)",
-                    "url": "http://gitea.boylenet.themfboyles.com",
+                    "url": "http://gitea.boylenet.themfboyles.org",
                 }
             ],
             "SFGPUCI---",
@@ -3009,7 +3009,7 @@ def _build_topology_snapshot() -> dict[str, Any]:
             [
                 {
                     "label": "Sentinel (:4099)",
-                    "url": "http://sentinel.boylenet.themfboyles.com",
+                    "url": "http://sentinel.boylenet.themfboyles.org",
                 }
             ],
             "SFGPUC----",
@@ -3036,11 +3036,11 @@ def _build_topology_snapshot() -> dict[str, Any]:
             [
                 {
                     "label": "Dashy Portal (:4080)",
-                    "url": "http://dashy.boylenet.themfboyles.com",
+                    "url": "http://dashy.boylenet.themfboyles.org",
                 },
                 {
                     "label": "Jarvis Cockpit (:3002)",
-                    "url": "http://jarvis.boylenet.themfboyles.com",
+                    "url": "http://jarvis.boylenet.themfboyles.org",
                 },
             ],
             "SFGPUHQ---",
@@ -3067,7 +3067,7 @@ def _build_topology_snapshot() -> dict[str, Any]:
             [
                 {
                     "label": "Deep Research (:4094)",
-                    "url": "http://research.boylenet.themfboyles.com",
+                    "url": "http://research.boylenet.themfboyles.org",
                 }
             ],
             "SFGPUR----",
@@ -3094,7 +3094,7 @@ def _build_topology_snapshot() -> dict[str, Any]:
             [
                 {
                     "label": "Deep Research (:4094)",
-                    "url": "http://research.boylenet.themfboyles.com",
+                    "url": "http://research.boylenet.themfboyles.org",
                 }
             ],
             "SFGPUR----",
@@ -3122,11 +3122,11 @@ def _build_topology_snapshot() -> dict[str, Any]:
             [
                 {
                     "label": "OpenWebUI .72 (:8080)",
-                    "url": "http://ai-webui.boylenet.themfboyles.com",
+                    "url": "http://ai-webui.boylenet.themfboyles.org",
                 },
                 {
                     "label": "GPU Orch (:4010)",
-                    "url": "http://orchestrator.boylenet.themfboyles.com/status",
+                    "url": "http://orchestrator.boylenet.themfboyles.org/status",
                 },
             ],
             "SFGPUA----",
@@ -3153,7 +3153,7 @@ def _build_topology_snapshot() -> dict[str, Any]:
             [
                 {
                     "label": "GPU Orch (:4010)",
-                    "url": "http://orchestrator.boylenet.themfboyles.com/status",
+                    "url": "http://orchestrator.boylenet.themfboyles.org/status",
                 }
             ],
             "SFGPUA----",
@@ -3180,7 +3180,7 @@ def _build_topology_snapshot() -> dict[str, Any]:
             [
                 {
                     "label": "Qdrant UI (:6333)",
-                    "url": "http://qdrant.boylenet.themfboyles.com/dashboard",
+                    "url": "http://qdrant.boylenet.themfboyles.org/dashboard",
                 }
             ],
             "SFGPUA----",
@@ -3207,11 +3207,11 @@ def _build_topology_snapshot() -> dict[str, Any]:
             [
                 {
                     "label": "Langfuse (:3000)",
-                    "url": "http://langfuse.boylenet.themfboyles.com",
+                    "url": "http://langfuse.boylenet.themfboyles.org",
                 },
                 {
                     "label": "LiteLLM .228 (:4000)",
-                    "url": "http://litellm-228.boylenet.themfboyles.com/ui",
+                    "url": "http://litellm-228.boylenet.themfboyles.org/ui",
                 },
             ],
             "SFGPUA----",
@@ -3538,7 +3538,7 @@ def _build_topology_snapshot() -> dict[str, Any]:
             [
                 {
                     "label": "Hardware & vSAN (:4091)",
-                    "url": "http://hardware.boylenet.themfboyles.com",
+                    "url": "http://hardware.boylenet.themfboyles.org",
                 }
             ],
             "SFGPUS----",
@@ -3575,7 +3575,7 @@ def _build_topology_snapshot() -> dict[str, Any]:
             "network",
             "10.0.70.1",
             "U1 UniFi OS Gateway • 400+ Static DNS Records",
-            "Inter-VLAN routing + *.boylenet.themfboyles.com DNS",
+            "Inter-VLAN routing + *.boylenet.themfboyles.org DNS",
             18,
             62,
             0,

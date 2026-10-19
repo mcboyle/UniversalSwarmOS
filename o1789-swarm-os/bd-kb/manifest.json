@@ -1,8 +1,8 @@
 {
   "schema": "boylenet.bd-kb.manifest.v1",
-  "updated_at": "2026-10-18T23:44:40Z",
+  "updated_at": "2026-10-19T00:16:57Z",
   "campaign": "O1789",
-  "total_volumes": 8,
+  "total_volumes": 9,
   "qdrant_collection": {
     "url": "http://10.0.70.125:6333/collections/bd_master_kb",
     "dimensions": 1024,
@@ -20,9 +20,9 @@
   "volumes": [
     {
       "filename": "00-BD-KB-MASTER-ENCYCLOPEDIA.md",
-      "size_bytes": 8819,
-      "sha256": "622aea9100200aefb8d1afacad05ebeefeeb1e77a575a2b390d078a9cd8c6190",
-      "lines": 105
+      "size_bytes": 9148,
+      "sha256": "35741de0caca5f5c6da5e77f19dc19300ee630d034c5c4fd7d89a3c165a65a9e",
+      "lines": 106
     },
     {
       "filename": "01-BOYLENET-27NODE-CLUSTER-AND-12U-RACK-BIBLE.md",
@@ -62,9 +62,15 @@
     },
     {
       "filename": "05-SWARM-OPERATIONS-RECEIPTS-AND-PLAYBOOKS.md",
-      "size_bytes": 542522,
-      "sha256": "158a6a7dbfcf289f2bca5a2afff78a1e61df4213b4bf547ec2038b74f64fcfc7",
-      "lines": 5319
+      "size_bytes": 628866,
+      "sha256": "0eed59cbf738ce0f48ae1bf5c2e40c9e6bc60211239d990b63530c02e99c0ca9",
+      "lines": 5996
+    },
+    {
+      "filename": "06-5PLATFORM-MCP-MODS-HTTPS-AND-215-LEDGER.md",
+      "size_bytes": 15304,
+      "sha256": "64470b4191ee229be6449c97c3e075cd581ded6097d803bea87f85263f741d73",
+      "lines": 133
     }
   ]
 }

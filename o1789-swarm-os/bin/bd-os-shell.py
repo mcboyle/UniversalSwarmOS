@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Boylenet Unified OS Desktop Shell (bd-os-shell.py)
-Port: 4085 (http://os.boylenet.themfboyles.com)
+Port: 4085 (https://os.boylenet.themfboyles.org)
 Pillars 1 & 7 (#UX-1..5, #UX-21, #UX-32..35):
   - #UX-1 Left App Dock (macOS / Linear style, live status dots, Alt+1..9 shortcuts, 0ms DOM-kept iframe switching)
   - #UX-2 Universal Cmd+K / Ctrl+K Raycast-Style Command Palette (52+ Apps, 86 Vault Models, 40 Fleet Roles, Quick Actions)
@@ -2030,7 +2030,7 @@ def gather_os_state(force: bool = False) -> Dict[str, Any]:
         "status": "ok",
         "service": "bd-os-shell",
         "port": PORT,
-        "url": "http://os.boylenet.themfboyles.com",
+        "url": "https://os.boylenet.themfboyles.org",
         "controller_ip": HOST_IP,
         "timestamp": utc_now(),
         "pool_observed_at": pool_observed_at,
@@ -2205,7 +2205,7 @@ OS_SHELL_HTML = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Boylenet Unified OS Desktop Shell (:4085 • os.boylenet.themfboyles.com)</title>
+<title>Boylenet Unified OS Desktop Shell (:4085 • os.boylenet.themfboyles.org)</title>
 <link rel="stylesheet" href="/static/boylenet-ui.css">
 <style>
   * { box-sizing: border-box; }
@@ -2449,7 +2449,7 @@ function showToast(msg) {
 
 function appUrlForPort(port, path='') {
   const h = window.location.hostname || '10.0.70.164';
-  const hostIp = (h.endsWith('.boylenet.themfboyles.com') || h === 'localhost') ? (OS_STATE?.controller_ip || '10.0.70.164') : h;
+  const hostIp = (h.endsWith('.boylenet.themfboyles.org') || h.endsWith('.themfboyles.org') || h.endsWith('.boylenet.themfboyles.org') || h.endsWith('.themfboyles.com') || h === 'localhost') ? (OS_STATE?.controller_ip || '10.0.70.164') : h;
   return 'http://' + hostIp + ':' + port + (path || '');
 }
 
@@ -2463,6 +2463,8 @@ function resolveAppUrl(app) {
   if (app.url) return app.url;
   return appUrlForPort(app.port);
 }
+
+const STANDALONE_CONTAINER_PORTS = new Set([3000, 3002, 4000, 6333, 8090, 4095, 4096, 4097, 5678, 4080, 9090, 19999]);
 
 /* Zero-Reload DOM Iframe Caching (0ms tab switching!) */
 function loadAppInPane(paneIdx, appId) {
@@ -2482,7 +2484,12 @@ function loadAppInPane(paneIdx, appId) {
     frame = document.createElement('iframe');
     frame.id = 'iframe-p' + paneIdx + '-' + app.id;
     frame.className = 'cached-iframe';
-    frame.src = resolveAppUrl(app);
+    const targetUrl = resolveAppUrl(app);
+    if (!app.online || STANDALONE_CONTAINER_PORTS.has(Number(app.port))) {
+      frame.srcdoc = `<!DOCTYPE html><html><body style="margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#050811;color:#f8fafc;font-family:Inter,system-ui,sans-serif;"><div style="max-width:520px;padding:28px;background:#0a1020;border:1px solid rgba(0,229,255,0.35);border-radius:14px;text-align:center;box-shadow:0 20px 50px rgba(0,0,0,0.7);"><div style="font-size:38px;margin-bottom:10px;">${app.icon || '🚀'}</div><div style="font-size:18px;font-weight:800;color:#00e5ff;margin-bottom:6px;">${app.title} (:${app.port})</div><div style="font-size:12.5px;color:#94a3b8;margin-bottom:18px;">Status: <b style="color:#10b981;">${app.online ? 'ONLINE & READY' : 'STANDBY'}</b> • Endpoint: <code>${targetUrl}</code></div><a href="${targetUrl}" target="_blank" style="display:inline-block;padding:10px 20px;background:linear-gradient(135deg,#0284c7,#7c3aed);color:#fff;text-decoration:none;border-radius:8px;font-weight:800;font-size:13px;">↗ Launch ${app.short || app.title} (:${app.port})</a></div></body></html>`;
+    } else {
+      frame.src = targetUrl;
+    }
     frame.setAttribute('allow', 'clipboard-read; clipboard-write; microphone; camera; fullscreen');
     container.appendChild(frame);
   }
@@ -2583,8 +2590,22 @@ function setDrawerUrl(url) {
 function renderDock() {
   if (!OS_STATE) return;
   const list = document.getElementById('dock-list');
+  const apps = OS_STATE.dock_apps || [];
   const activeId = PANE_ACTIVE_APP[FOCUSED_PANE];
-  list.innerHTML = (OS_STATE.dock_apps || []).map(a => `
+  if (list.children.length === apps.length) {
+    apps.forEach((a, idx) => {
+      const el = list.children[idx];
+      if (!el) return;
+      el.classList.toggle('active', a.id === activeId);
+      const dot = el.querySelector('.bd-dot');
+      if (dot) {
+        dot.classList.toggle('off', !a.online);
+        dot.title = a.online ? 'Port :'+a.port+' ONLINE' : 'Port :'+a.port+' Standby';
+      }
+    });
+    return;
+  }
+  list.innerHTML = apps.map(a => `
     <div class="dock-item ${a.id === activeId ? 'active' : ''}" data-app-id="${a.id}" onclick="selectAppInFocusedPane('${a.id}')" title="${a.title} (:${a.port}) ${a.shortcut}">
       <div class="dock-left">
         <span class="dock-icon">${a.icon}</span>
@@ -2667,7 +2688,7 @@ function renderCmdKList() {
     (OS_STATE.quick_actions || []).forEach(a => items.push({type:'action', id:a.id, icon:a.icon, title:a.title, sub:a.desc, badge:'Quick Action'}));
   }
   if (CMDK_CAT === 'all' || CMDK_CAT === 'apps') {
-    (OS_STATE.all_apps || []).forEach(a => items.push({type:'app', id:a.id, icon:a.icon, title:a.title, sub:`http://${a.sub}.boylenet.themfboyles.com (:${a.port})`, badge:a.cat + (a.shortcut ? ' • '+a.shortcut : '')}));
+    (OS_STATE.all_apps || []).forEach(a => items.push({type:'app', id:a.id, icon:a.icon, title:a.title, sub:`https://${a.sub}.boylenet.themfboyles.org (:${a.port})`, badge:a.cat + (a.shortcut ? ' • '+a.shortcut : '')}));
   }
   if (CMDK_CAT === 'all' || CMDK_CAT === 'models') {
     (OS_STATE.vault_models || []).forEach(m => items.push({type:'model', id:m.id, icon:'🟢', title:`${m.name} (${m.id})`, sub:`100% LOCAL • Node ${m.node} • ${m.size} • ${m.speed}`, badge:`🟢 LOCAL • ${m.tier}`}));
@@ -2983,7 +3004,7 @@ class OSShellHandler(http.server.BaseHTTPRequestHandler):
                     "status": "ok",
                     "service": "bd-os-shell",
                     "port": PORT,
-                    "url": "http://os.boylenet.themfboyles.com",
+                    "url": "https://os.boylenet.themfboyles.org",
                     "pillars": [
                         "Pillar 1: Unified OS Desktop Shell",
                         "Pillar 7: Shared TopBar, 4-Theme Engine & PiP",
@@ -3188,7 +3209,7 @@ def main() -> int:
     args = ap.parse_args()
     srv = ThreadedHTTPServer(("0.0.0.0", args.port), OSShellHandler)
     print(
-        f"[bd-os-shell] Listening on http://0.0.0.0:{args.port} (http://os.boylenet.themfboyles.com)",
+        f"[bd-os-shell] Listening on http://0.0.0.0:{args.port} (https://os.boylenet.themfboyles.org)",
         flush=True,
     )
     srv.serve_forever()

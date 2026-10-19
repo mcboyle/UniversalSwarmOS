@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Boylenet 86-Model AI Vault Storefront (:4084) — Pillar 5 (#UX-26)
-Host: 10.0.70.164 | Port: 0.0.0.0:4084 | Ingress: http://models.boylenet.themfboyles.com
+Host: 10.0.70.164 | Port: 0.0.0.0:4084 | Ingress: http://models.boylenet.themfboyles.org
 
 Reads:
   - /home/mboyle/bd-persist/harness-work/O1789/infra-upgrade/AGENT37-NEW-FRONTIER-MODELS-BENCHMARK-RECEIPTS.md
@@ -3360,7 +3360,7 @@ def build_storefront_payload(force: bool = False) -> Dict[str, Any]:
                 "vault_dir": item["vault_dir"],
                 "litellm_model": item["vault_dir"],
                 "vault_alias": f"vault/{item['vault_dir']}",
-                "openwebui_url": f"http://openwebui.boylenet.themfboyles.com/?models={item['vault_dir']}",
+                "openwebui_url": f"http://openwebui.boylenet.themfboyles.org/?models={item['vault_dir']}",
                 "full_path": f"/opt/models/{item['vault_dir']}",
                 "node": item["node"],
                 "node_ip": "10.0.70.72" if item["node"] == ".72" else "10.0.70.83",
@@ -3469,7 +3469,7 @@ def build_storefront_payload(force: bool = False) -> Dict[str, Any]:
             "10.0.70.83": v83,
         },
         "orchestrator": {
-            "url": "http://orchestrator.boylenet.themfboyles.com",
+            "url": "http://orchestrator.boylenet.themfboyles.org",
             "port": 4010,
             "status": orch_status.get("status", "ok"),
             "argon4_shield": orch_status.get("argon4_shield", "ENFORCED"),
@@ -3991,11 +3991,11 @@ HTML_PAGE = r"""<!DOCTYPE html>
       </div>
     </div>
     <div class="nav-pills">
-      <a class="nav-pill" href="http://terminal.boylenet.themfboyles.com" target="_blank">🖥️ Agent TV Wall & Terminal (:4083)</a>
-      <a class="nav-pill" href="http://orchestrator.boylenet.themfboyles.com" target="_blank">⚡ GPU Orchestrator (:4010)</a>
-      <a class="nav-pill" href="http://topology.boylenet.themfboyles.com" target="_blank">🌐 3D Topology (:4088)</a>
-      <a class="nav-pill" href="http://ops.boylenet.themfboyles.com" target="_blank">🧠 Ops Shell (:4089)</a>
-      <a class="nav-pill" href="http://dashy.boylenet.themfboyles.com" target="_blank">🏠 Dashy (:4080)</a>
+      <a class="nav-pill" href="http://terminal.boylenet.themfboyles.org" target="_blank">🖥️ Agent TV Wall & Terminal (:4083)</a>
+      <a class="nav-pill" href="http://orchestrator.boylenet.themfboyles.org" target="_blank">⚡ GPU Orchestrator (:4010)</a>
+      <a class="nav-pill" href="http://topology.boylenet.themfboyles.org" target="_blank">🌐 3D Topology (:4088)</a>
+      <a class="nav-pill" href="http://ops.boylenet.themfboyles.org" target="_blank">🧠 Ops Shell (:4089)</a>
+      <a class="nav-pill" href="http://dashy.boylenet.themfboyles.org" target="_blank">🏠 Dashy (:4080)</a>
     </div>
   </div>
 </header>
@@ -4193,7 +4193,7 @@ function renderCards() {
           <button class="btn-act btn-details" onclick="openModelDetails('${safeDir}')" style="background:rgba(56,189,248,0.16);border:1px solid rgba(56,189,248,0.45);color:#38bdf8;">
             🔍 Inspect Model Spec
           </button>
-          <a class="btn-act btn-openwebui" href="http://openwebui.boylenet.themfboyles.com/?models=${encodeURIComponent(m.vault_dir)}" target="_blank" style="text-decoration:none;text-align:center;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;display:inline-flex;align-items:center;justify-content:center;">
+          <a class="btn-act btn-openwebui" href="http://openwebui.boylenet.themfboyles.org/?models=${encodeURIComponent(m.vault_dir)}" target="_blank" style="text-decoration:none;text-align:center;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;display:inline-flex;align-items:center;justify-content:center;">
             💬 Open in OpenWebUI (:8090)
           </a>
           ${isCloud ? '' : `
@@ -4341,7 +4341,7 @@ class StorefrontHandler(BaseHTTPRequestHandler):
                     "status": "ok",
                     "service": "bd-model-storefront",
                     "port": PORT,
-                    "url": "http://models.boylenet.themfboyles.com",
+                    "url": "http://models.boylenet.themfboyles.org",
                     "total_vault_directories": data["summary"][
                         "total_vault_directories"
                     ],
@@ -4410,7 +4410,7 @@ def main() -> None:
     build_storefront_payload(force=True)
     server = ThreadingHTTPServer(("0.0.0.0", PORT), StorefrontHandler)
     print(
-        f"[bd-model-storefront] Listening on 0.0.0.0:{PORT} (http://models.boylenet.themfboyles.com)",
+        f"[bd-model-storefront] Listening on 0.0.0.0:{PORT} (http://models.boylenet.themfboyles.org)",
         flush=True,
     )
     server.serve_forever()

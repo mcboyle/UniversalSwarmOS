@@ -93,6 +93,12 @@ BD_KB_BOOKS_META = [
         "name": "🛠️ BD-KB 5B: Live Swarm Operations Receipts (AGENT*.md), PM Handoffs & Watchdog Playbooks",
         "description": "Auto-indexed every 15 minutes by bd-kb-live-sync.timer: all AGENT*.md verification receipts, PM-HANDOFF.md, and WATCHDOG-STATUS.md across the Boylenet swarm.",
     },
+    {
+        "kb_id": "bd-kb-5platform-mods",
+        "filename": "06-5PLATFORM-MCP-MODS-HTTPS-AND-215-LEDGER.md",
+        "name": "🌐 BD-KB 6: 5-Platform boylenet-infra MCP, Mods 1-5 (bd-swarm-mod), NGINX/Cloudflare HTTPS & 215/215 Backlog Ledger",
+        "description": "20-Tool boylenet-infra MCP server across Claude/Codex/Kimi/AGY/OpenWebUI, Autonomous Swarm Mods 1-5 (bd-swarm-mod), 22 cross-platform slash commands/skills, .83:18080 Qwen3.6-Heretic coding pool, NGINX/Cloudflare DNS-01 HTTPS, and 215/215 reconciled backlog ledger.",
+    },
 ]
 
 _KB_CHUNKS_CACHE: list[dict[str, Any]] = []
@@ -150,7 +156,11 @@ def tool_bd_kb_search(payload: dict[str, Any]) -> dict[str, Any]:
     q_lower = query.lower()
     scored: list[tuple[float, dict[str, Any]]] = []
     for ch in chunks:
-        if kb_filter and kb_filter not in ch["kb_id"].lower() and kb_filter not in ch["filename"].lower():
+        if (
+            kb_filter
+            and kb_filter not in ch["kb_id"].lower()
+            and kb_filter not in ch["filename"].lower()
+        ):
             continue
         title_l = ch["section_title"].lower()
         body_l = ch["content"].lower()
@@ -553,7 +563,9 @@ def _load_all_valves() -> dict[str, dict[str, Any]]:
     return out
 
 
-def _save_pipeline_valves(pipeline_id: str, new_valves: dict[str, Any]) -> dict[str, Any]:
+def _save_pipeline_valves(
+    pipeline_id: str, new_valves: dict[str, Any]
+) -> dict[str, Any]:
     all_v = _load_all_valves()
     cur = dict(all_v.get(pipeline_id, {}))
     cur.update(new_valves or {})
@@ -676,12 +688,18 @@ def synthesize_local_wav(text: str, voice: str = "alloy") -> tuple[bytes, str, s
         duration_s = min(max(1.5, len(text) * 0.03), 6.0)
         n_samples = int(sample_rate * duration_s)
         buf = bytearray()
-        base_freq = {"alloy": 220.0, "nova": 261.63, "echo": 196.0, "onyx": 164.81, "shimmer": 293.66}.get(
-            voice, 220.0
-        )
+        base_freq = {
+            "alloy": 220.0,
+            "nova": 261.63,
+            "echo": 196.0,
+            "onyx": 164.81,
+            "shimmer": 293.66,
+        }.get(voice, 220.0)
         for i in range(n_samples):
             t = i / sample_rate
-            env = math.sin(math.pi * min(1.0, t / 0.08)) * (0.6 + 0.4 * math.sin(2 * math.pi * 4.5 * t))
+            env = math.sin(math.pi * min(1.0, t / 0.08)) * (
+                0.6 + 0.4 * math.sin(2 * math.pi * 4.5 * t)
+            )
             f_mod = base_freq * (1.0 + 0.08 * math.sin(2 * math.pi * 2.2 * t))
             val = env * (
                 0.55 * math.sin(2 * math.pi * f_mod * t)
@@ -712,12 +730,18 @@ def _extract_last_user_prompt(messages: list[dict[str, Any]]) -> str:
             if isinstance(c, str):
                 return c
             if isinstance(c, list):
-                parts = [p.get("text", "") for p in c if isinstance(p, dict) and p.get("type") == "text"]
+                parts = [
+                    p.get("text", "")
+                    for p in c
+                    if isinstance(p, dict) and p.get("type") == "text"
+                ]
                 return " ".join(parts)
     return "Boylenet Sovereign AI Cluster"
 
 
-def _call_local_litellm_or_bdkb(model_id: str, prompt: str, bdkb_context: str = "") -> str:
+def _call_local_litellm_or_bdkb(
+    model_id: str, prompt: str, bdkb_context: str = ""
+) -> str:
     """
     Uses BattleStation .137:11434 (RTX 2080 Ti) or .228:11434 (qwen2.5-coder:7b) for fast live
     LLM synthesis so we never contend with .72 or .83 heavy model benchmarking.
@@ -739,7 +763,12 @@ def _call_local_litellm_or_bdkb(model_id: str, prompt: str, bdkb_context: str = 
             req = urllib.request.Request(
                 endpoint,
                 data=json.dumps(
-                    {"model": fast_model, "messages": msgs, "max_tokens": 500, "temperature": 0.2}
+                    {
+                        "model": fast_model,
+                        "messages": msgs,
+                        "max_tokens": 500,
+                        "temperature": 0.2,
+                    }
                 ).encode("utf-8"),
                 headers={"Content-Type": "application/json"},
                 method="POST",
@@ -760,7 +789,9 @@ def execute_v1_chat_completion(
     """
     Returns (is_stream, model_id, markdown_response_text)
     """
-    model_id = str(payload.get("model") or "bd_smart_o1740_intent_router_pipeline").strip()
+    model_id = str(
+        payload.get("model") or "bd_smart_o1740_intent_router_pipeline"
+    ).strip()
     is_stream = bool(payload.get("stream", False))
     messages = payload.get("messages") or []
     prompt = _extract_last_user_prompt(messages)
@@ -770,9 +801,16 @@ def execute_v1_chat_completion(
     if model_id in img_map or model_id == "flux.1-schnell-local":
         m_info = img_map.get(
             model_id,
-            {"id": model_id, "name": model_id, "size": "1024x1024", "style": "FLUX.1 LOCAL"},
+            {
+                "id": model_id,
+                "name": model_id,
+                "size": "1024x1024",
+                "style": "FLUX.1 LOCAL",
+            },
         )
-        png_bytes, orig_path = render_png_fn(f"[{m_info['style']}] {prompt}", m_info["size"])
+        png_bytes, orig_path = render_png_fn(
+            f"[{m_info['style']}] {prompt}", m_info["size"]
+        )
         img_id = f"gen_{int(time.time() * 1000)}_{uuid.uuid4().hex[:6]}.png"
         dest_path = GENERATED_IMG_DIR / img_id
         dest_path.write_bytes(png_bytes)
@@ -798,7 +836,9 @@ def execute_v1_chat_completion(
             model_id,
             {"id": model_id, "name": model_id, "voice": "alloy", "mode": "tts"},
         )
-        wav_bytes, wav_path, wav_url = synthesize_local_wav(prompt, voice=m_info["voice"])
+        wav_bytes, wav_path, wav_url = synthesize_local_wav(
+            prompt, voice=m_info["voice"]
+        )
         md = (
             f"### 🎙️ Local Speech & Audio Studio (`{m_info['name']}`)\n"
             f"- **Mode**: `{m_info['mode'].upper()}` • **Voice Profile**: `{m_info['voice']}` (`24 kHz` 16-bit PCM WAV)\n"
@@ -830,7 +870,10 @@ def execute_v1_chat_completion(
         return is_stream, model_id, dr.get("markdown_report", json.dumps(dr, indent=2))
 
     # 5. BD KB RAG Citation Engine Pipeline
-    if model_id in ("pipe-boylenet-bdkb-rag-citation-engine", "bd_kb_auto_grounding_pipeline"):
+    if model_id in (
+        "pipe-boylenet-bdkb-rag-citation-engine",
+        "bd_kb_auto_grounding_pipeline",
+    ):
         kb_res = tool_bd_kb_search({"query": prompt, "top_k": 4})
         kb_chunks = kb_res.get("results", [])
         kb_context = "\n\n".join(
@@ -845,7 +888,11 @@ def execute_v1_chat_completion(
         md = (
             f"### 📚 Boylenet BD KB RAG Citation Engine (`{model_id}`)\n"
             f"- **6-Volume BD KB Search Latency**: `{kb_res.get('latency_ms', 0)} ms` (`{len(kb_chunks)}` citations retrieved)\n\n"
-            + (f"#### 🧠 Grounded Synthesis (`.137:11434 qwen2.5-coder:7b`)\n{llm_ans}\n\n" if llm_ans else "")
+            + (
+                f"#### 🧠 Grounded Synthesis (`.137:11434 qwen2.5-coder:7b`)\n{llm_ans}\n\n"
+                if llm_ans
+                else ""
+            )
             + f"#### 📖 Authoritative BD KB Citations\n{citations_md}\n"
         )
         return is_stream, model_id, md
@@ -875,13 +922,51 @@ def execute_v1_chat_completion(
 
     # 7. Default: O1740 Smart Intent Router (`pipe-boylenet-smart-intent-router` / `bd_smart_o1740_intent_router_pipeline`)
     p_low = prompt.lower()
-    if any(k in p_low for k in ("cve", "exploit", "security", "airgap", "firewall", "pentest", "red team")):
+    if any(
+        k in p_low
+        for k in (
+            "cve",
+            "exploit",
+            "security",
+            "airgap",
+            "firewall",
+            "pentest",
+            "red team",
+        )
+    ):
         chosen_model = "local/cyberstrike-35b"
         intent_label = "🛡️ Offensive Security & Airgap (`Huihui-CyberStrike-OffSec-35B`, `66.47 tok/s`)"
-    elif any(k in p_low for k in ("python", "code", "pytest", "git", "refactor", "bug", "extract", "yt-dlp", "sql")):
+    elif any(
+        k in p_low
+        for k in (
+            "python",
+            "code",
+            "pytest",
+            "git",
+            "refactor",
+            "bug",
+            "extract",
+            "yt-dlp",
+            "sql",
+        )
+    ):
         chosen_model = "local/tier1-qwen3-coder-30b-a3b"
-        intent_label = "🏆 High-Speed Coding (`Qwen3-Coder-30B-A3B-Q4_K_M`, `77.62 tok/s`)"
-    elif any(k in p_low for k in ("architecture", "o1740", "fleet", "rule", "train", "vsan", "esxi", "cluster")):
+        intent_label = (
+            "🏆 High-Speed Coding (`Qwen3-Coder-30B-A3B-Q4_K_M`, `77.62 tok/s`)"
+        )
+    elif any(
+        k in p_low
+        for k in (
+            "architecture",
+            "o1740",
+            "fleet",
+            "rule",
+            "train",
+            "vsan",
+            "esxi",
+            "cluster",
+        )
+    ):
         chosen_model = "local/qwen3.6-35b-claude-opus-abliterated"
         intent_label = "🏛️ Swarm Architecture & Fleet Law (`Qwen3.6-35B-Claude-Opus`, `65.80 tok/s`)"
     else:
@@ -891,20 +976,16 @@ def execute_v1_chat_completion(
     kb_res = tool_bd_kb_search({"query": prompt, "top_k": 3})
     kb_chunks = kb_res.get("results", [])
     kb_context = "\n\n".join(
-        f"[{c['book_name']} | {c['section_title']}]\n{c['content'][:800]}" for c in kb_chunks
+        f"[{c['book_name']} | {c['section_title']}]\n{c['content'][:800]}"
+        for c in kb_chunks
     )
     llm_reply = _call_local_litellm_or_bdkb(chosen_model, prompt, kb_context)
     if not llm_reply:
-        llm_reply = (
-            "#### 📚 Grounded Answer from `BD KB`\n\n"
-            + "\n\n---\n\n".join(
-                f"##### {c['book_name']} — `{c['section_title']}`\n*Source: `{c['file_path']}`*\n\n{c['content'][:1200]}"
-                for c in kb_chunks
-            )
+        llm_reply = "#### 📚 Grounded Answer from `BD KB`\n\n" + "\n\n---\n\n".join(
+            f"##### {c['book_name']} — `{c['section_title']}`\n*Source: `{c['file_path']}`*\n\n{c['content'][:1200]}"
+            for c in kb_chunks
         )
-    header = (
-        f"> **🧭 O1740 Intent Route**: {intent_label} • **📚 BD KB Grounding**: `{len(kb_chunks)}` chunks (`{kb_res.get('latency_ms', 0)} ms`)\n\n"
-    )
+    header = f"> **🧭 O1740 Intent Route**: {intent_label} • **📚 BD KB Grounding**: `{len(kb_chunks)}` chunks (`{kb_res.get('latency_ms', 0)} ms`)\n\n"
     return is_stream, model_id, header + llm_reply
 
 
@@ -927,13 +1008,17 @@ def tool_playwright_live_web_scraper(payload: dict[str, Any]) -> dict[str, Any]:
         title = html.unescape(title_m.group(1)).strip() if title_m else url
         tables_md: list[str] = []
         if extract_tables:
-            for tbl in re.findall(r"<table[^>]*>(.*?)</table>", raw_html, flags=re.I | re.S)[:5]:
+            for tbl in re.findall(
+                r"<table[^>]*>(.*?)</table>", raw_html, flags=re.I | re.S
+            )[:5]:
                 rows = re.findall(r"<tr[^>]*>(.*?)</tr>", tbl, flags=re.I | re.S)
                 md_rows = []
                 for idx, r in enumerate(rows[:25]):
                     cells = [
                         html.unescape(re.sub(r"<[^>]+>", "", c)).strip()
-                        for c in re.findall(r"<t[hd][^>]*>(.*?)</t[hd]>", r, flags=re.I | re.S)
+                        for c in re.findall(
+                            r"<t[hd][^>]*>(.*?)</t[hd]>", r, flags=re.I | re.S
+                        )
                     ]
                     if cells:
                         md_rows.append("| " + " | ".join(cells) + " |")
@@ -941,7 +1026,12 @@ def tool_playwright_live_web_scraper(payload: dict[str, Any]) -> dict[str, Any]:
                             md_rows.append("|" + "|".join(["---"] * len(cells)) + "|")
                 if md_rows:
                     tables_md.append("\n".join(md_rows))
-        clean = re.sub(r"<(script|style|noscript|svg)[^>]*>.*?</\1>", " ", raw_html, flags=re.I | re.S)
+        clean = re.sub(
+            r"<(script|style|noscript|svg)[^>]*>.*?</\1>",
+            " ",
+            raw_html,
+            flags=re.I | re.S,
+        )
         text = html.unescape(re.sub(r"<[^>]+>", " ", clean))
         text = "\n".join(ln.strip() for ln in text.splitlines() if ln.strip())
         return {
@@ -977,7 +1067,11 @@ def tool_deep_research_multi_engine(payload: dict[str, Any]) -> dict[str, Any]:
             headers={"Content-Type": "application/json"},
         )
         with urllib.request.urlopen(req, timeout=4) as resp:
-            pts = json.loads(resp.read().decode("utf-8")).get("result", {}).get("points", [])
+            pts = (
+                json.loads(resp.read().decode("utf-8"))
+                .get("result", {})
+                .get("points", [])
+            )
         kws = [w.lower() for w in re.findall(r"[a-zA-Z0-9_-]{3,}", query)]
         for pt in pts:
             pl = pt.get("payload") or {}
@@ -998,7 +1092,11 @@ def tool_deep_research_multi_engine(payload: dict[str, Any]) -> dict[str, Any]:
             s_data = json.loads(resp.read().decode("utf-8", errors="replace"))
         for r in s_data.get("results", [])[:max_results]:
             web_hits.append(
-                {"title": r.get("title", ""), "url": r.get("url", ""), "snippet": r.get("content", "")}
+                {
+                    "title": r.get("title", ""),
+                    "url": r.get("url", ""),
+                    "snippet": r.get("content", ""),
+                }
             )
     except Exception:
         pass
@@ -1039,7 +1137,9 @@ def tool_bulkdownloader_cli_inspector(payload: dict[str, Any]) -> dict[str, Any]
     try:
         ver_file = bd_root / "VERSION.txt"
         if ver_file.exists():
-            out["version_txt"] = ver_file.read_text(encoding="utf-8", errors="replace").strip()
+            out["version_txt"] = ver_file.read_text(
+                encoding="utf-8", errors="replace"
+            ).strip()
         pin_file = bd_root / "PIN_INDEX.json"
         if pin_file.exists():
             pins = json.loads(pin_file.read_text(encoding="utf-8", errors="replace"))
@@ -1061,7 +1161,9 @@ def tool_bulkdownloader_cli_inspector(payload: dict[str, Any]) -> dict[str, Any]
         if action == "toolchain":
             tc_dir = bd_root / "toolchain" / "bin"
             if tc_dir.exists():
-                out["toolchain_bins"] = sorted(p.name for p in tc_dir.iterdir() if p.is_file())
+                out["toolchain_bins"] = sorted(
+                    p.name for p in tc_dir.iterdir() if p.is_file()
+                )
     except Exception as exc:
         out["error"] = str(exc)
     return out
@@ -1078,7 +1180,22 @@ def tool_postgres_pgvector_memory_vault(payload: dict[str, Any]) -> dict[str, An
             sql = "SELECT NOW() AS server_time, current_database() AS db;"
     try:
         proc = subprocess.run(
-            ["psql", f"postgresql://postgres@127.0.0.1:5432/{database}", "-t", "-A", "-F", "\t", "-c", sql],
+            [
+                "sudo",
+                "-n",
+                "-u",
+                "postgres",
+                "psql",
+                "-w",
+                "-d",
+                database,
+                "-t",
+                "-A",
+                "-F",
+                "\t",
+                "-c",
+                sql,
+            ],
             capture_output=True,
             text=True,
             timeout=12,
@@ -1119,8 +1236,14 @@ def tool_redis_minio_s3_inspector(payload: dict[str, Any]) -> dict[str, Any]:
             res["redis"] = {"error": str(exc)}
     if target in ("minio", "s3", "both"):
         try:
-            with urllib.request.urlopen("http://127.0.0.1:9000/minio/health/live", timeout=4) as r:
-                res["minio_s3"] = {"endpoint": "http://10.0.70.164:9000", "status": r.status, "live": True}
+            with urllib.request.urlopen(
+                "http://127.0.0.1:9000/minio/health/live", timeout=4
+            ) as r:
+                res["minio_s3"] = {
+                    "endpoint": "http://10.0.70.164:9000",
+                    "status": r.status,
+                    "live": True,
+                }
         except Exception as exc:
             res["minio_s3"] = {"endpoint": "http://10.0.70.164:9000", "error": str(exc)}
     return res
@@ -1132,11 +1255,15 @@ def tool_prometheus_grafana_telemetry(payload: dict[str, Any]) -> dict[str, Any]
     try:
         url = f"http://127.0.0.1:9090/api/v1/query?query={urllib.parse.quote_plus(promql)}"
         with urllib.request.urlopen(url, timeout=5) as resp:
-            out["prometheus"] = json.loads(resp.read().decode("utf-8", errors="replace"))
+            out["prometheus"] = json.loads(
+                resp.read().decode("utf-8", errors="replace")
+            )
     except Exception as exc:
         out["prometheus_error"] = str(exc)
     try:
-        with urllib.request.urlopen("http://127.0.0.1:3001/api/health", timeout=4) as resp:
+        with urllib.request.urlopen(
+            "http://127.0.0.1:3001/api/health", timeout=4
+        ) as resp:
             out["grafana"] = json.loads(resp.read().decode("utf-8", errors="replace"))
     except Exception as exc:
         out["grafana_error"] = str(exc)
@@ -1164,15 +1291,26 @@ def tool_langfuse_litellm_spend_analytics(payload: dict[str, Any]) -> dict[str, 
     except Exception as exc:
         out["litellm_error"] = str(exc)
     try:
-        with urllib.request.urlopen("http://10.0.70.164:4070/api/metrics", timeout=4) as resp:
-            out["cost_analyzer_4070"] = json.loads(resp.read().decode("utf-8", errors="replace"))
+        with urllib.request.urlopen(
+            "http://10.0.70.164:4070/api/metrics", timeout=4
+        ) as resp:
+            out["cost_analyzer_4070"] = json.loads(
+                resp.read().decode("utf-8", errors="replace")
+            )
     except Exception:
         pass
     return out
 
 
 def tool_ssh_27node_parallel_runner(payload: dict[str, Any]) -> dict[str, Any]:
-    nodes = payload.get("nodes") or ["10.0.70.164", "10.0.70.72", "10.0.70.83", "10.0.70.125", "10.0.70.228", "10.0.70.82"]
+    nodes = payload.get("nodes") or [
+        "10.0.70.164",
+        "10.0.70.72",
+        "10.0.70.83",
+        "10.0.70.125",
+        "10.0.70.228",
+        "10.0.70.82",
+    ]
     probe = str(payload.get("probe") or "uptime").lower()
     allowed_probes = {
         "uptime": "hostname && uptime",
@@ -1187,12 +1325,23 @@ def tool_ssh_27node_parallel_runner(payload: dict[str, Any]) -> dict[str, Any]:
             continue
         try:
             proc = subprocess.run(
-                ["ssh", "-o", "ConnectTimeout=3", "-o", "BatchMode=yes", str(n), cmd_str],
+                [
+                    "ssh",
+                    "-o",
+                    "ConnectTimeout=3",
+                    "-o",
+                    "BatchMode=yes",
+                    str(n),
+                    cmd_str,
+                ],
                 capture_output=True,
                 text=True,
                 timeout=6,
             )
-            results[str(n)] = {"ok": proc.returncode == 0, "output": proc.stdout.strip()}
+            results[str(n)] = {
+                "ok": proc.returncode == 0,
+                "output": proc.stdout.strip(),
+            }
         except Exception as exc:
             results[str(n)] = {"ok": False, "error": str(exc)}
     return {"ok": True, "probe": probe, "node_results": results}
@@ -1200,8 +1349,14 @@ def tool_ssh_27node_parallel_runner(payload: dict[str, Any]) -> dict[str, Any]:
 
 def tool_ilo4_ipmi_rack_sensors(payload: dict[str, Any]) -> dict[str, Any]:
     try:
-        with urllib.request.urlopen("http://127.0.0.1:4091/api/telemetry", timeout=5) as resp:
-            return {"ok": True, "source": "http://10.0.70.164:4091/api/telemetry", "telemetry": json.loads(resp.read().decode("utf-8"))}
+        with urllib.request.urlopen(
+            "http://127.0.0.1:4091/api/telemetry", timeout=5
+        ) as resp:
+            return {
+                "ok": True,
+                "source": "http://10.0.70.164:4091/api/telemetry",
+                "telemetry": json.loads(resp.read().decode("utf-8")),
+            }
     except Exception:
         return {
             "ok": True,
@@ -1209,10 +1364,30 @@ def tool_ilo4_ipmi_rack_sensors(payload: dict[str, Any]) -> dict[str, Any]:
             "inlet_ambient_f": 79.5,
             "inlet_ambient_c": 26.4,
             "hosts": [
-                {"host": "esxi01 (10.0.70.1)", "ilo_ip": "10.0.10.200", "inlet_f": 79.5, "gpu": "Tesla T4 16GB"},
-                {"host": "esxi02 (10.0.70.2)", "ilo_ip": "10.0.10.201", "inlet_f": 79.5, "gpu": "Tesla T4 16GB"},
-                {"host": "esxi03 (10.0.70.3)", "ilo_ip": "10.0.10.202", "inlet_f": 79.5, "gpu": "Tesla T4 16GB"},
-                {"host": "esxi04 (10.0.70.4)", "ilo_ip": "10.0.10.203", "inlet_f": 79.5, "gpu": "Tesla T4 16GB"},
+                {
+                    "host": "esxi01 (10.0.70.1)",
+                    "ilo_ip": "10.0.10.200",
+                    "inlet_f": 79.5,
+                    "gpu": "Tesla T4 16GB",
+                },
+                {
+                    "host": "esxi02 (10.0.70.2)",
+                    "ilo_ip": "10.0.10.201",
+                    "inlet_f": 79.5,
+                    "gpu": "Tesla T4 16GB",
+                },
+                {
+                    "host": "esxi03 (10.0.70.3)",
+                    "ilo_ip": "10.0.10.202",
+                    "inlet_f": 79.5,
+                    "gpu": "Tesla T4 16GB",
+                },
+                {
+                    "host": "esxi04 (10.0.70.4)",
+                    "ilo_ip": "10.0.10.203",
+                    "inlet_f": 79.5,
+                    "gpu": "Tesla T4 16GB",
+                },
             ],
         }
 
@@ -1226,7 +1401,13 @@ def tool_searxng_news_rss_monitor(payload: dict[str, Any]) -> dict[str, Any]:
         with urllib.request.urlopen(url, timeout=6) as resp:
             data = json.loads(resp.read().decode("utf-8", errors="replace"))
         for r in data.get("results", [])[:limit]:
-            items.append({"title": r.get("title"), "url": r.get("url"), "snippet": r.get("content")})
+            items.append(
+                {
+                    "title": r.get("title"),
+                    "url": r.get("url"),
+                    "snippet": r.get("content"),
+                }
+            )
     except Exception as exc:
         return {"ok": False, "topic": topic, "error": str(exc)}
     return {"ok": True, "topic": topic, "count": len(items), "articles": items}
@@ -1234,13 +1415,22 @@ def tool_searxng_news_rss_monitor(payload: dict[str, Any]) -> dict[str, Any]:
 
 def tool_python_jupyter_notebook_gen(payload: dict[str, Any]) -> dict[str, Any]:
     title = str(payload.get("title") or "Boylenet Analysis Notebook").strip()
-    markdown_notes = str(payload.get("markdown") or f"# {title}\nGenerated by Boylenet OpenWebUI Toolkit #42.")
-    code_cells = payload.get("code_cells") or ["import sys, platform\nprint(platform.node(), sys.version)"]
+    markdown_notes = str(
+        payload.get("markdown")
+        or f"# {title}\nGenerated by Boylenet OpenWebUI Toolkit #42."
+    )
+    code_cells = payload.get("code_cells") or [
+        "import sys, platform\nprint(platform.node(), sys.version)"
+    ]
     if isinstance(code_cells, str):
         code_cells = [code_cells]
     nb = {
         "cells": [
-            {"cell_type": "markdown", "metadata": {}, "source": [ln + "\n" for ln in markdown_notes.splitlines()]},
+            {
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": [ln + "\n" for ln in markdown_notes.splitlines()],
+            },
             *[
                 {
                     "cell_type": "code",
@@ -1253,7 +1443,11 @@ def tool_python_jupyter_notebook_gen(payload: dict[str, Any]) -> dict[str, Any]:
             ],
         ],
         "metadata": {
-            "kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
+            "kernelspec": {
+                "display_name": "Python 3",
+                "language": "python",
+                "name": "python3",
+            },
             "language_info": {"name": "python", "version": "3.12"},
         },
         "nbformat": 4,
@@ -1262,7 +1456,12 @@ def tool_python_jupyter_notebook_gen(payload: dict[str, Any]) -> dict[str, Any]:
     slug = re.sub(r"[^a-zA-Z0-9_-]", "_", title.lower())[:40] or "notebook"
     nb_path = GENERATED_NOTEBOOKS_DIR / f"{slug}_{int(time.time())}.ipynb"
     nb_path.write_text(json.dumps(nb, indent=2), encoding="utf-8")
-    return {"ok": True, "title": title, "notebook_path": str(nb_path), "cell_count": len(nb["cells"])}
+    return {
+        "ok": True,
+        "title": title,
+        "notebook_path": str(nb_path),
+        "cell_count": len(nb["cells"]),
+    }
 
 
 def tool_regex_cron_jwt_crypto_knife(payload: dict[str, Any]) -> dict[str, Any]:
@@ -1270,12 +1469,24 @@ def tool_regex_cron_jwt_crypto_knife(payload: dict[str, Any]) -> dict[str, Any]:
     text = str(payload.get("input") or "")
     pattern = str(payload.get("pattern") or "")
     if op == "sha256":
-        return {"ok": True, "operation": "sha256", "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest()}
+        return {
+            "ok": True,
+            "operation": "sha256",
+            "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        }
     if op == "base64_encode":
-        return {"ok": True, "operation": op, "output": base64.b64encode(text.encode("utf-8")).decode("ascii")}
+        return {
+            "ok": True,
+            "operation": op,
+            "output": base64.b64encode(text.encode("utf-8")).decode("ascii"),
+        }
     if op == "base64_decode":
         try:
-            return {"ok": True, "operation": op, "output": base64.b64decode(text).decode("utf-8", errors="replace")}
+            return {
+                "ok": True,
+                "operation": op,
+                "output": base64.b64decode(text).decode("utf-8", errors="replace"),
+            }
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
     if op == "jwt_decode":
@@ -1284,14 +1495,27 @@ def tool_regex_cron_jwt_crypto_knife(payload: dict[str, Any]) -> dict[str, Any]:
         for p in parts[:2]:
             padded = p + "=" * ((4 - len(p) % 4) % 4)
             try:
-                decoded.append(json.loads(base64.urlsafe_b64decode(padded).decode("utf-8")))
+                decoded.append(
+                    json.loads(base64.urlsafe_b64decode(padded).decode("utf-8"))
+                )
             except Exception:
                 decoded.append(p)
         return {"ok": True, "operation": "jwt_decode", "header_and_payload": decoded}
     if op == "regex_test" and pattern:
         matches = [m.group(0) for m in re.finditer(pattern, text)]
-        return {"ok": True, "operation": "regex_test", "pattern": pattern, "match_count": len(matches), "matches": matches[:50]}
-    return {"ok": True, "operation": "uuid4", "uuid": str(uuid.uuid4()), "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest()}
+        return {
+            "ok": True,
+            "operation": "regex_test",
+            "pattern": pattern,
+            "match_count": len(matches),
+            "matches": matches[:50],
+        }
+    return {
+        "ok": True,
+        "operation": "uuid4",
+        "uuid": str(uuid.uuid4()),
+        "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+    }
 
 
 def tool_openapi_rest_graphql_tester(payload: dict[str, Any]) -> dict[str, Any]:
@@ -1300,8 +1524,14 @@ def tool_openapi_rest_graphql_tester(payload: dict[str, Any]) -> dict[str, Any]:
     body = payload.get("body")
     t0 = time.perf_counter()
     try:
-        data = json.dumps(body).encode("utf-8") if body is not None and method in ("POST", "PUT", "PATCH") else None
-        req = urllib.request.Request(url, data=data, method=method, headers={"Content-Type": "application/json"})
+        data = (
+            json.dumps(body).encode("utf-8")
+            if body is not None and method in ("POST", "PUT", "PATCH")
+            else None
+        )
+        req = urllib.request.Request(
+            url, data=data, method=method, headers={"Content-Type": "application/json"}
+        )
         with urllib.request.urlopen(req, timeout=10) as resp:
             raw = resp.read(64000).decode("utf-8", errors="replace")
             return {
@@ -1321,14 +1551,24 @@ def tool_git_worktree_patch_auditor(payload: dict[str, Any]) -> dict[str, Any]:
     base_ref = str(payload.get("base_ref") or "HEAD~1").strip()
     p = Path(wt_path).resolve()
     try:
-        tree_proc = subprocess.run(["git", "-C", str(p), "write-tree"], capture_output=True, text=True, timeout=8)
+        tree_proc = subprocess.run(
+            ["git", "-C", str(p), "write-tree"],
+            capture_output=True,
+            text=True,
+            timeout=8,
+        )
         diff_proc = subprocess.run(
             ["git", "-C", str(p), "diff", "--cached", "--full-index", base_ref],
             capture_output=True,
             timeout=10,
         )
         patch_sha256 = hashlib.sha256(diff_proc.stdout).hexdigest()
-        wt_list = subprocess.run(["git", "-C", str(p), "worktree", "list"], capture_output=True, text=True, timeout=8)
+        wt_list = subprocess.run(
+            ["git", "-C", str(p), "worktree", "list"],
+            capture_output=True,
+            text=True,
+            timeout=8,
+        )
         return {
             "ok": True,
             "worktree_path": str(p),
@@ -1368,7 +1608,9 @@ def tool_huggingface_gguf_vram_calc(payload: dict[str, Any]) -> dict[str, Any]:
     elif total_gib <= 62.0:
         pool_rec = "4x Tesla T4 Unified (64 GB Pure VRAM) or 1x T4 + Skylake AVX-512 (-ot exps=CPU)"
     else:
-        pool_rec = "Multi-Node 562 GiB DDR4 + 4x Tesla T4 Hybrid (-ot .ffn_.*_exps.=CPU)"
+        pool_rec = (
+            "Multi-Node 562 GiB DDR4 + 4x Tesla T4 Hybrid (-ot .ffn_.*_exps.=CPU)"
+        )
     return {
         "ok": True,
         "parameters_billions": params_b,
@@ -1385,7 +1627,9 @@ def tool_huggingface_gguf_vram_calc(payload: dict[str, Any]) -> dict[str, Any]:
 def tool_ocr_vision_pdf_table_extractor(payload: dict[str, Any]) -> dict[str, Any]:
     file_or_url = str(payload.get("source") or payload.get("file_path") or "").strip()
     if file_or_url.startswith(("http://", "https://")):
-        return tool_playwright_live_web_scraper({"url": file_or_url, "extract_tables": True})
+        return tool_playwright_live_web_scraper(
+            {"url": file_or_url, "extract_tables": True}
+        )
     p = Path(file_or_url).expanduser()
     if p.exists() and p.is_file():
         raw = p.read_text(encoding="utf-8", errors="replace")[:16000]
@@ -1395,7 +1639,11 @@ def tool_ocr_vision_pdf_table_extractor(payload: dict[str, Any]) -> dict[str, An
 
 def tool_audio_whisper_tts_music_studio(payload: dict[str, Any]) -> dict[str, Any]:
     action = str(payload.get("action") or "tts").lower()
-    text = str(payload.get("text") or payload.get("prompt") or "Boylenet Sovereign Audio Studio online.")
+    text = str(
+        payload.get("text")
+        or payload.get("prompt")
+        or "Boylenet Sovereign Audio Studio online."
+    )
     voice = str(payload.get("voice") or "alloy")
     wav_bytes, wav_path, wav_url = synthesize_local_wav(text, voice=voice)
     return {
@@ -1408,13 +1656,17 @@ def tool_audio_whisper_tts_music_studio(payload: dict[str, Any]) -> dict[str, An
     }
 
 
-def tool_flux_1080p_image_hud_generator(payload: dict[str, Any], render_png_fn: Any = None) -> dict[str, Any]:
+def tool_flux_1080p_image_hud_generator(
+    payload: dict[str, Any], render_png_fn: Any = None
+) -> dict[str, Any]:
     prompt = str(payload.get("prompt") or "Boylenet 27-Node Sovereign AI Cluster HUD")
     size = str(payload.get("size") or "1920x1080")
     if render_png_fn is None:
         import importlib.util
 
-        spec = importlib.util.spec_from_file_location("gw", "/home/mboyle/bin/bd-openwebui-tool-gateway.py")
+        spec = importlib.util.spec_from_file_location(
+            "gw", "/home/mboyle/bin/bd-openwebui-tool-gateway.py"
+        )
         gw = importlib.util.module_from_spec(spec)
         assert spec and spec.loader
         spec.loader.exec_module(gw)
@@ -1459,8 +1711,15 @@ EXTRA_TOOL_HANDLERS: dict[str, tuple[Any, str, dict[str, Any]]] = {
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "Search query for BD KB"},
-                "kb_id": {"type": "string", "description": "Optional volume ID filter (bd-kb-master, bd-kb-bulkdownloader, bd-kb-cluster-infra, bd-kb-86-models, bd-kb-fleet-law, bd-kb-ci-and-uis)"},
-                "top_k": {"type": "integer", "description": "Number of chunks to return", "default": 5},
+                "kb_id": {
+                    "type": "string",
+                    "description": "Optional volume ID filter (bd-kb-master, bd-kb-bulkdownloader, bd-kb-cluster-infra, bd-kb-86-models, bd-kb-fleet-law, bd-kb-ci-and-uis)",
+                },
+                "top_k": {
+                    "type": "integer",
+                    "description": "Number of chunks to return",
+                    "default": 5,
+                },
             },
             "required": ["query"],
         },
@@ -1483,7 +1742,10 @@ EXTRA_TOOL_HANDLERS: dict[str, tuple[Any, str, dict[str, Any]]] = {
         {
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "Research topic or question"},
+                "query": {
+                    "type": "string",
+                    "description": "Research topic or question",
+                },
                 "max_results": {"type": "integer", "default": 4},
             },
             "required": ["query"],
@@ -1495,7 +1757,11 @@ EXTRA_TOOL_HANDLERS: dict[str, tuple[Any, str, dict[str, Any]]] = {
         {
             "type": "object",
             "properties": {
-                "action": {"type": "string", "description": "summary, routes, functions, or toolchain", "default": "summary"},
+                "action": {
+                    "type": "string",
+                    "description": "summary, routes, functions, or toolchain",
+                    "default": "summary",
+                },
                 "query": {"type": "string", "description": "Optional filter keyword"},
             },
         },
@@ -1542,7 +1808,11 @@ EXTRA_TOOL_HANDLERS: dict[str, tuple[Any, str, dict[str, Any]]] = {
         {
             "type": "object",
             "properties": {
-                "probe": {"type": "string", "description": "uptime, memory, disk, or gpu", "default": "uptime"},
+                "probe": {
+                    "type": "string",
+                    "description": "uptime, memory, disk, or gpu",
+                    "default": "uptime",
+                },
                 "nodes": {"type": "array", "items": {"type": "string"}},
             },
         },
@@ -1584,7 +1854,11 @@ EXTRA_TOOL_HANDLERS: dict[str, tuple[Any, str, dict[str, Any]]] = {
         {
             "type": "object",
             "properties": {
-                "operation": {"type": "string", "description": "sha256, base64_encode, base64_decode, jwt_decode, regex_test, uuid4", "default": "sha256"},
+                "operation": {
+                    "type": "string",
+                    "description": "sha256, base64_encode, base64_decode, jwt_decode, regex_test, uuid4",
+                    "default": "sha256",
+                },
                 "input": {"type": "string"},
                 "pattern": {"type": "string"},
             },
@@ -1608,7 +1882,10 @@ EXTRA_TOOL_HANDLERS: dict[str, tuple[Any, str, dict[str, Any]]] = {
         {
             "type": "object",
             "properties": {
-                "worktree_path": {"type": "string", "default": "/home/mboyle/BulkDownloader"},
+                "worktree_path": {
+                    "type": "string",
+                    "default": "/home/mboyle/BulkDownloader",
+                },
                 "base_ref": {"type": "string", "default": "HEAD~1"},
             },
         },
@@ -1674,7 +1951,14 @@ EXTRA_TOOL_HANDLERS: dict[str, tuple[Any, str, dict[str, Any]]] = {
 # ---------------------------------------------------------------------------
 
 
-_PIPELINE_ID_ALIASES = {"pipe-boylenet-bdkb-rag-citation-engine": "bd_kb_auto_grounding_pipeline", "pipe-boylenet-smart-intent-router": "bd_smart_o1740_intent_router_pipeline", "pipe_boylenet_deep_research": "bd_deep_research_multi_engine_pipeline", "pipe_boylenet_4model_council": "bd_4model_consensus_council_pipeline", "pipe_boylenet_smart_router": "bd_smart_o1740_intent_router_pipeline"}
+_PIPELINE_ID_ALIASES = {
+    "pipe-boylenet-bdkb-rag-citation-engine": "bd_kb_auto_grounding_pipeline",
+    "pipe-boylenet-smart-intent-router": "bd_smart_o1740_intent_router_pipeline",
+    "pipe_boylenet_deep_research": "bd_deep_research_multi_engine_pipeline",
+    "pipe_boylenet_4model_council": "bd_4model_consensus_council_pipeline",
+    "pipe_boylenet_smart_router": "bd_smart_o1740_intent_router_pipeline",
+}
+
 
 def handle_ext_get(handler: Any, path: str, qs: dict[str, list[str]]) -> bool:
     if path.startswith("/static/generated/"):
@@ -1709,14 +1993,24 @@ def handle_ext_get(handler: Any, path: str, qs: dict[str, list[str]]) -> bool:
             handler._send_json(404, {"detail": f"Pipeline {raw_pid} not found"})
             return True
         if is_spec:
-            handler._send_json(200, {"title": f"{p_obj['name']} Valves", "type": "object", "properties": p_obj["valves_spec"]})
+            handler._send_json(
+                200,
+                {
+                    "title": f"{p_obj['name']} Valves",
+                    "type": "object",
+                    "properties": p_obj["valves_spec"],
+                },
+            )
             return True
         all_v = _load_all_valves()
         handler._send_json(200, all_v.get(pid, p_obj["default_valves"]))
         return True
     return False
 
-def handle_ext_post(handler: Any, path: str, payload: dict[str, Any], render_png_fn: Any) -> bool:
+
+def handle_ext_post(
+    handler: Any, path: str, payload: dict[str, Any], render_png_fn: Any
+) -> bool:
     m_vupd = re.match(r"^(?:/v1)?/([a-zA-Z0-9_.-]+)/valves/update$", path)
     if m_vupd:
         raw_pid = m_vupd.group(1)
@@ -1731,23 +2025,48 @@ def handle_ext_post(handler: Any, path: str, payload: dict[str, Any], render_png
         stage = m_flt.group(2)
         body = payload.get("body") if isinstance(payload.get("body"), dict) else payload
         valves = _load_all_valves().get(pid, {})
-        if pid == "bd_kb_auto_grounding_pipeline" and stage == "inlet" and valves.get("enable_inlet_grounding") and isinstance(body.get("messages"), list):
+        if (
+            pid == "bd_kb_auto_grounding_pipeline"
+            and stage == "inlet"
+            and valves.get("enable_inlet_grounding")
+            and isinstance(body.get("messages"), list)
+        ):
             user_q = _extract_last_user_prompt(body["messages"])
-            hits = tool_bd_kb_search({"query": user_q, "top_k": int(valves.get("top_k_chunks", 2))}).get("results", [])
+            hits = tool_bd_kb_search(
+                {"query": user_q, "top_k": int(valves.get("top_k_chunks", 2))}
+            ).get("results", [])
             if hits:
-                ctx_str = "\n".join((f"- [{h['book_name']} | {h['section_title']}]: {h['content'][:400]}" for h in hits))
-                body["messages"] = [{"role": "system", "content": f"[BD KB Grounding Context]\n{ctx_str}"}, *body["messages"]]
+                ctx_str = "\n".join(
+                    (
+                        f"- [{h['book_name']} | {h['section_title']}]: {h['content'][:400]}"
+                        for h in hits
+                    )
+                )
+                body["messages"] = [
+                    {
+                        "role": "system",
+                        "content": f"[BD KB Grounding Context]\n{ctx_str}",
+                    },
+                    *body["messages"],
+                ]
         handler._send_json(200, body)
         return True
 
     # 3. /v1/pipelines/add or /v1/pipelines/upload
-    if path in ("/v1/pipelines/add", "/pipelines/add", "/v1/pipelines/upload", "/pipelines/upload"):
+    if path in (
+        "/v1/pipelines/add",
+        "/pipelines/add",
+        "/v1/pipelines/upload",
+        "/pipelines/upload",
+    ):
         handler._send_json(200, get_v1_pipelines_list())
         return True
 
     # 4. /v1/chat/completions
     if path in ("/v1/chat/completions", "/chat/completions"):
-        is_stream, model_id, md_text = execute_v1_chat_completion(payload, render_png_fn)
+        is_stream, model_id, md_text = execute_v1_chat_completion(
+            payload, render_png_fn
+        )
         cid = f"chatcmpl-{uuid.uuid4().hex[:12]}"
         now = int(time.time())
         if is_stream:
@@ -1756,7 +2075,13 @@ def handle_ext_post(handler: Any, path: str, payload: dict[str, Any], render_png
                 "object": "chat.completion.chunk",
                 "created": now,
                 "model": model_id,
-                "choices": [{"index": 0, "delta": {"role": "assistant", "content": md_text}, "finish_reason": None}],
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"role": "assistant", "content": md_text},
+                        "finish_reason": None,
+                    }
+                ],
             }
             chunk2 = {
                 "id": cid,

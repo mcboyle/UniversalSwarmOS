@@ -52,7 +52,7 @@ ILO_TARGETS: list[dict[str, Any]] = [
         "ip": "10.0.10.10",
         "name": "ILOM1 (esxi01-ilo)",
         "host": "esxi01",
-        "esxi_fqdn": "esxi01.boylenet.themfboyles.com",
+        "esxi_fqdn": "esxi01.boylenet.themfboyles.org",
         "esxi_ip": "10.0.20.41",
         "default_model": "ProLiant DL380 Gen9",
         "default_gen": "iLO 4 (v2.82)",
@@ -63,7 +63,7 @@ ILO_TARGETS: list[dict[str, Any]] = [
         "ip": "10.0.10.20",
         "name": "ILO2 (esxi02-ilo)",
         "host": "esxi02",
-        "esxi_fqdn": "esxi02.boylenet.themfboyles.com",
+        "esxi_fqdn": "esxi02.boylenet.themfboyles.org",
         "esxi_ip": "10.0.20.42",
         "default_model": "ProLiant DL380 Gen9",
         "default_gen": "iLO 4 (v2.82)",
@@ -74,7 +74,7 @@ ILO_TARGETS: list[dict[str, Any]] = [
         "ip": "10.0.10.30",
         "name": "ILO3-Legacy (esxi03-ilo)",
         "host": "esxi03-ilo30",
-        "esxi_fqdn": "esxi03.boylenet.themfboyles.com",
+        "esxi_fqdn": "esxi03.boylenet.themfboyles.org",
         "esxi_ip": "10.0.20.43",
         "default_model": "ProLiant DL380 Gen10",
         "default_gen": "iLO 5 (via .252 / vc04)",
@@ -85,7 +85,7 @@ ILO_TARGETS: list[dict[str, Any]] = [
         "ip": "10.0.10.40",
         "name": "ESXI04 (esxi04-ilo)",
         "host": "esxi04",
-        "esxi_fqdn": "esxi04.boylenet.themfboyles.com",
+        "esxi_fqdn": "esxi04.boylenet.themfboyles.org",
         "esxi_ip": "10.0.20.44",
         "default_model": "ProLiant DL380 Gen10",
         "default_gen": "iLO 5",
@@ -96,7 +96,7 @@ ILO_TARGETS: list[dict[str, Any]] = [
         "ip": "10.0.10.252",
         "name": "ESXI03 (ilom-252)",
         "host": "esxi03",
-        "esxi_fqdn": "esxi03.boylenet.themfboyles.com",
+        "esxi_fqdn": "esxi03.boylenet.themfboyles.org",
         "esxi_ip": "10.0.20.43",
         "default_model": "ProLiant DL380 Gen10",
         "default_gen": "iLO 5",
@@ -145,7 +145,7 @@ GPU_NODES = [
 ]
 
 HOST_METADATA = {
-    "esxi01.boylenet.themfboyles.com": {
+    "esxi01.boylenet.themfboyles.org": {
         "short": "esxi01",
         "ip": "10.0.20.41",
         "vsan_ip": "10.0.60.21",
@@ -156,7 +156,7 @@ HOST_METADATA = {
         "network_uplinks": "25GbE Port 29 (vmnic7) + 50G LACP Ports 13–17",
         "cache_ssd_wear": "Samsung 870 1TB (51% & 34% Life Left)",
     },
-    "esxi02.boylenet.themfboyles.com": {
+    "esxi02.boylenet.themfboyles.org": {
         "short": "esxi02",
         "ip": "10.0.20.42",
         "vsan_ip": "10.0.60.22",
@@ -167,7 +167,7 @@ HOST_METADATA = {
         "network_uplinks": "25GbE Port 31 (vmnic6) + 30G LACP Ports 1–3",
         "cache_ssd_wear": "Samsung 870/860 1TB (24% & 10% Life Left)",
     },
-    "esxi03.boylenet.themfboyles.com": {
+    "esxi03.boylenet.themfboyles.org": {
         "short": "esxi03",
         "ip": "10.0.20.43",
         "vsan_ip": "10.0.60.23",
@@ -178,7 +178,7 @@ HOST_METADATA = {
         "network_uplinks": "25GbE Port 30 (vmnic10) + 30G LACP Ports 10–12",
         "cache_ssd_wear": "HGST 1.92TB SAS SSDs (77%–86% Life Left)",
     },
-    "esxi04.boylenet.themfboyles.com": {
+    "esxi04.boylenet.themfboyles.org": {
         "short": "esxi04",
         "ip": "10.0.20.44",
         "vsan_ip": "10.0.60.24",
@@ -578,7 +578,7 @@ def poll_vsphere_and_vsan(
     """Use GovcClient (lib_vsphere_govc.py) to poll vc04, esxi01..04, and vsanDatastore."""
     vc_info = {
         "host": "10.0.20.70",
-        "fqdn": "vc04.boylenet.themfboyles.com",
+        "fqdn": "vc04.boylenet.themfboyles.org",
         "datacenter": "Boylenet Datacenter",
         "cluster": "Boylenet Cluster",
         "status": "unknown",
@@ -1706,7 +1706,7 @@ def main() -> int:
 
     server = ThreadingHTTPServer(("0.0.0.0", PORT), HardwareTelemetryHandler)
     logger.info(
-        "Listening on http://0.0.0.0:%d (http://hardware.boylenet.themfboyles.com)",
+        "Listening on http://0.0.0.0:%d (http://hardware.boylenet.themfboyles.org)",
         PORT,
     )
     try:

@@ -3,8 +3,8 @@
 Boylenet Zero-Friction SSO, QR Handoff & Root CA Trust Portal (:4082)
 Pillar 2 UI/UX Super-Swarm (#UX-6..10)
 Endpoints:
-  - http://ca.boylenet.themfboyles.com
-  - http://sso.boylenet.themfboyles.com
+  - http://ca.boylenet.themfboyles.org
+  - http://sso.boylenet.themfboyles.org
   - http://10.0.70.164:4082
 """
 
@@ -325,10 +325,10 @@ SSO_TARGETS: Dict[str, Dict[str, Any]] = {
         "id": "litellm-164",
         "button_label": "⚡ Auto-Login LiteLLM (.164)",
         "name": "LiteLLM Controller Admin (.164:4000)",
-        "domain_url": "http://litellm.boylenet.themfboyles.com/ui",
+        "domain_url": "http://litellm.boylenet.themfboyles.org/ui",
         "direct_url": "http://10.0.70.164:4000/ui",
         "login_action": "http://10.0.70.164:4000/login",
-        "domain_login_action": "http://litellm.boylenet.themfboyles.com/login",
+        "domain_login_action": "http://litellm.boylenet.themfboyles.org/login",
         "username": "admin",
         "password": "boylenet-admin",
         "api_key": "sk-fleet-local",
@@ -341,10 +341,10 @@ SSO_TARGETS: Dict[str, Dict[str, Any]] = {
         "id": "litellm-228",
         "button_label": "⚡ Auto-Login LiteLLM (.228)",
         "name": "LiteLLM Satellite Admin (.228:4000)",
-        "domain_url": "http://litellm-228.boylenet.themfboyles.com/ui",
+        "domain_url": "http://litellm-228.boylenet.themfboyles.org/ui",
         "direct_url": "http://10.0.70.228:4000/ui",
         "login_action": "http://10.0.70.228:4000/login",
-        "domain_login_action": "http://litellm-228.boylenet.themfboyles.com/login",
+        "domain_login_action": "http://litellm-228.boylenet.themfboyles.org/login",
         "username": "admin",
         "password": "boylenet-admin",
         "api_key": "sk-boylenet-local",
@@ -357,7 +357,7 @@ SSO_TARGETS: Dict[str, Dict[str, Any]] = {
         "id": "openwebui",
         "button_label": "⚡ Auto-Login OpenWebUI (:8090)",
         "name": "OpenWebUI 60-Model Studio (:8090)",
-        "domain_url": "http://openwebui.boylenet.themfboyles.com",
+        "domain_url": "http://openwebui.boylenet.themfboyles.org",
         "direct_url": "http://10.0.70.164:8090",
         "login_action": "http://10.0.70.164:8090/api/v1/auths/signin",
         "username": "admin@localhost",
@@ -372,10 +372,10 @@ SSO_TARGETS: Dict[str, Dict[str, Any]] = {
         "id": "gitea",
         "button_label": "⚡ Auto-Login Gitea (:3000)",
         "name": "Forgejo / Gitea Git Server (:3000)",
-        "domain_url": "http://gitea.boylenet.themfboyles.com",
+        "domain_url": "http://gitea.boylenet.themfboyles.org",
         "direct_url": "http://10.0.70.164:3000",
         "login_action": "http://10.0.70.164:3000/user/login",
-        "domain_login_action": "http://gitea.boylenet.themfboyles.com/user/login",
+        "domain_login_action": "http://gitea.boylenet.themfboyles.org/user/login",
         "username": "mboyle",
         "password": "boylenet-admin",
         "api_key": "mboyle:boylenet-admin",
@@ -388,7 +388,7 @@ SSO_TARGETS: Dict[str, Dict[str, Any]] = {
         "id": "grafana",
         "button_label": "⚡ Auto-Login Grafana (:3001)",
         "name": "Grafana v13 Telemetry (:3001)",
-        "domain_url": "http://grafana.boylenet.themfboyles.com",
+        "domain_url": "http://grafana.boylenet.themfboyles.org",
         "direct_url": "http://10.0.70.164:3001",
         "login_action": "http://10.0.70.164:3001/login",
         "username": "admin",
@@ -403,7 +403,7 @@ SSO_TARGETS: Dict[str, Dict[str, Any]] = {
         "id": "minio",
         "button_label": "⚡ Auto-Login MinIO (:9001)",
         "name": "MinIO S3 Object Console (:9001)",
-        "domain_url": "http://minio.boylenet.themfboyles.com",
+        "domain_url": "http://minio.boylenet.themfboyles.org",
         "direct_url": "http://10.0.70.164:9001",
         "login_action": "http://10.0.70.164:9001/api/v1/login",
         "username": "minioadmin",
@@ -418,7 +418,7 @@ SSO_TARGETS: Dict[str, Dict[str, Any]] = {
         "id": "langfuse",
         "button_label": "⚡ Auto-Login Langfuse (.228:3000)",
         "name": "Langfuse LLM Observability (.228:3000)",
-        "domain_url": "http://langfuse.boylenet.themfboyles.com",
+        "domain_url": "http://langfuse.boylenet.themfboyles.org",
         "direct_url": "http://10.0.70.228:3000",
         "login_action": "http://10.0.70.228:3000/api/auth/callback/credentials",
         "username": "mcboyle@me.com",
@@ -433,7 +433,7 @@ SSO_TARGETS: Dict[str, Dict[str, Any]] = {
         "id": "openclaw",
         "button_label": "⚡ Auto-Login OpenClaw (:4097)",
         "name": "OpenClaw Multi-Agent Control UI (:4097)",
-        "domain_url": "http://openclaw.boylenet.themfboyles.com",
+        "domain_url": "http://openclaw.boylenet.themfboyles.org",
         "direct_url": "http://10.0.70.164:4097",
         "login_action": "http://10.0.70.164:4097/?password=boylenet-admin&token=boylenet-openclaw-local",
         "username": "admin",
@@ -495,7 +495,7 @@ def get_qr_handoff_cards() -> List[Dict[str, str]]:
             "id": "mobile",
             "title": "Boylenet Mobile PWA",
             "subtitle": "Pocket Command Deck (:4086)",
-            "url": "http://mobile.boylenet.themfboyles.com",
+            "url": "http://mobile.boylenet.themfboyles.org",
             "badge": "#UX-3 Mobile Deck",
             "accent": "#00e5ff",
         },
@@ -503,7 +503,7 @@ def get_qr_handoff_cards() -> List[Dict[str, str]]:
             "id": "os",
             "title": "Boylenet OS Desktop",
             "subtitle": "Unified Single-Pane Cockpit (:4081)",
-            "url": "http://os.boylenet.themfboyles.com",
+            "url": "http://os.boylenet.themfboyles.org",
             "badge": "#UX-1..5 OS Shell",
             "accent": "#10b981",
         },
@@ -511,7 +511,7 @@ def get_qr_handoff_cards() -> List[Dict[str, str]]:
             "id": "topology",
             "title": "3D Cluster Topology",
             "subtitle": "27-Node Live Mesh & LACP (:4088)",
-            "url": "http://topology.boylenet.themfboyles.com",
+            "url": "http://topology.boylenet.themfboyles.org",
             "badge": "Live Telemetry",
             "accent": "#a855f7",
         },
@@ -519,7 +519,7 @@ def get_qr_handoff_cards() -> List[Dict[str, str]]:
             "id": "dashy",
             "title": "Dashy Command Center",
             "subtitle": "38-Service Ingress Portal (:4080)",
-            "url": "http://dashy.boylenet.themfboyles.com",
+            "url": "http://dashy.boylenet.themfboyles.org",
             "badge": "Primary Hub",
             "accent": "#f59e0b",
         },
@@ -527,7 +527,7 @@ def get_qr_handoff_cards() -> List[Dict[str, str]]:
             "id": "ios-ca",
             "title": "1-Tap iOS Root CA Profile",
             "subtitle": "Install Boylenet Root CA on iPhone/iPad",
-            "url": "http://ca.boylenet.themfboyles.com/download/boylenet-root-ca.mobileconfig",
+            "url": "http://ca.boylenet.themfboyles.org/download/boylenet-root-ca.mobileconfig",
             "badge": "#UX-10 iOS Trust",
             "accent": "#ec4899",
         },
@@ -718,7 +718,7 @@ BOOKMARKLET_JS = (
     'const u=document.querySelector(\'input[name="username"],input[name="user"],input[name="user_name"],input[name="email"],input[id="accessKey"],input[type="email"],input[type="text"]\');'
     'const p=document.querySelector(\'input[type="password"],input[name="password"],input[id="secretKey"]\');'
     'if(u&&p){setVal(u,pair[0]);setVal(p,pair[1]);const btn=document.querySelector(\'button[type="submit"],input[type="submit"],button\');if(btn)setTimeout(()=>btn.click(),120);}'
-    "else{window.open('http://sso.boylenet.themfboyles.com','_blank');}"
+    "else{window.open('http://sso.boylenet.themfboyles.org','_blank');}"
     "})();"
 )
 
@@ -730,10 +730,12 @@ def build_chrome_extension_zip() -> bytes:
         "manifest_version": 3,
         "name": "Boylenet Zero-Friction Auto-Auth & Swarm Companion",
         "version": "2.4.0",
-        "description": "1-Click Auto-Fill, SSO Launchpad, QR Mobile Handoff & Swarm Dispatch for *.boylenet.themfboyles.com and 10.0.70.x",
+        "description": "1-Click Auto-Fill, SSO Launchpad, QR Mobile Handoff & Swarm Dispatch for *.boylenet.themfboyles.org and 10.0.70.x",
         "permissions": ["activeTab", "scripting", "storage", "clipboardWrite"],
         "host_permissions": [
-            "*://*.boylenet.themfboyles.com/*",
+            "*://*.boylenet.themfboyles.org/*",
+            "*://*.themfboyles.org/*",
+            "*://*.boylenet.themfboyles.org/*",
             "*://10.0.70.164/*",
             "*://10.0.70.72/*",
             "*://10.0.70.83/*",
@@ -747,7 +749,9 @@ def build_chrome_extension_zip() -> bytes:
         "content_scripts": [
             {
                 "matches": [
-                    "*://*.boylenet.themfboyles.com/*",
+                    "*://*.boylenet.themfboyles.org/*",
+            "*://*.themfboyles.org/*",
+            "*://*.boylenet.themfboyles.org/*",
                     "*://10.0.70.164/*",
                     "*://10.0.70.72/*",
                     "*://10.0.70.228/*",
@@ -813,15 +817,15 @@ def build_chrome_extension_zip() -> bytes:
 </head>
 <body>
   <h3>⚡ Boylenet Companion (#UX-8)</h3>
-  <a class="btn" href="http://sso.boylenet.themfboyles.com/sso/login/litellm-164" target="_blank">⚡ Auto-Login LiteLLM (.164)</a>
-  <a class="btn" href="http://sso.boylenet.themfboyles.com/sso/login/litellm-228" target="_blank">⚡ Auto-Login LiteLLM (.228)</a>
-  <a class="btn" href="http://sso.boylenet.themfboyles.com/sso/login/openwebui" target="_blank">⚡ Auto-Login OpenWebUI (:8090)</a>
-  <a class="btn" href="http://sso.boylenet.themfboyles.com/sso/login/gitea" target="_blank">⚡ Auto-Login Gitea (:3000)</a>
-  <a class="btn" href="http://sso.boylenet.themfboyles.com/sso/login/grafana" target="_blank">⚡ Auto-Login Grafana (:3001)</a>
-  <a class="btn" href="http://sso.boylenet.themfboyles.com/sso/login/minio" target="_blank">⚡ Auto-Login MinIO (:9001)</a>
-  <a class="btn" href="http://sso.boylenet.themfboyles.com/sso/login/langfuse" target="_blank">⚡ Auto-Login Langfuse (.228:3000)</a>
-  <a class="btn" href="http://sso.boylenet.themfboyles.com/sso/login/openclaw" target="_blank">⚡ Auto-Login OpenClaw (:4097)</a>
-  <a class="btn" href="http://ca.boylenet.themfboyles.com" target="_blank">🔐 Open Root CA & QR Portal (:4082)</a>
+  <a class="btn" href="http://sso.boylenet.themfboyles.org/sso/login/litellm-164" target="_blank">⚡ Auto-Login LiteLLM (.164)</a>
+  <a class="btn" href="http://sso.boylenet.themfboyles.org/sso/login/litellm-228" target="_blank">⚡ Auto-Login LiteLLM (.228)</a>
+  <a class="btn" href="http://sso.boylenet.themfboyles.org/sso/login/openwebui" target="_blank">⚡ Auto-Login OpenWebUI (:8090)</a>
+  <a class="btn" href="http://sso.boylenet.themfboyles.org/sso/login/gitea" target="_blank">⚡ Auto-Login Gitea (:3000)</a>
+  <a class="btn" href="http://sso.boylenet.themfboyles.org/sso/login/grafana" target="_blank">⚡ Auto-Login Grafana (:3001)</a>
+  <a class="btn" href="http://sso.boylenet.themfboyles.org/sso/login/minio" target="_blank">⚡ Auto-Login MinIO (:9001)</a>
+  <a class="btn" href="http://sso.boylenet.themfboyles.org/sso/login/langfuse" target="_blank">⚡ Auto-Login Langfuse (.228:3000)</a>
+  <a class="btn" href="http://sso.boylenet.themfboyles.org/sso/login/openclaw" target="_blank">⚡ Auto-Login OpenClaw (:4097)</a>
+  <a class="btn" href="http://ca.boylenet.themfboyles.org" target="_blank">🔐 Open Root CA & QR Portal (:4082)</a>
 </body>
 </html>
 """
@@ -843,8 +847,8 @@ def get_ca_metadata() -> Dict[str, str]:
         "root_ca_subject": "CN=Boylenet Swarm OS Internal Root CA",
         "root_ca_fingerprint": "UNKNOWN",
         "root_ca_expires": "2036-10-18",
-        "wildcard_subject": "CN=*.boylenet.themfboyles.com",
-        "wildcard_sans": "*.boylenet.themfboyles.com, boylenet.themfboyles.com, *.local, 10.0.70.164, 10.0.70.72, 10.0.70.83, 10.0.70.125, 10.0.70.228",
+        "wildcard_subject": "CN=*.boylenet.themfboyles.org",
+        "wildcard_sans": "*.boylenet.themfboyles.org, boylenet.themfboyles.org, *.themfboyles.org, themfboyles.org, *.boylenet.themfboyles.org, boylenet.themfboyles.com, *.local, 10.0.70.164, 10.0.70.72, 10.0.70.83, 10.0.70.125, 10.0.70.228",
         "ubuntu_trust_installed": os.path.exists(
             "/usr/local/share/ca-certificates/boylenet-root-ca.crt"
         ),
@@ -875,6 +879,26 @@ def get_ca_metadata() -> Dict[str, str]:
     return meta
 
 
+def get_https_status() -> Dict[str, Any]:
+    try:
+        out = subprocess.check_output(
+            ["/home/mboyle/bin/bd-letsencrypt-cloudflare", "--status", "--json"],
+            text=True,
+            timeout=6.0,
+        )
+        return json.loads(out)
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": str(e),
+            "nginx_active": False,
+            "port_443_listening": False,
+            "certbot_timer_active": False,
+            "cloudflare_credentials_configured": False,
+            "cert_provider": "Unknown",
+        }
+
+
 # ============================================================================
 # Trampoline Auto-Login HTML Renderer (#UX-7)
 # ============================================================================
@@ -886,14 +910,14 @@ def render_sso_trampoline_html(
     target = SSO_TARGETS[target_id]
     extra_headers: List[Tuple[str, str]] = []
 
-    # If we obtained a session cookie from our live handshake, also set it on .boylenet.themfboyles.com
+    # If we obtained a session cookie from our live handshake, also set it on .boylenet.themfboyles.org
     cookie_val = handshake.get("session_cookie")
     if cookie_val and "=" in cookie_val:
         cname, cval = cookie_val.split("=", 1)
         extra_headers.append(
             (
                 "Set-Cookie",
-                f"{cname}={cval}; Domain=.boylenet.themfboyles.com; Path=/; SameSite=Lax",
+                f"{cname}={cval}; Domain=.boylenet.themfboyles.org; Path=/; SameSite=Lax",
             )
         )
 
@@ -936,7 +960,7 @@ def render_sso_trampoline_html(
         </script>
         """
     else:
-        # Redirect to domain_url (with cookie set on .boylenet.themfboyles.com + autofill fallback param)
+        # Redirect to domain_url (with cookie set on .boylenet.themfboyles.org + autofill fallback param)
         sep = "&" if "?" in target["domain_url"] else "?"
         redir = html.escape(f"{target['domain_url']}{sep}boylenet_autofill=1")
         body_js = f"""
@@ -1064,17 +1088,17 @@ def render_portal_html() -> str:
         """)
 
     ps_oneliner = (
-        'Invoke-WebRequest -Uri "http://ca.boylenet.themfboyles.com/download/boylenet-root-ca.crt" '
+        'Invoke-WebRequest -Uri "http://ca.boylenet.themfboyles.org/download/boylenet-root-ca.crt" '
         '-OutFile "$env:TEMP\\boylenet-root-ca.crt"; '
         'Import-Certificate -FilePath "$env:TEMP\\boylenet-root-ca.crt" '
         "-CertStoreLocation Cert:\\LocalMachine\\Root"
     )
     linux_oneliner = (
-        "curl -fsSL http://ca.boylenet.themfboyles.com/download/boylenet-root-ca.crt "
+        "curl -fsSL http://ca.boylenet.themfboyles.org/download/boylenet-root-ca.crt "
         "| sudo tee /usr/local/share/ca-certificates/boylenet-root-ca.crt >/dev/null && sudo update-ca-certificates"
     )
     macos_oneliner = (
-        "curl -fsSL http://ca.boylenet.themfboyles.com/download/boylenet-root-ca.crt -o /tmp/boylenet-root-ca.crt && "
+        "curl -fsSL http://ca.boylenet.themfboyles.org/download/boylenet-root-ca.crt -o /tmp/boylenet-root-ca.crt && "
         "sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain /tmp/boylenet-root-ca.crt"
     )
 
@@ -1261,7 +1285,7 @@ def render_portal_html() -> str:
     <div class="brand-icon">🔐</div>
     <div>
       <h1>Boylenet Zero-Friction SSO, QR Handoff & Root CA Trust Portal</h1>
-      <p>Pillar 2 (#UX-6..10) • <code>ca.boylenet.themfboyles.com</code> • <code>sso.boylenet.themfboyles.com</code> • Port <code>:4082</code></p>
+      <p>Pillar 2 (#UX-6..10) • <code>ca.boylenet.themfboyles.org</code> • <code>sso.boylenet.themfboyles.org</code> • Port <code>:4082</code></p>
     </div>
   </div>
   <nav class="nav-pills">
@@ -1269,7 +1293,7 @@ def render_portal_html() -> str:
     <a href="#ux9-qr-matrix">📱 #UX-9 QR Mobile Handoff</a>
     <a href="#ux8-bookmarklet">🧩 #UX-8 Bookmarklet & Chrome Ext</a>
     <a href="#ux10-root-ca">🛡️ #UX-10 Root CA & iOS Profile</a>
-    <a href="http://vault.boylenet.themfboyles.com" target="_blank">🗄️ Credentials Vault (:4087)</a>
+    <a href="http://vault.boylenet.themfboyles.org" target="_blank">🗄️ Credentials Vault (:4087)</a>
   </nav>
 </header>
 
@@ -1297,7 +1321,7 @@ def render_portal_html() -> str:
     </div>
     <div class="custom-qr-bar">
       <strong>⚡ Instant Custom / Claude RC Session QR:</strong>
-      <input type="text" id="customQrInput" placeholder="Paste any https://claude.ai/code/session_... or http://*.boylenet.themfboyles.com URL" value="https://claude.ai/code/session_01XfKMnHmQPiwqmCnqwnZSvy">
+      <input type="text" id="customQrInput" placeholder="Paste any https://claude.ai/code/session_... or http://*.boylenet.themfboyles.org URL" value="https://claude.ai/code/session_01XfKMnHmQPiwqmCnqwnZSvy">
       <button onclick="renderCustomQr()">Generate Live QR</button>
       <div id="customQrPreview" style="display:flex;align-items:center;gap:12px;"></div>
     </div>
@@ -1310,7 +1334,7 @@ def render_portal_html() -> str:
         <h2><span class="pill-tag">#UX-10</span> Boylenet Internal Root CA & Wildcard TLS</h2>
       </div>
       <p style="font-size:13px;color:var(--muted);margin-top:0;">
-        Eliminates browser TLS warnings across <code>*.boylenet.themfboyles.com</code>, <code>*.local</code>, and cluster nodes (<code>.164</code>, <code>.72</code>, <code>.83</code>, <code>.125</code>, <code>.228</code>).
+        Eliminates browser TLS warnings across <code>*.boylenet.themfboyles.org</code>, <code>*.local</code>, and cluster nodes (<code>.164</code>, <code>.72</code>, <code>.83</code>, <code>.125</code>, <code>.228</code>).
       </p>
       <div style="margin:14px 0;display:flex;flex-wrap:wrap;gap:8px;">
         <a class="dl-btn dl-primary" id="dl-ca-crt" href="/ca.crt">⬇️ Download Root CA (/ca.crt)</a>
@@ -1373,6 +1397,26 @@ def render_portal_html() -> str:
 2. Open Settings → Security &amp; Privacy → More Security Settings → Encryption &amp; Credentials.
 3. Tap "Install a certificate" → "CA certificate" → "Install anyway" and select boylenet-root-ca.crt.</pre>
       </div>
+
+      <!-- Cloudflare DNS-01 Let's Encrypt Wildcard Provisioner (:443) -->
+      <div id="letsencrypt-card" style="margin-top:18px;padding:14px;border-radius:12px;background:rgba(5,8,17,0.78);border:1px solid rgba(16,185,129,0.35);">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+          <strong style="font-size:13px;color:var(--emerald);">🔒 NGINX :443 Wildcard HTTPS &amp; Cloudflare Let's Encrypt DNS-01</strong>
+          <span id="httpsStatusBadge" class="badge" style="color:var(--emerald);border-color:rgba(16,185,129,0.4);background:rgba(16,185,129,0.12);">NGINX :443 ACTIVE</span>
+        </div>
+        <div id="httpsStatusMeta" style="font-size:11.5px;color:var(--muted);margin-bottom:10px;font-family:monospace;">
+          Primary: <code>*.boylenet.themfboyles.org</code> &amp; <code>*.themfboyles.org</code> • Alias: <code>*.boylenet.themfboyles.org</code> • Loading live TLS status...
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+          <input type="password" id="cfApiTokenInput" placeholder="Paste Cloudflare DNS API Token (Zone:DNS:Edit)" style="flex:1;min-width:210px;padding:8px 12px;border-radius:8px;background:#0f172a;border:1px solid rgba(56,189,248,0.35);color:#fff;font-size:12px;">
+          <select id="cfDomainSelect" style="padding:8px 10px;border-radius:8px;background:#0f172a;border:1px solid rgba(56,189,248,0.35);color:#fff;font-size:12px;">
+            <option value="themfboyles.org" selected>themfboyles.org (Primary)</option>
+            <option value="themfboyles.com">themfboyles.com (Legacy)</option>
+          </select>
+          <button type="button" class="mini-btn" style="padding:8px 14px;font-size:12px;background:var(--emerald);color:#050811;border-color:var(--emerald);" onclick="provisionLetsEncrypt()">⚡ Swap to Let's Encrypt DNS-01</button>
+        </div>
+        <div id="leResultMsg" style="font-size:11.5px;margin-top:8px;font-family:monospace;color:var(--cyan);"></div>
+      </div>
     </section>
 
     <!-- #UX-8: Boylenet Companion Bookmarklet & Chrome Extension -->
@@ -1400,7 +1444,7 @@ def render_portal_html() -> str:
         <strong>Chrome Extension Installation (BattleStation / Bittorrent / Laptop):</strong><br>
         1. Download <code>/download/boylenet-chrome-ext.zip</code> and unzip to a folder.<br>
         2. Open <code>chrome://extensions</code> → Enable <strong>Developer mode</strong> → Click <strong>Load unpacked</strong>.<br>
-        3. Includes popup SSO launcher + automatic form fill on all <code>*.boylenet.themfboyles.com</code> & <code>10.0.70.x</code> pages!
+        3. Includes popup SSO launcher + automatic form fill on all <code>*.boylenet.themfboyles.org</code> & <code>10.0.70.x</code> pages!
       </div>
     </section>
   </div>
@@ -1472,6 +1516,52 @@ async function renderCustomQr() {{
   const box = document.getElementById('customQrPreview');
   box.innerHTML = '<img src="/api/qr?url=' + encodeURIComponent(val) + '" width="96" height="96" style="background:#fff;padding:4px;border-radius:8px;"> <code style="font-size:11px;color:#00e5ff;">' + val + '</code>';
 }}
+
+async function loadHttpsStatus() {{
+  try {{
+    const r = await fetch('/api/https-status');
+    const d = await r.json();
+    const badge = document.getElementById('httpsStatusBadge');
+    const meta = document.getElementById('httpsStatusMeta');
+    if (badge) {{
+      badge.textContent = (d.nginx_active && d.port_443_listening ? 'NGINX :443 ACTIVE • ' : 'NGINX :443 • ') + (d.cert_provider || 'Active');
+    }}
+    if (meta) {{
+      meta.innerHTML = 'Subject: <code>' + (d.subject || '') + '</code> • Expires: <code>' + (d.expires || '') + '</code> • Certbot Timer: <code>' + (d.certbot_timer_active ? 'ENABLED' : 'OFF') + '</code> • CF INI: <code>' + (d.cloudflare_credentials_configured ? 'CONFIGURED' : 'READY') + '</code>';
+    }}
+  }} catch (e) {{}}
+}}
+
+async function provisionLetsEncrypt() {{
+  const token = document.getElementById('cfApiTokenInput').value.trim();
+  const domain = document.getElementById('cfDomainSelect').value;
+  const msg = document.getElementById('leResultMsg');
+  if (!token) {{
+    msg.textContent = '⚠️ Please paste your Cloudflare DNS API token first.';
+    return;
+  }}
+  msg.textContent = '⏳ Running certbot DNS-01 challenge for *.' + domain + ' and *.boylenet.' + domain + ' (approx 20-30s)...';
+  try {{
+    const r = await fetch('/api/letsencrypt-cloudflare', {{
+      method: 'POST',
+      headers: {{'Content-Type': 'application/json'}},
+      body: JSON.stringify({{token: token, domain: domain}})
+    }});
+    const d = await r.json();
+    if (d.ok) {{
+      msg.textContent = '✔ Let\\'s Encrypt wildcard certificate issued and NGINX :443 reloaded!';
+    }} else {{
+      msg.textContent = '⚠️ Certbot response: ' + (d.error || 'Zero-downtime Root CA wildcard remains active on :443');
+    }}
+    loadHttpsStatus();
+  }} catch (e) {{
+    msg.textContent = '⚠️ ' + e;
+  }}
+}}
+
+window.addEventListener('DOMContentLoaded', () => {{
+  loadHttpsStatus();
+}});
 </script>
 </body>
 </html>"""
@@ -1516,10 +1606,57 @@ class TrustAndSSOPortalHandler(BaseHTTPRequestHandler):
     def do_HEAD(self) -> None:
         self.do_GET()
 
+    def do_POST(self) -> None:
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        length = int(self.headers.get("Content-Length", "0"))
+        raw_body = self.rfile.read(length).decode("utf-8") if length > 0 else "{}"
+        try:
+            body = json.loads(raw_body or "{}")
+        except Exception:
+            body = {}
+
+        if path == "/api/letsencrypt-cloudflare":
+            token = str(body.get("token") or body.get("cf_api_token") or "").strip()
+            domain = str(body.get("domain") or "themfboyles.org").strip()
+            email = str(body.get("email") or "").strip()
+            global_key = str(body.get("global_key") or "").strip()
+            if not token and not global_key:
+                self._send_json(
+                    {"ok": False, "error": "Missing token or global_key"},
+                    status=400,
+                )
+                return
+            cmd = [
+                "/home/mboyle/bin/bd-letsencrypt-cloudflare",
+                "--domain",
+                domain,
+                "--json",
+            ]
+            if token:
+                cmd.extend(["--set-token", token])
+            if email:
+                cmd.extend(["--email", email])
+            if global_key:
+                cmd.extend(["--global-key", global_key])
+            try:
+                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=240)
+                res = json.loads(proc.stdout)
+            except Exception as e:
+                res = {"ok": False, "error": str(e), "status": get_https_status()}
+            self._send_json(res)
+            return
+
+        self._send_json({"ok": False, "error": f"Unknown POST endpoint: {path}"}, status=404)
+
     def do_GET(self) -> None:
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         qs = urllib.parse.parse_qs(parsed.query)
+
+        if path == "/api/https-status":
+            self._send_json(get_https_status())
+            return
 
         if path == "/health":
             ca_meta = get_ca_metadata()
@@ -1530,10 +1667,13 @@ class TrustAndSSOPortalHandler(BaseHTTPRequestHandler):
                     "port": PORT,
                     "ux_items": ["#UX-6", "#UX-7", "#UX-8", "#UX-9", "#UX-10"],
                     "hosts": [
-                        "ca.boylenet.themfboyles.com",
-                        "sso.boylenet.themfboyles.com",
+                        "ca.boylenet.themfboyles.org",
+                        "sso.boylenet.themfboyles.org",
+                        "ca.boylenet.themfboyles.org",
+                        "sso.boylenet.themfboyles.org",
                     ],
                     "ca": ca_meta,
+                    "https": get_https_status(),
                     "sso_targets": list(SSO_TARGETS.keys()),
                     "qr_endpoints": [c["url"] for c in get_qr_handoff_cards()],
                     "downloads": [
@@ -1556,12 +1696,13 @@ class TrustAndSSOPortalHandler(BaseHTTPRequestHandler):
                     "targets": SSO_TARGETS,
                     "qr_cards": get_qr_handoff_cards(),
                     "ca": get_ca_metadata(),
+                    "https": get_https_status(),
                 }
             )
             return
 
         if path == "/api/qr":
-            url_param = qs.get("url", ["http://mobile.boylenet.themfboyles.com"])[0]
+            url_param = qs.get("url", ["http://mobile.boylenet.themfboyles.org"])[0]
             svg = render_qr_svg(url_param, pixel_size=220)
             self._send_bytes(svg.encode("utf-8"), "image/svg+xml; charset=utf-8")
             return
@@ -1655,7 +1796,7 @@ class TrustAndSSOPortalHandler(BaseHTTPRequestHandler):
         if path == "/download/install-ca-windows.ps1":
             ps1 = (
                 "# Boylenet Internal Root CA 1-Click Installer for Windows (BattleStation & Bittorrent)\r\n"
-                '$CaUrl = "http://ca.boylenet.themfboyles.com/download/boylenet-root-ca.crt"\r\n'
+                '$CaUrl = "http://ca.boylenet.themfboyles.org/download/boylenet-root-ca.crt"\r\n'
                 '$OutPath = "$env:TEMP\\boylenet-root-ca.crt"\r\n'
                 "Invoke-WebRequest -Uri $CaUrl -OutFile $OutPath\r\n"
                 "Import-Certificate -FilePath $OutPath -CertStoreLocation Cert:\\LocalMachine\\Root\r\n"
