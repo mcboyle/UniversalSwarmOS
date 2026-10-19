@@ -14,11 +14,11 @@ All Boylenet Swarm OS code, systemd units, OpenWebUI Super-Suite gateways/pipeli
 
 | Repository | GitHub URL (`mcboyle`) | Local Gitea URL (`10.0.70.164:3000/mboyle`) | Local Staging Path | Tracked Files | Head Commit SHA (`main`) |
 |---|---|---|---|---:|---|
-| **`boylenet-swarm-os`** | `https://github.com/mcboyle/boylenet-swarm-os` | `http://10.0.70.164:3000/mboyle/boylenet-swarm-os` | `/home/mboyle/git-repos/boylenet-swarm-os` | `200` | `8c28f72cc2f8` |
-| **`boylenet-openwebui-supersuite`** | `https://github.com/mcboyle/boylenet-openwebui-supersuite` | `http://10.0.70.164:3000/mboyle/boylenet-openwebui-supersuite` | `/home/mboyle/git-repos/boylenet-openwebui-supersuite` | `15` | `e8d2758b7c22` |
-| **`boylenet-bd-kb-and-receipts`** | `https://github.com/mcboyle/boylenet-bd-kb-and-receipts` | `http://10.0.70.164:3000/mboyle/boylenet-bd-kb-and-receipts` | `/home/mboyle/git-repos/boylenet-bd-kb-and-receipts` | `170` | `340d8f3249cd` |
-| **`boylenet-infra-configs`** | `https://github.com/mcboyle/boylenet-infra-configs` | `http://10.0.70.164:3000/mboyle/boylenet-infra-configs` | `/home/mboyle/git-repos/boylenet-infra-configs` | `18` | `00f546673ef1` |
-| **`UniversalSwarmOS`** | `https://github.com/mcboyle/UniversalSwarmOS` | `http://10.0.70.164:3000/mboyle/UniversalSwarmOS` | `/home/mboyle/git-repos/UniversalSwarmOS` | `922` | `e426727077bb` |
+| **`boylenet-swarm-os`** | `https://github.com/mcboyle/boylenet-swarm-os` | `http://10.0.70.164:3000/mboyle/boylenet-swarm-os` | `/home/mboyle/git-repos/boylenet-swarm-os` | `402` | `b4a937b977c7` |
+| **`boylenet-openwebui-supersuite`** | `https://github.com/mcboyle/boylenet-openwebui-supersuite` | `http://10.0.70.164:3000/mboyle/boylenet-openwebui-supersuite` | `/home/mboyle/git-repos/boylenet-openwebui-supersuite` | `17` | `a7967556b894` |
+| **`boylenet-bd-kb-and-receipts`** | `https://github.com/mcboyle/boylenet-bd-kb-and-receipts` | `http://10.0.70.164:3000/mboyle/boylenet-bd-kb-and-receipts` | `/home/mboyle/git-repos/boylenet-bd-kb-and-receipts` | `233` | `47f7f174555b` |
+| **`boylenet-infra-configs`** | `https://github.com/mcboyle/boylenet-infra-configs` | `http://10.0.70.164:3000/mboyle/boylenet-infra-configs` | `/home/mboyle/git-repos/boylenet-infra-configs` | `24` | `4b37a2a6992a` |
+| **`UniversalSwarmOS`** | `https://github.com/mcboyle/UniversalSwarmOS` | `http://10.0.70.164:3000/mboyle/UniversalSwarmOS` | `/home/mboyle/git-repos/UniversalSwarmOS` | `1136` | `731cf591ad4d` |
 
 ---
 

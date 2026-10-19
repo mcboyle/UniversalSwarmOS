@@ -63412,17 +63412,17 @@
         },
         "access_grants": [
           {
-            "id": "22effb8d-fea5-49d9-9a98-53cc921ced6d",
+            "id": "d57a065b-e80f-4414-9831-a2c30ffac677",
             "resource_type": "model",
             "resource_id": "claude-sonnet-5-5",
             "principal_type": "user",
             "principal_id": "*",
             "permission": "read",
-            "created_at": 1792366646
+            "created_at": 1792369053
           }
         ],
         "is_active": true,
-        "updated_at": 1792366646,
+        "updated_at": 1792369053,
         "created_at": 1792352981
       },
       "actions": [
@@ -63642,17 +63642,17 @@
         },
         "access_grants": [
           {
-            "id": "1e575e36-a915-4bc5-9cd8-39bf113628b9",
+            "id": "906e505e-59f9-45e2-9df6-55556ad7e2cb",
             "resource_type": "model",
             "resource_id": "claude-haiku-4-5",
             "principal_type": "user",
             "principal_id": "*",
             "permission": "read",
-            "created_at": 1792366646
+            "created_at": 1792369053
           }
         ],
         "is_active": true,
-        "updated_at": 1792366646,
+        "updated_at": 1792369053,
         "created_at": 1792352981
       },
       "actions": [
@@ -63872,17 +63872,17 @@
         },
         "access_grants": [
           {
-            "id": "e685317f-9511-4373-8ab1-18d3b5da652f",
+            "id": "ec770a78-7221-454b-90b5-80299ebefbf7",
             "resource_type": "model",
             "resource_id": "claude-opus-4-7",
             "principal_type": "user",
             "principal_id": "*",
             "permission": "read",
-            "created_at": 1792366646
+            "created_at": 1792369053
           }
         ],
         "is_active": true,
-        "updated_at": 1792366646,
+        "updated_at": 1792369053,
         "created_at": 1792352981
       },
       "actions": [
@@ -64102,17 +64102,17 @@
         },
         "access_grants": [
           {
-            "id": "f95c0c82-744f-45e5-b815-055061c0451c",
+            "id": "ac6d8031-a07e-4ad0-9f3f-e19867e8d445",
             "resource_type": "model",
             "resource_id": "claude-sonnet-4-6",
             "principal_type": "user",
             "principal_id": "*",
             "permission": "read",
-            "created_at": 1792366646
+            "created_at": 1792369053
           }
         ],
         "is_active": true,
-        "updated_at": 1792366646,
+        "updated_at": 1792369053,
         "created_at": 1792352981
       },
       "actions": [
@@ -64332,17 +64332,17 @@
         },
         "access_grants": [
           {
-            "id": "ade525c2-6f29-43ba-9202-3d5b71e6dcbf",
+            "id": "5fc9ff17-9048-47c3-b5b3-b4a668b6ea5c",
             "resource_type": "model",
             "resource_id": "fable-5-1",
             "principal_type": "user",
             "principal_id": "*",
             "permission": "read",
-            "created_at": 1792366646
+            "created_at": 1792369053
           }
         ],
         "is_active": true,
-        "updated_at": 1792366646,
+        "updated_at": 1792369053,
         "created_at": 1792352981
       },
       "actions": [
@@ -64562,17 +64562,17 @@
         },
         "access_grants": [
           {
-            "id": "c25e3f0d-38ad-4b0c-baf1-b6629c767f59",
+            "id": "440650f5-c33c-49e9-8231-0d54d9857c00",
             "resource_type": "model",
             "resource_id": "gpt-6.1-sol",
             "principal_type": "user",
             "principal_id": "*",
             "permission": "read",
-            "created_at": 1792366646
+            "created_at": 1792369053
           }
         ],
         "is_active": true,
-        "updated_at": 1792366646,
+        "updated_at": 1792369053,
         "created_at": 1792352981
       },
       "actions": [
@@ -64792,17 +64792,17 @@
         },
         "access_grants": [
           {
-            "id": "20730235-8899-4852-83a4-75dbd5264f18",
+            "id": "d476e820-1dae-495d-b7b3-99a46619d78c",
             "resource_type": "model",
             "resource_id": "gpt-5.6-terra",
             "principal_type": "user",
             "principal_id": "*",
             "permission": "read",
-            "created_at": 1792366646
+            "created_at": 1792369053
           }
         ],
         "is_active": true,
-        "updated_at": 1792366646,
+        "updated_at": 1792369053,
         "created_at": 1792352981
       },
       "actions": [
@@ -65717,17 +65717,17 @@
         },
         "access_grants": [
           {
-            "id": "7f4969f4-9ba0-433f-ad40-5a0c50760d2b",
+            "id": "97799149-0f91-4c25-9a1c-981ae4586a37",
             "resource_type": "model",
             "resource_id": "agent-master-coder",
             "principal_type": "user",
             "principal_id": "*",
             "permission": "read",
-            "created_at": 1792366645
+            "created_at": 1792369052
           }
         ],
         "is_active": true,
-        "updated_at": 1792366645,
+        "updated_at": 1792369052,
         "created_at": 1792366300
       },
       "actions": [
@@ -65968,17 +65968,17 @@
         },
         "access_grants": [
           {
-            "id": "9d7fed1a-010b-492e-8ac1-6d4725bebd1a",
+            "id": "dcdaaaaf-bbf0-4e6a-ad69-9669b36ae4e9",
             "resource_type": "model",
             "resource_id": "agent-instant-sprinter",
             "principal_type": "user",
             "principal_id": "*",
             "permission": "read",
-            "created_at": 1792366645
+            "created_at": 1792369052
           }
         ],
         "is_active": true,
-        "updated_at": 1792366645,
+        "updated_at": 1792369052,
         "created_at": 1792366300
       },
       "actions": [
@@ -66218,17 +66218,17 @@
         },
         "access_grants": [
           {
-            "id": "b44a7f48-709e-4add-98e6-dca778ab1ea5",
+            "id": "dd27cc32-6797-414f-b559-f2dbb7bdee58",
             "resource_type": "model",
             "resource_id": "agent-deep-researcher",
             "principal_type": "user",
             "principal_id": "*",
             "permission": "read",
-            "created_at": 1792366645
+            "created_at": 1792369052
           }
         ],
         "is_active": true,
-        "updated_at": 1792366645,
+        "updated_at": 1792369052,
         "created_at": 1792366300
       },
       "actions": [
@@ -66468,17 +66468,17 @@
         },
         "access_grants": [
           {
-            "id": "936c8c77-62ac-47b7-b4c7-802a9f12d8f0",
+            "id": "02bbc4fe-f09c-47eb-a306-c55bf5f8a859",
             "resource_type": "model",
             "resource_id": "agent-offsec-redteam",
             "principal_type": "user",
             "principal_id": "*",
             "permission": "read",
-            "created_at": 1792366645
+            "created_at": 1792369052
           }
         ],
         "is_active": true,
-        "updated_at": 1792366645,
+        "updated_at": 1792369052,
         "created_at": 1792366300
       },
       "actions": [
@@ -66718,17 +66718,17 @@
         },
         "access_grants": [
           {
-            "id": "06b07219-add0-424f-8bb9-989c698fd678",
+            "id": "abfc249d-9850-4815-91bc-ed87041e7323",
             "resource_type": "model",
             "resource_id": "agent-vsan-infra-architect",
             "principal_type": "user",
             "principal_id": "*",
             "permission": "read",
-            "created_at": 1792366645
+            "created_at": 1792369052
           }
         ],
         "is_active": true,
-        "updated_at": 1792366645,
+        "updated_at": 1792369052,
         "created_at": 1792366300
       },
       "actions": [
@@ -66968,17 +66968,17 @@
         },
         "access_grants": [
           {
-            "id": "13adea00-a62b-4d0e-9c69-f1c2077ac60e",
+            "id": "a5f473a5-4ee1-495d-8ab9-56732263de79",
             "resource_type": "model",
             "resource_id": "agent-bdkb-ci-doctor",
             "principal_type": "user",
             "principal_id": "*",
             "permission": "read",
-            "created_at": 1792366645
+            "created_at": 1792369052
           }
         ],
         "is_active": true,
-        "updated_at": 1792366645,
+        "updated_at": 1792369052,
         "created_at": 1792366300
       },
       "actions": [
@@ -67218,17 +67218,17 @@
         },
         "access_grants": [
           {
-            "id": "6a7a2a63-dd73-41c8-9513-b2f8f8053e48",
+            "id": "6f73a0b3-c199-4a7f-b27a-ee247631eaa8",
             "resource_type": "model",
             "resource_id": "agent-media-voice-studio",
             "principal_type": "user",
             "principal_id": "*",
             "permission": "read",
-            "created_at": 1792366645
+            "created_at": 1792369053
           }
         ],
         "is_active": true,
-        "updated_at": 1792366645,
+        "updated_at": 1792369053,
         "created_at": 1792366300
       },
       "actions": [
@@ -67468,17 +67468,17 @@
         },
         "access_grants": [
           {
-            "id": "fd0eb807-dd80-4ca1-9f57-4f68d96c82da",
+            "id": "48b3cc2c-6c64-4a9a-97f1-609b985687c5",
             "resource_type": "model",
             "resource_id": "agent-data-sql-analyst",
             "principal_type": "user",
             "principal_id": "*",
             "permission": "read",
-            "created_at": 1792366645
+            "created_at": 1792369053
           }
         ],
         "is_active": true,
-        "updated_at": 1792366645,
+        "updated_at": 1792369053,
         "created_at": 1792366300
       },
       "actions": [
@@ -67718,17 +67718,17 @@
         },
         "access_grants": [
           {
-            "id": "b4cada01-8bbb-4c9e-bf7d-d7682927c01a",
+            "id": "d136f2de-557b-42cf-8e31-e0df141d9313",
             "resource_type": "model",
             "resource_id": "agent-mcp-skill-commander",
             "principal_type": "user",
             "principal_id": "*",
             "permission": "read",
-            "created_at": 1792366645
+            "created_at": 1792369053
           }
         ],
         "is_active": true,
-        "updated_at": 1792366645,
+        "updated_at": 1792369053,
         "created_at": 1792366300
       },
       "actions": [
@@ -67968,17 +67968,17 @@
         },
         "access_grants": [
           {
-            "id": "518b7450-b54e-4f34-8baa-181f451c05ad",
+            "id": "d3428070-eaae-4d2e-9683-45502dc1a797",
             "resource_type": "model",
             "resource_id": "agent-airgap-sovereign",
             "principal_type": "user",
             "principal_id": "*",
             "permission": "read",
-            "created_at": 1792366645
+            "created_at": 1792369053
           }
         ],
         "is_active": true,
-        "updated_at": 1792366645,
+        "updated_at": 1792369053,
         "created_at": 1792366300
       },
       "actions": [
@@ -68221,17 +68221,17 @@
         },
         "access_grants": [
           {
-            "id": "4dc25814-65d0-4423-b75b-e21ea1acc743",
+            "id": "b1b09b43-977a-4582-8f75-730580b113cd",
             "resource_type": "model",
             "resource_id": "agent-4model-council",
             "principal_type": "user",
             "principal_id": "*",
             "permission": "read",
-            "created_at": 1792366645
+            "created_at": 1792369053
           }
         ],
         "is_active": true,
-        "updated_at": 1792366645,
+        "updated_at": 1792369053,
         "created_at": 1792366300
       },
       "actions": [
@@ -68474,17 +68474,17 @@
         },
         "access_grants": [
           {
-            "id": "8ce9a21c-936d-46fa-a8a3-92d61e73f239",
+            "id": "d8d82a75-9eb5-4554-b5aa-a09994c4ee5e",
             "resource_type": "model",
             "resource_id": "agent-claude-opus-integrator",
             "principal_type": "user",
             "principal_id": "*",
             "permission": "read",
-            "created_at": 1792366645
+            "created_at": 1792369053
           }
         ],
         "is_active": true,
-        "updated_at": 1792366645,
+        "updated_at": 1792369053,
         "created_at": 1792366300
       },
       "actions": [
@@ -68724,17 +68724,17 @@
         },
         "access_grants": [
           {
-            "id": "ed1fcecb-61ef-470e-b0d4-4049e79ad242",
+            "id": "baa502d1-1267-409b-b9f3-12614ff034ed",
             "resource_type": "model",
             "resource_id": "agent-codex-sol-verifier",
             "principal_type": "user",
             "principal_id": "*",
             "permission": "read",
-            "created_at": 1792366645
+            "created_at": 1792369053
           }
         ],
         "is_active": true,
-        "updated_at": 1792366645,
+        "updated_at": 1792369053,
         "created_at": 1792366300
       },
       "actions": [
@@ -68974,17 +68974,17 @@
         },
         "access_grants": [
           {
-            "id": "6f4a6fb4-01c4-44f3-a6d0-5b6f1c236210",
+            "id": "cbd268c4-177f-4efd-8b5b-2b9e3a6b465b",
             "resource_type": "model",
             "resource_id": "agent-kimi-ux-swarm",
             "principal_type": "user",
             "principal_id": "*",
             "permission": "read",
-            "created_at": 1792366645
+            "created_at": 1792369053
           }
         ],
         "is_active": true,
-        "updated_at": 1792366645,
+        "updated_at": 1792369053,
         "created_at": 1792366300
       },
       "actions": [
@@ -69224,17 +69224,17 @@
         },
         "access_grants": [
           {
-            "id": "ca9c587b-8e04-432f-a855-84fb56b5d59f",
+            "id": "84a1e919-5fec-4b99-a0a9-90dd9b152e43",
             "resource_type": "model",
             "resource_id": "agent-o1740-smart-router",
             "principal_type": "user",
             "principal_id": "*",
             "permission": "read",
-            "created_at": 1792366645
+            "created_at": 1792369053
           }
         ],
         "is_active": true,
-        "updated_at": 1792366645,
+        "updated_at": 1792369053,
         "created_at": 1792366300
       },
       "actions": [
