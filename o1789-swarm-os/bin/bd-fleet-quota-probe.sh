@@ -104,8 +104,8 @@ PY_ROUTE
 live_seats=$(tmux ls -F '#S' 2>/dev/null || true)
 
 for seat in $live_seats; do
-  # Ignore purely administrative/local panes
-  if [[ "$seat" == "relay-test" || "$seat" == "antigravity" ]]; then continue; fi
+  # Ignore purely administrative/local panes and command-squad / PM seats
+  if [[ "$seat" == "relay-test" || "$seat" == "antigravity" || "$seat" == bd-pm-* || "$seat" == bd-usage-* || "$seat" == bd-integrator-* || "$seat" == bd-dispatch-* || "$seat" == bd-lensrouter-* ]]; then continue; fi
 
   # tmux ls can race session teardown; exact targets also avoid prefix matches.
   tmux has-session -t "=$seat" 2>/dev/null || continue

@@ -10,7 +10,7 @@ Environment="HOME=/home/mboyle"
 Environment="PATH=/home/mboyle/.local/node24/bin:/home/mboyle/.local/bin:/home/mboyle/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="OPENAI_BASE_URL=http://10.0.70.164:4000/v1"
 Environment="OPENAI_API_KEY=sk-fleet-local"
-ExecStart=/home/mboyle/.local/bin/opencode serve --hostname 0.0.0.0 --port 4096 --cors http://opencode.boylenet.themfboyles.com --cors http://10.0.70.164:4096 --cors http://dashy.boylenet.themfboyles.com
+ExecStart=/home/mboyle/.local/bin/opencode serve --hostname 0.0.0.0 --port 4096 --cors https://opencode.boylenet.themfboyles.org --cors https://opencode.boylenet.themfboyles.com --cors http://opencode.boylenet.themfboyles.com --cors http://10.0.70.164:4096 --cors http://dashy.boylenet.themfboyles.com
 Restart=always
 RestartSec=3
 

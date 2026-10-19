@@ -1,0 +1,15 @@
+[Unit]
+Description=Boylenet Persistent Post-Reboot Fleet, AI VMs & Remote-Control Session Auto-Recovery
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=oneshot
+User=mboyle
+WorkingDirectory=/home/mboyle
+ExecStart=/usr/bin/python3 /home/mboyle/bin/bd-boot-recovery.py
+RemainAfterExit=yes
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

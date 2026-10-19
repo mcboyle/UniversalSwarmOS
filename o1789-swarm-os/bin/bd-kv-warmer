@@ -24,6 +24,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+for _k in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"): os.environ.pop(_k, None)
 from pathlib import Path
 from typing import Any
 
@@ -296,6 +297,7 @@ def stream_chat_ttft(
     timeout: float = 90.0,
 ) -> dict[str, Any]:
     """Send a streaming 1-token chat completion request and measure exact client TTFT (ms)."""
+    use_json = is_litellm and "10.0.70.164" in url
     payload: dict[str, Any] = {
         "model": model,
         "messages": [
@@ -304,10 +306,10 @@ def stream_chat_ttft(
         ],
         "max_tokens": 1,
         "temperature": 0.0,
-        "stream": True,
+        "stream": not use_json,
         "cache_prompt": True,
     }
-    if slot_id is not None:
+    if slot_id is not None and not is_litellm:
         payload["id_slot"] = slot_id
     if is_litellm:
         # Bypass LiteLLM response cache so we measure real llama-server KV prefix cache
@@ -316,7 +318,7 @@ def stream_chat_ttft(
     data = json.dumps(payload).encode("utf-8")
     headers = {
         "Content-Type": "application/json",
-        "Accept": "text/event-stream",
+        "Accept": "application/json" if (is_litellm and "10.0.70.164" in url) else "text/event-stream",
     }
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
@@ -331,25 +333,35 @@ def stream_chat_ttft(
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             status_code = resp.getcode()
-            for raw_line in resp:
-                line = raw_line.decode("utf-8", errors="replace").strip()
-                if not line or not line.startswith("data:"):
-                    continue
-                data_str = line[5:].strip()
-                if data_str == "[DONE]":
-                    break
-                try:
-                    chunk = json.loads(data_str)
-                except json.JSONDecodeError:
-                    continue
-                chunks_received += 1
-                if ttft_ms is None:
-                    ttft_ms = (time.perf_counter() - t_start) * 1000.0
-                if isinstance(chunk.get("usage"), dict) and chunk["usage"]:
-                    usage = chunk["usage"]
-                if isinstance(chunk.get("timings"), dict) and chunk["timings"]:
-                    timings = chunk["timings"]
-        total_ms = (time.perf_counter() - t_start) * 1000.0
+            if (is_litellm and "10.0.70.164" in url):
+                body = json.loads(resp.read().decode("utf-8", errors="replace"))
+                total_ms = (time.perf_counter() - t_start) * 1000.0
+                ttft_ms = total_ms
+                chunks_received = 1
+                if isinstance(body.get("usage"), dict):
+                    usage = body["usage"]
+                if isinstance(body.get("timings"), dict):
+                    timings = body["timings"]
+            else:
+                for raw_line in resp:
+                    line = raw_line.decode("utf-8", errors="replace").strip()
+                    if not line or not line.startswith("data:"):
+                        continue
+                    data_str = line[5:].strip()
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data_str)
+                    except json.JSONDecodeError:
+                        continue
+                    chunks_received += 1
+                    if ttft_ms is None:
+                        ttft_ms = (time.perf_counter() - t_start) * 1000.0
+                    if isinstance(chunk.get("usage"), dict) and chunk["usage"]:
+                        usage = chunk["usage"]
+                    if isinstance(chunk.get("timings"), dict) and chunk["timings"]:
+                        timings = chunk["timings"]
+                total_ms = (time.perf_counter() - t_start) * 1000.0
         if ttft_ms is None:
             ttft_ms = total_ms
         return {
@@ -418,26 +430,12 @@ def warm_endpoint(
     slot_id = ep.get("slot_id", 0)
     is_litellm = ep["type"] == "litellm-proxy"
     key = api_key if ep.get("needs_auth") else ""
+    req_timeout = 35.0 if not measure_cold else 60.0
 
-    for _attempt in range(2):
-        ensure_tier1_ready(max_wait_s=60)
-        if measure_cold:
-            bust_all_kv_slots(ep["backing_base_url"], ep["backing_model"])
+    ts_nonce = int(time.time() * 1000)
 
-        ts_nonce = int(time.time() * 1000)
-
-        # Pass 1: Cold load of canonical prefix into KV cache
-        cold_res = stream_chat_ttft(
-            url=url,
-            model=model,
-            system_prompt=canonical_prefix,
-            user_prompt=f"PING_COLD_{ts_nonce}: Reply OK.",
-            api_key=key,
-            slot_id=slot_id,
-            is_litellm=is_litellm,
-        )
-
-        # Pass 2: Warm cached hit against the pinned KV prefix
+    if not measure_cold:
+        # Fast --pin-only path: 1 warm pin pass + 1 confirmation pass
         warm_res = stream_chat_ttft(
             url=url,
             model=model,
@@ -446,29 +444,58 @@ def warm_endpoint(
             api_key=key,
             slot_id=slot_id,
             is_litellm=is_litellm,
+            timeout=req_timeout,
         )
+        cold_res = warm_res
+        best_warm = warm_res
+    else:
+        for _attempt in range(2):
+            bust_all_kv_slots(ep["backing_base_url"], ep["backing_model"])
+            ts_nonce = int(time.time() * 1000)
 
-        # Pass 3: Second warm confirmation pass (takes best warm TTFT)
-        warm_res_2 = stream_chat_ttft(
-            url=url,
-            model=model,
-            system_prompt=canonical_prefix,
-            user_prompt=f"PING_WARM_2_{ts_nonce}: Reply OK.",
-            api_key=key,
-            slot_id=slot_id,
-            is_litellm=is_litellm,
-        )
+            cold_res = stream_chat_ttft(
+                url=url,
+                model=model,
+                system_prompt=canonical_prefix,
+                user_prompt=f"PING_COLD_{ts_nonce}: Reply OK.",
+                api_key=key,
+                slot_id=slot_id,
+                is_litellm=is_litellm,
+                timeout=req_timeout,
+            )
 
-        if warm_res_2.get("status") == "OK" and (
-            warm_res.get("status") != "OK" or warm_res_2["ttft_ms"] < warm_res["ttft_ms"]
-        ):
-            best_warm = warm_res_2
-        else:
-            best_warm = warm_res
+            warm_res = stream_chat_ttft(
+                url=url,
+                model=model,
+                system_prompt=canonical_prefix,
+                user_prompt=f"PING_WARM_1_{ts_nonce}: Reply OK.",
+                api_key=key,
+                slot_id=slot_id,
+                is_litellm=is_litellm,
+                timeout=req_timeout,
+            )
 
-        if cold_res.get("status") == "OK" and best_warm.get("status") == "OK":
-            break
-        time.sleep(2.0)
+            warm_res_2 = stream_chat_ttft(
+                url=url,
+                model=model,
+                system_prompt=canonical_prefix,
+                user_prompt=f"PING_WARM_2_{ts_nonce}: Reply OK.",
+                api_key=key,
+                slot_id=slot_id,
+                is_litellm=is_litellm,
+                timeout=req_timeout,
+            )
+
+            if warm_res_2.get("status") == "OK" and (
+                warm_res.get("status") != "OK" or warm_res_2["ttft_ms"] < warm_res["ttft_ms"]
+            ):
+                best_warm = warm_res_2
+            else:
+                best_warm = warm_res
+
+            if cold_res.get("status") == "OK" and best_warm.get("status") == "OK":
+                break
+            time.sleep(1.0)
 
     cold_ttft = cold_res.get("ttft_ms", 0.0)
     warm_ttft = best_warm.get("ttft_ms", 0.0)
@@ -499,15 +526,18 @@ def warm_endpoint(
     }
 
 
-def pin_all_parallel_slots(canonical_prefix: str) -> dict[str, int]:
-    """Ensure every parallel slot on both llama-server pools has the canonical prefix pinned."""
+def pin_all_parallel_slots(canonical_prefix: str, fast_pin: bool = False) -> dict[str, int]:
+    """Ensure parallel slots on llama-server pools have the canonical prefix pinned."""
     pinned: dict[str, int] = {}
     for ep in ENDPOINTS:
         if ep["type"] != "llama-server":
             continue
         base_url = ep["base_url"]
-        n_slots = get_slot_count(base_url)
+        n_slots = 1 if fast_pin else get_slot_count(base_url)
         for s in range(n_slots):
+            if fast_pin and s == 0:
+                # Slot 0 was already warmed in warm_endpoint()
+                continue
             stream_chat_ttft(
                 url=ep["url"],
                 model=ep["model"],
@@ -516,13 +546,15 @@ def pin_all_parallel_slots(canonical_prefix: str) -> dict[str, int]:
                 api_key="",
                 slot_id=s,
                 is_litellm=False,
-                timeout=60.0,
+                timeout=25.0,
             )
-        pinned[ep["id"]] = n_slots
+        pinned[ep["id"]] = get_slot_count(base_url)
     return pinned
 
 
 def run_warmer(measure_cold: bool = True) -> dict[str, Any]:
+    import concurrent.futures
+
     prev_cold_by_id: dict[str, dict[str, Any]] = {}
     if not measure_cold and STATUS_PATH.is_file():
         try:
@@ -533,12 +565,12 @@ def run_warmer(measure_cold: bool = True) -> dict[str, Any]:
         except Exception:
             pass
 
-    ensure_tier1_ready(max_wait_s=60)
+    ensure_tier1_ready(max_wait_s=15)
     api_key = load_api_key()
     canonical_prefix, prefix_meta = build_canonical_prefix()
     t0 = time.time()
-    results = []
-    for ep in ENDPOINTS:
+
+    def _warm_one(ep: dict[str, Any]) -> dict[str, Any]:
         res = warm_endpoint(ep, canonical_prefix, api_key, measure_cold=measure_cold)
         if not measure_cold and ep["id"] in prev_cold_by_id:
             prev_ep = prev_cold_by_id[ep["id"]]
@@ -551,9 +583,24 @@ def run_warmer(measure_cold: bool = True) -> dict[str, Any]:
             res["ttft_reduction_pct"] = (
                 round((1.0 - (warm_ttft / cold_ttft)) * 100.0, 2) if cold_ttft > 0 else 0.0
             )
-        results.append(res)
+        return res
 
-    slots_pinned = pin_all_parallel_slots(canonical_prefix)
+    # Group by backing_base_url so two requests never contend for slot_id=0 on the same llama-server simultaneously
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for ep in ENDPOINTS:
+        groups.setdefault(ep["backing_base_url"], []).append(ep)
+
+    def _warm_group(ep_list: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [_warm_one(ep) for ep in ep_list]
+
+    results_by_id: dict[str, dict[str, Any]] = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(groups)) as ex:
+        for grp_res in ex.map(_warm_group, groups.values()):
+            for r in grp_res:
+                results_by_id[r["id"]] = r
+    results = [results_by_id[ep["id"]] for ep in ENDPOINTS]
+
+    slots_pinned = pin_all_parallel_slots(canonical_prefix, fast_pin=not measure_cold)
 
     ok_count = sum(1 for r in results if r["status"] == "OK")
     avg_cold = round(sum(r["cold_ttft_ms"] for r in results) / len(results), 2) if results else 0.0

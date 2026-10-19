@@ -1,0 +1,8 @@
+[Unit]
+Description=Boylenet 1-Year Token Seat Auth Enforcer (O3349/O3350, No RC Mode)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=mboyle
+ExecStart=/usr/bin/python3 /home/mboyle/bin/bd-rc-enforcer.py

@@ -1,0 +1,9 @@
+[Unit]
+Description=Boylenet Autonomous Relief Agent Puppeteer & Supervisor Pass
+After=network.target
+
+[Service]
+Type=oneshot
+User=mboyle
+WorkingDirectory=/home/mboyle
+ExecStart=/usr/bin/python3 /home/mboyle/bin/bd-relief-puppeteer.py

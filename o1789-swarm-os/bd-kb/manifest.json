@@ -1,6 +1,6 @@
 {
   "schema": "boylenet.bd-kb.manifest.v1",
-  "updated_at": "2026-10-19T00:18:57Z",
+  "updated_at": "2026-10-19T21:52:07Z",
   "campaign": "O1789",
   "total_volumes": 9,
   "qdrant_collection": {
@@ -62,9 +62,9 @@
     },
     {
       "filename": "05-SWARM-OPERATIONS-RECEIPTS-AND-PLAYBOOKS.md",
-      "size_bytes": 628866,
-      "sha256": "0eed59cbf738ce0f48ae1bf5c2e40c9e6bc60211239d990b63530c02e99c0ca9",
-      "lines": 5996
+      "size_bytes": 707357,
+      "sha256": "4978ec46a6fcee2206cd04553e1cbc6f4f6ac447e75b245081430a215ce0ffeb",
+      "lines": 6652
     },
     {
       "filename": "06-5PLATFORM-MCP-MODS-HTTPS-AND-215-LEDGER.md",

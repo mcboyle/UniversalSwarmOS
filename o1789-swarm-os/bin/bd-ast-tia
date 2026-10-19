@@ -26,6 +26,19 @@ def get_repo_root(start_dir: str = ".") -> str:
     except Exception:
         return os.path.abspath(start_dir)
 
+def is_python_path(repo_root: str, rel_path: str) -> bool:
+    """*.py, or an extensionless file whose shebang names python (harness tools, F3)."""
+    if rel_path.endswith(".py"):
+        return True
+    if os.path.splitext(rel_path)[1]:
+        return False
+    try:
+        with open(os.path.join(repo_root, rel_path), "rb") as fh:
+            first = fh.readline(200)
+    except OSError:
+        return False
+    return first.startswith(b"#!") and b"python" in first
+
 def get_modified_py_files(repo_root: str, base_ref: str = None) -> List[str]:
     """Get modified python files via git status/diff."""
     cmd = ["git", "diff", "--name-only", "--diff-filter=d"]
@@ -37,20 +50,29 @@ def get_modified_py_files(repo_root: str, base_ref: str = None) -> List[str]:
         
     try:
         out = subprocess.check_output(cmd, cwd=repo_root, stderr=subprocess.DEVNULL, text=True)
-        files = [f.strip() for f in out.splitlines() if f.strip().endswith(".py")]
-        if not files:
-            # Try untracked/unstaged against working tree
-            out_status = subprocess.check_output(
-                ["git", "status", "--porcelain"], cwd=repo_root, stderr=subprocess.DEVNULL, text=True
-            )
-            for line in out_status.splitlines():
-                if line.endswith(".py"):
-                    parts = line.strip().split()
-                    if len(parts) >= 2:
-                        files.append(parts[-1])
+        files = [f.strip() for f in out.splitlines() if f.strip() and is_python_path(repo_root, f.strip())]
+        # Deleted and untracked files never reach the diff above; merge them from status always (F7),
+        # not only when the diff has no python file.
+        out_status = subprocess.check_output(
+            ["git", "status", "--porcelain"], cwd=repo_root, stderr=subprocess.DEVNULL, text=True
+        )
+        for line in out_status.splitlines():
+            parts = line.strip().split()
+            if len(parts) >= 2 and is_python_path(repo_root, parts[-1]):
+                files.append(parts[-1])
         return list(dict.fromkeys(files))
     except Exception:
         return []
+
+def symbol_nodes(source: str):
+    """Class, function, and method def nodes of a Python source (dunders excluded)."""
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, ValueError):
+        return []
+    return [node for node in ast.walk(tree)
+            if isinstance(node, ast.ClassDef)
+            or isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and not node.name.startswith("__")]
 
 def extract_ast_symbols(file_path: str) -> Set[str]:
     """Extract class, function, and method names from a Python source file."""
@@ -58,31 +80,30 @@ def extract_ast_symbols(file_path: str) -> Set[str]:
         return set()
     try:
         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-            tree = ast.parse(f.read(), filename=file_path)
+            return {node.name for node in symbol_nodes(f.read())}
     except Exception:
         return set()
-
-    symbols = set()
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            if not node.name.startswith("__"):
-                symbols.add(node.name)
-        elif isinstance(node, ast.ClassDef):
-            symbols.add(node.name)
-    return symbols
 
 def get_changed_symbols(repo_root: str, rel_path: str, base_ref: str = None) -> Set[str]:
     """Compare current AST symbols with base AST symbols or git diff hunks."""
     full_path = os.path.join(repo_root, rel_path)
     current_symbols = extract_ast_symbols(full_path)
+    ref_arg = base_ref if base_ref else "HEAD"
+    # A symbol that left the file (deleted, renamed away) is changed too; its callers must still run (F17).
+    try:
+        base_src = subprocess.check_output(
+            ["git", "show", f"{ref_arg}:{rel_path}"], cwd=repo_root, stderr=subprocess.DEVNULL, text=True
+        )
+        gone = {node.name for node in symbol_nodes(base_src)} - current_symbols
+    except (subprocess.CalledProcessError, OSError):
+        gone = set()
     if not current_symbols:
-        return set()
+        return gone
 
     # Get git diff hunk lines to find symbols in changed regions
-    ref_arg = base_ref if base_ref else "HEAD"
     try:
         diff_out = subprocess.check_output(
-            ["git", "diff", ref_arg, "--", rel_path],
+            ["git", "diff", "-U0", ref_arg, "--", rel_path],
             cwd=repo_root,
             stderr=subprocess.DEVNULL,
             text=True
@@ -92,15 +113,23 @@ def get_changed_symbols(repo_root: str, rel_path: str, base_ref: str = None) -> 
 
     if not diff_out:
         # If no diff vs HEAD, return all symbols as candidate
-        return current_symbols
+        return current_symbols | gone
 
-    # Filter symbols present in the diff additions
-    changed = set()
-    for sym in current_symbols:
-        # Check if symbol appears in added/modified diff lines
-        pattern = rf"^\+.*\b{re.escape(sym)}\b"
-        if re.search(pattern, diff_out, re.MULTILINE):
-            changed.add(sym)
+    # A change belongs to the def(s) whose line range encloses a touched new-file line (F14), not to every
+    # symbol merely named on an added line. A pure deletion hunk (+N,0) touches line N.
+    touched = set()
+    for m in re.finditer(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@", diff_out, re.MULTILINE):
+        start, count = int(m.group(1)), int(m.group(2) if m.group(2) is not None else 1)
+        touched.update(range(start, start + max(count, 1)))
+    try:
+        with open(full_path, "r", encoding="utf-8", errors="ignore") as f:
+            nodes = symbol_nodes(f.read())
+    except OSError:
+        nodes = []
+    changed = set(gone)
+    for node in nodes:
+        if any(node.lineno <= ln <= node.end_lineno for ln in touched):
+            changed.add(node.name)
 
     return changed if changed else current_symbols
 
@@ -108,6 +137,30 @@ def module_name_from_path(rel_path: str) -> str:
     """e.g. backend/api/auth.py -> backend.api.auth or auth"""
     base = os.path.splitext(rel_path)[0]
     return base.replace("/", ".").replace("\\", ".")
+
+def candidate_test_paths(repo_root: str, pattern: str) -> list[str]:
+    """tests/**/test_*.py whose text matches pattern: rg when on PATH, else a python walk of tests/ (F1).
+    rg's matches are kept whatever its exit code: exit 2 (an unreadable dir) still printed every match (F11a)."""
+    try:
+        res = subprocess.run(["rg", "-l", "--glob", "test_*.py", pattern, "tests"],
+                             cwd=repo_root, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, check=False)
+        return res.stdout.splitlines()
+    except FileNotFoundError:
+        pass
+    rx = re.compile(pattern)
+    found = []
+    for dirpath, dirnames, filenames in os.walk(os.path.join(repo_root, "tests")):
+        dirnames.sort()
+        for name in sorted(filenames):
+            if name.startswith("test_") and name.endswith(".py"):
+                full = os.path.join(dirpath, name)
+                try:
+                    with open(full, "r", encoding="utf-8", errors="ignore") as fh:
+                        if rx.search(fh.read()):
+                            found.append(os.path.relpath(full, repo_root).replace(os.sep, "/"))
+                except OSError:
+                    continue
+    return found
 
 def score_test_files(repo_root: str, modified_files: List[str], base_ref: str = None) -> List[Dict]:
     """Score all test files based on AST symbol references and imports."""
@@ -118,6 +171,16 @@ def score_test_files(repo_root: str, modified_files: List[str], base_ref: str = 
     test_scores: Dict[str, Dict] = {}
 
     for mod_file in modified_files:
+        if os.path.basename(mod_file) == "conftest.py":
+            # A conftest is not collectable; the tests it configures are everything under its directory (F8).
+            conf_dir = os.path.dirname(mod_file) or "."
+            test_scores[conf_dir] = {
+                "file": conf_dir,
+                "score": 100,
+                "matched_symbols": ["(conftest)"],
+                "specific_tests": []
+            }
+            continue
         if mod_file.startswith("tests/"):
             # The test file itself was modified!
             test_scores[mod_file] = {
@@ -132,19 +195,15 @@ def score_test_files(repo_root: str, modified_files: List[str], base_ref: str = 
         base_name = os.path.basename(mod_file).replace(".py", "")
         mod_dotted = module_name_from_path(mod_file)
 
-        # Quick candidate search using ripgrep or python fallback
-        rg_cmd = ["rg", "-l", "--glob", "test_*.py", rf"\b({base_name})\b", "tests"]
-        try:
-            matched_test_paths = subprocess.check_output(
-                rg_cmd, cwd=repo_root, stderr=subprocess.DEVNULL, text=True
-            ).splitlines()
-        except Exception:
-            matched_test_paths = []
+        # Quick candidate search using ripgrep or python fallback; a test reaching a changed symbol through a
+        # re-export never names the module, so the changed symbols are searched too (F2)
+        names = [base_name] + sorted(symbols)
+        matched_test_paths = candidate_test_paths(repo_root, rf"\b({'|'.join(names)})\b")
 
-        # If base name matches direct test file (e.g. test_<basename>.py)
-        canonical_test = f"tests/test_{base_name}.py"
-        if os.path.isfile(os.path.join(repo_root, canonical_test)):
-            matched_test_paths.append(canonical_test)
+        # If base name matches direct test file (e.g. test_<basename>.py; bd-tool -> test_bd_tool.py, F3)
+        for canonical_test in dict.fromkeys((f"tests/test_{base_name}.py", f"tests/test_{base_name.replace('-', '_')}.py")):
+            if os.path.isfile(os.path.join(repo_root, canonical_test)):
+                matched_test_paths.append(canonical_test)
 
         matched_test_paths = list(set(matched_test_paths))
 
@@ -189,7 +248,13 @@ def score_test_files(repo_root: str, modified_files: List[str], base_ref: str = 
             except Exception:
                 pass
 
-            if t_rel not in test_scores or test_scores[t_rel]["score"] < score:
+            prev = test_scores.get(t_rel)
+            if prev is not None:
+                # merge, never drop the other module's entry (F13)
+                prev["score"] = max(prev["score"], score)
+                prev["matched_symbols"] = list(dict.fromkeys(prev["matched_symbols"] + matched_syms))
+                prev["specific_tests"] = list(dict.fromkeys(prev["specific_tests"] + specific_tests))
+            else:
                 test_scores[t_rel] = {
                     "file": t_rel,
                     "score": score,
@@ -234,17 +299,9 @@ def main():
         sys.exit(0)
 
     if args.pytest_args:
-        # Emit space-separated test paths and -k filters
-        targets = []
-        for item in ranked:
-            t_file = item["file"]
-            specs = item["specific_tests"]
-            if specs and len(specs) <= 3:
-                k_filter = " or ".join(specs)
-                targets.append(f"{t_file} -k '{k_filter}'")
-            else:
-                targets.append(t_file)
-        print(" ".join(targets))
+        # Emit space-separated test paths only. No -k: pytest keeps only the last -k on a command line, and
+        # specific_tests misses in-file tests that reach a changed symbol indirectly (F6).
+        print(" ".join(dict.fromkeys(item["file"] for item in ranked)))
         sys.exit(0)
 
     # Human/Agent readable summary

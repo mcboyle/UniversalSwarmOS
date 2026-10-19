@@ -1,0 +1,14 @@
+[Unit]
+Description=Boylenet Local Chrome CDP Proxy Bridge (:9222 -> .181:9222 / .137:9222)
+After=network.target
+
+[Service]
+Type=simple
+User=mboyle
+WorkingDirectory=/home/mboyle
+ExecStart=/usr/bin/python3 /home/mboyle/bin/bd-chrome-bridge.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

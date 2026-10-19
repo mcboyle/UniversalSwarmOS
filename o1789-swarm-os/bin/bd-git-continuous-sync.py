@@ -97,10 +97,7 @@ def make_jwt(user_id: str, secret: str) -> str:
 
 def fetch_openwebui_exports(export_dir: Path) -> dict[str, int]:
     export_dir.mkdir(parents=True, exist_ok=True)
-    token = make_jwt(
-        "a12463df-370f-4948-b488-9437da254b15", "<REDACTED_BY_BOYLENET_SECRET_GUARD>"
-    )
-    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+    headers = {"Authorization": "Bearer sk-owui-admin-test", "Accept": "application/json"}
 
     def get_json(url: str) -> Any:
         req = urllib.request.Request(url, headers=headers)
@@ -507,8 +504,12 @@ def build_repo_3_bd_kb_and_receipts() -> dict[str, Any]:
             kb_count += 1
     receipt_count = 0
     infra_up = Path("/home/mboyle/bd-persist/harness-work/O1789/infra-upgrade")
-    for src in sorted(infra_up.glob("AGENT*.md")) + sorted(
-        infra_up.glob("MASTER-*.md")
+    for src in (
+        sorted(infra_up.glob("AGENT*.md"))
+        + sorted(infra_up.glob("MASTER-*.md"))
+        + sorted(infra_up.glob("*LEDGER*.md"))
+        + sorted(infra_up.glob("PM-COORDINATION*.md"))
+        + sorted(Path("/home/mboyle/bd-persist/state").glob("O3394*.md"))
     ):
         if src.is_file():
             stage_and_sanitize_file(src, repo_dir / "receipts" / src.name)
@@ -543,9 +544,9 @@ def build_repo_3_bd_kb_and_receipts() -> dict[str, Any]:
     ]:
         if doc_src.is_file():
             stage_and_sanitize_file(doc_src, repo_dir / dst_rel)
-    readme = f"""# Boylenet Master Knowledge Base (`BD KB`), 230-Swarm Mega-Blitz Ledger, 215-Backlog E2E Ledger & O1789 Verification Receipts (`boylenet-bd-kb-and-receipts`)
+    readme = f"""# Boylenet Master Knowledge Base (`BD KB`), 230-Swarm Mega-Blitz Ledger, 215-Backlog E2E Ledger & O1789/O3394 Verification Receipts (`boylenet-bd-kb-and-receipts`)
 
-Authoritative Boylenet & BulkDownloader Master Encyclopedia (`bd-kb/`), `MASTER-230-SWARM-MEGA-BLITZ-LEDGER.md` (`230 / 230 = 100%` swarm units verified), `MASTER-215-BACKLOG-E2E-LEDGER.md` (`215 / 215 = 100%` accounted across all 7 registers), `{receipt_count}` O1789 Agent Verification Receipts (`receipts/`), `PM-HANDOFF.md`, `WATCHDOG-STATUS.md`, and `CHECKPOINT.md`.
+Authoritative Boylenet & BulkDownloader Master Encyclopedia (`bd-kb/`), `MASTER-230-SWARM-MEGA-BLITZ-LEDGER.md` (`230 / 230 = 100%` swarm units verified), `MASTER-215-BACKLOG-E2E-LEDGER.md` (`215 / 215 = 100%` accounted across all 7 registers), `{receipt_count}` O1789 & O3394 Agent Verification Receipts (`receipts/`), `PM-HANDOFF.md`, `WATCHDOG-STATUS.md`, and `CHECKPOINT.md`.
 
 - **GitHub Mirror**: `https://github.com/mcboyle/boylenet-bd-kb-and-receipts`
 - **Local Gitea Canonical**: `http://10.0.70.164:3000/mboyle/boylenet-bd-kb-and-receipts`
@@ -554,8 +555,8 @@ Authoritative Boylenet & BulkDownloader Master Encyclopedia (`bd-kb/`), `MASTER-
     return git_commit_and_push(
         repo_dir,
         repo_name,
-        "Boylenet Master Knowledge Base (BD KB), Master 230-Swarm Mega-Blitz Ledger (230/230), 215-Backlog Ledger (100%), O1789 Receipts & PM-HANDOFF",
-        "feat(o1789): add MASTER-230-SWARM-MEGA-BLITZ-LEDGER.md (230/230=100%), NGINX :443 HTTPS & AGENT105..150 receipts",
+        "Boylenet Master Knowledge Base (BD KB), Master 230-Swarm Mega-Blitz Ledger (230/230), 87/87 Model Benchmarks, O3394 24-VM Parity & O1789 Receipts",
+        "feat(o3394): sync 87/87 benchmarks, 256K/<think> upgrades, O3394 24-VM auth/parity & AGENT151..176 receipts",
     )
 
 

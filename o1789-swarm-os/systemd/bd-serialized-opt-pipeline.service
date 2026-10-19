@@ -1,0 +1,14 @@
+[Unit]
+Description=Boylenet Master Serialized Inference Optimization Pipeline Orchestrator (Stages 0-5)
+After=network-online.target
+
+[Service]
+Type=simple
+User=mboyle
+WorkingDirectory=/home/mboyle
+ExecStart=/usr/bin/python3 /home/mboyle/bin/bd-serialized-opt-pipeline.py --daemon --interval 20
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

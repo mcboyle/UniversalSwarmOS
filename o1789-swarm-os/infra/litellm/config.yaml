@@ -15,7 +15,7 @@ model_list:
     litellm_params: {model: ollama/qwen2.5-coder:7b, api_base: http://10.0.70.72:11434, weight: 1}
   # .125 NOT in ci-summary: 4 prompts > 16384 tokens per 12 h on .228/.83 (max 28,540); .125 runs ctx 16384.
   - model_name: rag-embed
-    litellm_params: {model: ollama/bge-m3:latest, api_base: http://10.0.70.72:11434}
+    litellm_params: {model: ollama/bge-m3:latest, api_base: http://10.0.70.228:11434}
     model_info: {mode: embedding}
   # O1510b (operator ORDER-OPTIMIZE-2080TI-CDP rev, 21:52Z): embeddings balanced 72 + 137, 137 on CPU-only variants
   # (Modelfile num_gpu 0 by bd-worker-B8-B) -- the 2080 Ti is reserved for qwen2.5-coder. Supersedes P0's "72 only".
@@ -42,16 +42,14 @@ model_list:
     litellm_params: {model: ollama/qwen2.5-coder:7b, api_base: http://10.0.70.72:11434, weight: 1}
   # O1592 proxy-routing r2: .125 joins ONLY after its env is MAX_LOADED_MODELS=3 CONTEXT_LENGTH=16384 NUM_PARALLEL=2
   # (hermes + qwen7b + nomic co-resident; with MAX_LOADED_MODELS=1 each swap costs 7.5-10.4 s, TEST.md). ctx 16384 there.
-  - model_name: qwen2.5-coder-7b
-    litellm_params: {model: ollama/qwen2.5-coder:7b, api_base: http://10.0.70.125:11434, weight: 1}
   - model_name: qwen2.5-coder-7b-16k
     litellm_params: {model: ollama/qwen2.5-coder:7b-16k, api_base: http://10.0.10.137:11434}
   # O1505 (G2): 125 serves Hermes only (findings/HERMES-125-bd-worker-B8-B.md). qwen3:8b and llama-guard3:8b were removed
   # from 125 at 19:37Z; their only caller (bd-prewarm-kv) now warms "distill". Dedicated aliases, no fallbacks.
   - model_name: distill
-    litellm_params: {model: ollama/hermes3:8b-llama3.1-q4_K_M, api_base: http://10.0.70.125:11434}
+    litellm_params: {model: ollama/qwen2.5-coder:7b, api_base: http://10.0.70.228:11434}
   - model_name: intake
-    litellm_params: {model: ollama/hermes3:8b-llama3.1-q4_K_M, api_base: http://10.0.70.125:11434}
+    litellm_params: {model: ollama/qwen2.5-coder:7b, api_base: http://10.0.70.228:11434}
   - model_name: nomic-embed-text
     litellm_params: {model: ollama/nomic-embed-text, api_base: http://10.0.70.228:11434, weight: 1}
     model_info: {mode: embedding}
@@ -59,11 +57,8 @@ model_list:
     litellm_params: {model: ollama/nomic-embed-text-cpu:latest, api_base: http://10.0.10.137:11434, weight: 1}  # O1510b CPU
     model_info: {mode: embedding}
   # O1592 r2: .125 GPU nomic (308 MiB measured on .228). .72 not added: nomic-embed-text is not pulled there.
-  - model_name: nomic-embed-text
-    litellm_params: {model: ollama/nomic-embed-text, api_base: http://10.0.70.125:11434, weight: 1}
-    model_info: {mode: embedding}
   - model_name: bge-m3
-    litellm_params: {model: ollama/bge-m3:latest, api_base: http://10.0.70.72:11434}
+    litellm_params: {model: ollama/bge-m3:latest, api_base: http://10.0.70.228:11434}
     model_info: {mode: embedding}
   - model_name: bge-m3
     litellm_params: {model: ollama/bge-m3-cpu:latest, api_base: http://10.0.10.137:11434}  # O1510b CPU
@@ -84,8 +79,6 @@ model_list:
     litellm_params: {model: ollama/qwen2.5-coder:7b, api_base: http://10.0.70.72:11434, weight: 1}
   # O1592 proxy-routing r2: .125 joins ONLY after its env is MAX_LOADED_MODELS=3 CONTEXT_LENGTH=16384 NUM_PARALLEL=2
   # (hermes + qwen7b + nomic co-resident; with MAX_LOADED_MODELS=1 each swap costs 7.5-10.4 s, TEST.md). ctx 16384 there.
-  - model_name: trivial
-    litellm_params: {model: ollama/qwen2.5-coder:7b, api_base: http://10.0.70.125:11434, weight: 1}
   # O1720 G1 aliases (bd-pm-C): stable names for fleet callers; Rule 84 placement on .137
   - model_name: local-coder
     litellm_params: {model: ollama/qwen2.5-coder:7b-16k, api_base: http://10.0.10.137:11434}
@@ -101,22 +94,20 @@ model_list:
     litellm_params: {model: ollama/hermes3:8b, api_base: http://10.0.70.83:11434}
   - model_name: qwen2.5-coder
     litellm_params: {model: ollama/qwen2.5-coder:7b, api_base: http://10.0.70.228:11434, weight: 1}
-  - model_name: qwen2.5-coder
-    litellm_params: {model: ollama/qwen2.5-coder:7b, api_base: http://10.0.70.125:11434, weight: 1}
   # O1789 Tier-1 Distributed 32B Coder (2x Tesla T4 32GB VRAM Pool via llama.cpp GGML_RPC over 25GbE 10.0.75.14 + 10.0.75.13:50052)
   - model_name: qwen2.5-coder-32b-distributed
-    litellm_params: {model: openai/qwen2.5-coder-32b-distributed, api_base: http://10.0.70.125:8081/v1, api_key: sk-local}
+    litellm_params: {model: openai/qwen2.5-coder-32b-distributed, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
   - model_name: qwen2.5-coder-32b
-    litellm_params: {model: openai/qwen2.5-coder-32b-distributed, api_base: http://10.0.70.125:8081/v1, api_key: sk-local}
+    litellm_params: {model: openai/qwen2.5-coder-32b-distributed, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
   - model_name: tier1-qwen2.5-coder-32b
-    litellm_params: {model: openai/qwen2.5-coder-32b-distributed, api_base: http://10.0.70.125:8081/v1, api_key: sk-local}
+    litellm_params: {model: openai/qwen2.5-coder-32b-distributed, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
   # O1789 Tier-1 Pool Alpha 30B-A3B MoE Coder (2x Tesla T4 32GB VRAM Pool: 10.0.75.12 + 10.0.75.11:50052 @ 77.62 tok/s)
   - model_name: tier1-fast
-    litellm_params: {model: openai/qwen3-coder-30b-a3b, api_base: http://10.0.70.72:8082/v1, api_key: sk-local}
+    litellm_params: {model: openai/tier1-qwen3-coder-30b-a3b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
   - model_name: tier1-qwen3-coder-30b-a3b
-    litellm_params: {model: openai/qwen3-coder-30b-a3b, api_base: http://10.0.70.72:8082/v1, api_key: sk-local}
+    litellm_params: {model: openai/tier1-qwen3-coder-30b-a3b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
   - model_name: qwen3-coder-30b-a3b
-    litellm_params: {model: openai/qwen3-coder-30b-a3b, api_base: http://10.0.70.72:8082/v1, api_key: sk-local}
+    litellm_params: {model: openai/tier1-qwen3-coder-30b-a3b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
   # O1789 Dynamic Tier 1/2/3 GPU Mode Orchestrator & Smart Auto-Router (10.0.70.164:4010)
   - model_name: auto-local
     litellm_params: {model: openai/auto-local, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
@@ -483,8 +474,17 @@ model_list:
     litellm_params: {model: openai/hermes-4.3-36b-abliterated-heretic, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
   - model_name: vault/hermes-4.3-36b-abliterated-heretic
     litellm_params: {model: openai/vault/hermes-4.3-36b-abliterated-heretic, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  # O1789 Colon-named model aliases for direct OpenWebUI / LiteLLM compatibility
+  - model_name: "qwen2.5-coder:32b"
+    litellm_params: {model: openai/qwen2.5-coder-32b, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: "qwen2.5-coder:14b"
+    litellm_params: {model: ollama/qwen2.5-coder:14b, api_base: http://10.0.70.228:11434, num_ctx: 8192}
+  - model_name: "qwen2.5-coder:7b"
+    litellm_params: {model: ollama/qwen2.5-coder:7b-16k, api_base: http://10.0.10.137:11434}
   - model_name: qwen3.6-35b-claude-opus-abliterated
     litellm_params: {model: openai/qwen3.6-35b-claude-opus-abliterated, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: qwen3.6-35b-a3b-heretic
+    litellm_params: {model: openai/qwen3.6-35b-a3b-heretic, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
   - model_name: vault/qwen3.6-35b-claude-opus-abliterated
     litellm_params: {model: openai/vault/qwen3.6-35b-claude-opus-abliterated, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
   - model_name: audio-flamingo-3-hf
@@ -535,6 +535,24 @@ model_list:
     litellm_params: {model: openai/matcha-plotqa-v2, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
   - model_name: vault/matcha-plotqa-v2
     litellm_params: {model: openai/vault/matcha-plotqa-v2, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: claude-opus-5-5
+    litellm_params: {model: openai/claude-opus-5-5, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: fable-5-1
+    litellm_params: {model: openai/fable-5-1, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: kimi-k2.8
+    litellm_params: {model: openai/kimi-k2.8, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: gpt-6.1-sol
+    litellm_params: {model: openai/gpt-6.1-sol, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: agent-council-relief-commander
+    litellm_params: {model: openai/agent-council-relief-commander, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: agent-master-coder
+    litellm_params: {model: openai/agent-master-coder, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: agent-claude-opus-integrator
+    litellm_params: {model: openai/agent-claude-opus-integrator, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: agent-codex-sol-verifier
+    litellm_params: {model: openai/agent-codex-sol-verifier, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
+  - model_name: agent-kimi-ux-swarm
+    litellm_params: {model: openai/agent-kimi-ux-swarm, api_base: http://10.0.70.164:4010/v1, api_key: sk-local}
 
 router_settings:
   # O1588/O1592 proxy-routing (claude/proxy-routing): simple-shuffle picks by litellm_params.weight. In litellm 1.103.0 a
@@ -563,6 +581,24 @@ router_settings:
   num_retries: 2
   retry_after: 0.5
   fallbacks:
+    - rag-embed: ["bge-m3", "local-embed"]
+    - bge-m3: ["rag-embed", "local-embed"]
+    - qwen3.6-35b-claude-opus-abliterated: ["tier1-fast", "local-coder"]
+    - qwen3.6-35b-a3b-heretic: ["tier1-fast", "local-coder"]
+    - local-coder: ["qwen2.5-coder-7b", "trivial"]
+    - qwythos-9b-83: ["tier1-fast", "local-coder"]
+    - "qwen2.5-coder:32b": ["tier1-fast", "local-coder"]
+    - "qwen2.5-coder:14b": ["qwen2.5-coder-7b", "local-coder"]
+    - "qwen2.5-coder:7b": ["local-coder", "trivial"]
+    - "deepseek-coder-v2:16b": ["tier1-fast", "local-coder"]
+    - "gemma3:12b": ["tier1-fast", "local-coder"]
+    - "mistral-nemo:12b": ["tier1-fast", "local-coder"]
+    - claude-opus-5-5: ["qwen3.6-35b-claude-opus-abliterated", "tier1-fast", "local-coder"]
+    - fable-5-1: ["qwen3.6-35b-claude-opus-abliterated", "tier1-fast", "local-coder"]
+    - kimi-k2.8: ["qwen3.6-35b-claude-opus-abliterated", "tier1-fast", "local-coder"]
+    - gpt-6.1-sol: ["qwen3.6-35b-claude-opus-abliterated", "tier1-fast", "local-coder"]
+    - agent-council-relief-commander: ["qwen3.6-35b-claude-opus-abliterated", "tier1-fast", "local-coder"]
+    - agent-master-coder: ["qwen3.6-35b-claude-opus-abliterated", "tier1-fast", "local-coder"]
     - tier1-fast: ["auto-local", "qwen2.5-coder-32b-distributed"]
     - tier1-qwen3-coder-30b-a3b: ["auto-local", "qwen2.5-coder-32b-distributed"]
     - qwen2.5-coder-32b-distributed: ["tier1-fast", "qwen2.5-coder-14b", "qwen2.5-coder-7b"]
@@ -577,6 +613,7 @@ general_settings:
   custom_auth: custom_auth.user_api_key_auth
 litellm_settings:
   drop_params: true
+  merge_reasoning_content_in_choices: true
   request_timeout: 300
   health_check_timeout: 300
   success_callbacks: ["langfuse"]

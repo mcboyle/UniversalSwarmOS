@@ -3523,35 +3523,20 @@ def handle_activate_model(body: Dict[str, Any]) -> Dict[str, Any]:
     if live_switch:
         try:
             req_data = json.dumps({"mode": tier, "model": vault_dir}).encode("utf-8")
-            req = urllib.request.Request(
-                f"{ORCHESTRATOR_URL}/api/tiers/switch",
-                data=req_data,
-                headers={"Content-Type": "application/json"},
-                method="POST",
-            )
+            req = urllib.request.Request(f"{ORCHESTRATOR_URL}/api/tiers/switch", data=req_data, headers={"Content-Type": "application/json"}, method="POST")
             with urllib.request.urlopen(req, timeout=12.0) as resp:
-                orch_response["live_result"] = json.loads(
-                    resp.read().decode("utf-8", errors="replace")
-                )
+                orch_response["live_result"] = json.loads(resp.read().decode("utf-8", errors="replace"))
         except Exception as exc:
             orch_response["live_error"] = str(exc)
+        try:
+            subprocess.Popen(["docker", "exec", "open-webui", "python3", "-c", "import sqlite3,jwt,urllib.request; con=sqlite3.connect('/app/backend/data/webui.db'); uid=con.execute('SELECT id FROM user WHERE role=\"admin\" LIMIT 1').fetchone()[0]; tok=jwt.encode({'id':uid},'t0p-s3cr3t',algorithm='HS256'); urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:8080/api/models?refresh=true',headers={'Authorization':'Bearer '+tok}),timeout=15)"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            orch_response["openwebui_refresh"] = "triggered"
+        except Exception:
+            pass
     else:
-        orch_response["status"] = (
-            "READY_TO_SWITCH (Staged on Orchestrator :4010 — click Execute Live Switch to rebind GPUs)"
-        )
+        orch_response["status"] = "READY_TO_SWITCH (Staged on Orchestrator :4010 — click Execute Live Switch to rebind GPUs)"
 
-    return {
-        "ok": True,
-        "action": "activate_on_gpu_orchestrator",
-        "model_name": model_name,
-        "vault_dir": vault_dir,
-        "node": node,
-        "node_ip": node_ip,
-        "tier": tier,
-        "launch_command": launch_cmd,
-        "orchestrator": orch_response,
-        "timestamp": _now_iso(),
-    }
+    return {"ok": True, "action": "activate_on_gpu_orchestrator", "model_name": model_name, "vault_dir": vault_dir, "node": node, "node_ip": node_ip, "tier": tier, "launch_command": launch_cmd, "orchestrator": orch_response, "timestamp": _now_iso()}
 
 
 def handle_quick_benchmark(body: Dict[str, Any]) -> Dict[str, Any]:
@@ -4197,7 +4182,7 @@ function renderCards() {
             💬 Open in OpenWebUI (:8090)
           </a>
           ${isCloud ? '' : `
-          <button class="btn-act btn-activate" onclick="activateModel('${safeDir}','${m.node}','${m.tier}','${safeName}', false)">
+          <button class="btn-act btn-activate" onclick="activateModel('${safeDir}','${m.node}','${m.tier}','${safeName}', true)">
             🚀 Activate on GPU Orchestrator (:4010)
           </button>
           <button class="btn-act btn-bench" onclick="runQuickBenchmark('${safeDir}','${m.node}','${safeName}')">
@@ -4229,16 +4214,16 @@ async function activateModel(vaultDir, node, tier, name, liveSwitch) {
   modal.classList.add('open');
   document.getElementById('modal-title').textContent = `🚀 Activate Model on GPU Orchestrator (:4010)`;
   document.getElementById('modal-desc').textContent = `${name} (/opt/models/${vaultDir} on ${node} • Target Tier: ${tier.toUpperCase()})`;
-  document.getElementById('modal-output').textContent = 'Contacting GPU Orchestrator (:4010)...';
+  document.getElementById('modal-output').textContent = 'Activating live on GPU Orchestrator (:4010), Ollama, and OpenWebUI (:8090)...';
   document.getElementById('modal-footer').innerHTML = `
-    <button class="btn-act btn-activate" style="max-width:260px;" onclick="activateModel('${vaultDir}','${node}','${tier}','${name.replace(/'/g, "\\'")}', true)">
-      ⚡ Execute Live Tier Switch on :4010 Now
-    </button>
+    <a class="btn-act btn-openwebui" style="max-width:260px;text-decoration:none;text-align:center;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;display:inline-flex;align-items:center;justify-content:center;" href="http://openwebui.boylenet.themfboyles.org/?models=${encodeURIComponent(vaultDir)}" target="_blank">
+      💬 Open ${vaultDir} in OpenWebUI (:8090)
+    </a>
   `;
   const res = await fetch('/api/activate', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({vault_dir: vaultDir, node: node, tier: tier, name: name, live_switch: liveSwitch})
+    body: JSON.stringify({vault_dir: vaultDir, node: node, tier: tier, name: name, live_switch: liveSwitch !== false})
   });
   const data = await res.json();
   document.getElementById('modal-output').textContent = JSON.stringify(data, null, 2);

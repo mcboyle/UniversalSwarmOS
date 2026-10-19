@@ -7,9 +7,11 @@ pure 0-token deterministic measurement. Writes live state to disk and alerts on 
 from __future__ import annotations
 
 import argparse
+import copy
 import datetime
 import json
 import os
+import shlex
 import shutil
 import sqlite3
 import subprocess
@@ -24,6 +26,81 @@ ALERTS_LOG = Path("/home/mboyle/bd-persist/accounting/alerts.log")
 USAGE_DB = Path("/home/mboyle/bd-persist/accounting/usage.sqlite")
 BULK_DOWNLOADER = Path("/home/mboyle/BulkDownloader")
 SWARM_OS = Path("/home/mboyle/UniversalSwarmOS")
+
+# ORDER-2331 r3: opt-in external-command minifier (bd_telemetry/tools/log_compress.py --caveman-cmd contract:
+# text on stdin, JSON {"compressed": ...} on stdout). OFF unless BD_TELEMETRY_CAVEMAN_CMD or --caveman-cmd is set.
+CAVEMAN_CMD_ENV = "BD_TELEMETRY_CAVEMAN_CMD"
+CAVEMAN_TIMEOUT_ENV = "BD_TELEMETRY_CAVEMAN_TIMEOUT"
+CAVEMAN_TIMEOUT_DEFAULT = 5.0
+
+
+def _ingested_text_fields(payload: Dict[str, Any]):
+    """Yield (parent, key, dotted path) for every str field holding captured external stderr/exception text."""
+    for repo, state in payload.get("repositories", {}).items():
+        if isinstance(state, dict) and isinstance(state.get("error"), str):
+            yield state, "error", f"repositories.{repo}.error"
+    for parent, key, path in (
+        (payload.get("swarm"), "tmux_error", "swarm.tmux_error"),
+        (payload.get("swarm"), "claims_error", "swarm.claims_error"),
+        (payload.get("accounting"), "error", "accounting.error"),
+    ):
+        if isinstance(parent, dict) and isinstance(parent.get(key), str):
+            yield parent, key, path
+
+
+def _hook_log(line: str) -> None:
+    """Best-effort stderr line; an unwritable stderr (EPIPE/ENOSPC) must not drop the record or kill the loop (ORDER-2331 r5 F6)."""
+    try:
+        print(line, file=sys.stderr, flush=True)
+    except Exception:
+        pass
+
+
+def _caveman_one(argv: list, timeout: float, raw: str, path: str) -> str:
+    """Minify one field. Fail open: a timeout, non-zero rc or no shorter str keeps the raw text and logs the rc.
+    Any other failure raises to the boundary in caveman_minify (ORDER-2331 r5), which keeps the field raw."""
+    try:
+        proc = subprocess.run(argv, input=raw, capture_output=True, text=True, timeout=timeout, check=False)
+    except subprocess.TimeoutExpired:
+        _hook_log(f"CAVEMAN-HOOK rc=timeout field={path} raw-kept")
+        return raw
+    if proc.returncode != 0:
+        _hook_log(f"CAVEMAN-HOOK rc={proc.returncode} field={path} raw-kept")
+        return raw
+    doc = json.loads(proc.stdout)
+    compressed = doc.get("compressed") if isinstance(doc, dict) else None
+    if not isinstance(compressed, str) or len(compressed) >= len(raw):
+        _hook_log(f"CAVEMAN-HOOK rc=0 field={path} raw-kept (no shorter str 'compressed')")
+        return raw
+    return compressed
+
+
+def caveman_minify(payload: Dict[str, Any], caveman_cmd: str | None = None) -> Dict[str, Any]:
+    """Return payload with ingested text fields minified; the same object, untouched, when the hook is OFF.
+    ORDER-2331 r5 class boundary: any Exception in the hook keeps the raw record (a field's failure keeps that field
+    raw; a failure outside the per-field step returns payload itself) and logs only the class name to stderr.
+    BaseException (KeyboardInterrupt, SystemExit) is not caught."""
+    try:
+        cmd = caveman_cmd or os.environ.get(CAVEMAN_CMD_ENV, "")
+        if not cmd.strip():
+            return payload
+        try:
+            timeout = float(os.environ.get(CAVEMAN_TIMEOUT_ENV, CAVEMAN_TIMEOUT_DEFAULT))
+        except ValueError:
+            timeout = CAVEMAN_TIMEOUT_DEFAULT
+        if not 0 < timeout < float("inf"):  # nan/inf/<=0 would raise inside subprocess.run or never time out
+            timeout = CAVEMAN_TIMEOUT_DEFAULT
+        argv = shlex.split(cmd)
+        out = copy.deepcopy(payload)
+        for parent, key, path in _ingested_text_fields(out):
+            try:
+                parent[key] = _caveman_one(argv, timeout, parent[key], path)
+            except Exception as e:
+                _hook_log(f"CAVEMAN-HOOK rc=hook-error {type(e).__name__} field={path} raw-kept")
+        return out
+    except Exception as e:
+        _hook_log(f"CAVEMAN-HOOK rc=hook-error {type(e).__name__} raw-kept")
+        return payload
 
 
 def get_git_state(repo_path: Path) -> Dict[str, Any]:
@@ -171,7 +248,7 @@ def get_telemetry_accounting() -> Dict[str, Any]:
         return {"available": False, "error": str(e)}
 
 
-def collect_and_sync() -> Dict[str, Any]:
+def collect_and_sync(caveman_cmd: str | None = None) -> Dict[str, Any]:
     """Run single telemetry collection cycle, update disk state, and flag anomalies."""
     now_utc = datetime.datetime.now(datetime.timezone.utc).isoformat()
     sys_metrics = get_system_metrics()
@@ -208,6 +285,7 @@ def collect_and_sync() -> Dict[str, Any]:
 
     LIVE_JSON.parent.mkdir(parents=True, exist_ok=True)
     tmp_json = LIVE_JSON.with_suffix(".tmp")
+    payload = caveman_minify(payload, caveman_cmd)
     with open(tmp_json, "w") as f:
         json.dump(payload, f, indent=2)
     tmp_json.replace(LIVE_JSON)
@@ -255,19 +333,21 @@ def main():
     parser = argparse.ArgumentParser(description="Deterministic Fleet Telemetry Daemon")
     parser.add_argument("--once", action="store_true", help="Run once and exit (for cron or manual checks)")
     parser.add_argument("--interval", type=int, default=60, help="Loop interval in seconds (default 60)")
+    parser.add_argument("--caveman-cmd", default=None,
+                        help=f"Minifier argv for ingested error text (default ${CAVEMAN_CMD_ENV}; unset = OFF)")
     args = parser.parse_args()
 
     if args.once:
-        _data = collect_and_sync()
+        _data = collect_and_sync(args.caveman_cmd)
         print(f"TELEMETRY SYNCED: {STATUS_TXT}")
         return
 
     print(f"Starting bd-telemetry-daemon (interval={args.interval}s, target={STATUS_TXT})...")
     while True:
         try:
-            collect_and_sync()
+            collect_and_sync(args.caveman_cmd)
         except Exception as e:
-            print(f"Error in telemetry loop: {e}", file=sys.stderr)
+            _hook_log(f"Error in telemetry loop: {e}")
         time.sleep(args.interval)
 
 

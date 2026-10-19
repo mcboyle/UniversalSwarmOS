@@ -4,7 +4,7 @@
     "id": "fleet_swarm_cockpit_action",
     "user_id": "a12463df-370f-4948-b488-9437da254b15",
     "type": "action",
-    "name": "⚡ Fleet Swarm Cockpit Action (/ask-pm, /verify-smt, /run-rtv)",
+    "name": "Fleet Swarm Cockpit Action (/ask-pm, /verify-smt, /run-rtv) [🔬 PIPE]",
     "meta": {
       "description": "Trigger fleet swarms (/ask-pm, /verify-smt, /run-rtv) and macro shortcuts.",
       "manifest": {
@@ -25,7 +25,7 @@
     "id": "boylenet_local_vs_cloud_badge_filter",
     "user_id": "a12463df-370f-4948-b488-9437da254b15",
     "type": "filter",
-    "name": "🟢/☁️ Boylenet Local vs Cloud & Airgap Telemetry Badge Filter",
+    "name": "Local vs Cloud & Airgap Telemetry Badge Filter [🔬 PIPE]",
     "meta": {
       "description": "Automatically tags model responses with Local On-Prem T4 vs Cloud API provenance.",
       "manifest": {
@@ -46,7 +46,7 @@
     "id": "boylenet_cot_thinking_formatter_filter",
     "user_id": "a12463df-370f-4948-b488-9437da254b15",
     "type": "filter",
-    "name": "🧠 Boylenet Chain-of-Thought & Reasoning Formatter Filter",
+    "name": "Chain-of-Thought & Reasoning Formatter Filter [🔬 PIPE]",
     "meta": {
       "description": "Normalizes <think>...</think> blocks for DeepSeek-R1, QwQ, and Claude/GPT reasoning traces.",
       "manifest": {
@@ -67,7 +67,7 @@
     "id": "boylenet_auto_rag_memory_filter",
     "user_id": "a12463df-370f-4948-b488-9437da254b15",
     "type": "filter",
-    "name": "📚 Boylenet On-Demand Qdrant HiveMind Memory Injector Filter",
+    "name": "On-Demand Qdrant HiveMind Memory Injector Filter [🔬 PIPE]",
     "meta": {
       "description": "Enriches prompts containing [[rag]] with top Qdrant boylenet_fleet_rag & episodic memory hits.",
       "manifest": {
@@ -88,7 +88,7 @@
     "id": "action_run_ramdisk_pytest",
     "user_id": "a12463df-370f-4948-b488-9437da254b15",
     "type": "action",
-    "name": "🚀 1-Click: Run Ramdisk Pytest Digest (/dev/shm)",
+    "name": "1-Click: Run Ramdisk Pytest Digest (/dev/shm) [🔬 PIPE]",
     "meta": {
       "description": "1-Click message button to run bd-pytest-digest in /dev/shm ramdisk.",
       "manifest": {
@@ -109,7 +109,7 @@
     "id": "action_verify_browser_oracle",
     "user_id": "a12463df-370f-4948-b488-9437da254b15",
     "type": "action",
-    "name": "🖥️ 1-Click: Verify via Dual Chrome CDP Browser Oracle (.137/.181)",
+    "name": "1-Click: Verify via Dual Chrome CDP Browser Oracle (.137/.181) [🔬 PIPE]",
     "meta": {
       "description": "1-Click message button to inspect live Chrome CDP Browser Oracles on .137 and .181.",
       "manifest": {
@@ -130,7 +130,7 @@
     "id": "action_save_to_hivemind_qdrant",
     "user_id": "a12463df-370f-4948-b488-9437da254b15",
     "type": "action",
-    "name": "📚 1-Click: Query & Verify Qdrant HiveMind Episodic Memory",
+    "name": "1-Click: Query & Verify Qdrant HiveMind Episodic Memory [🔬 PIPE]",
     "meta": {
       "description": "1-Click button to cross-check message against Qdrant boylenet_episodic_memory (.125:6333).",
       "manifest": {
@@ -151,7 +151,7 @@
     "id": "action_toggle_wan_airgap",
     "user_id": "a12463df-370f-4948-b488-9437da254b15",
     "type": "action",
-    "name": "🛡️ 1-Click: Verify Boylenet WAN Airgap & GPU Orchestrator",
+    "name": "1-Click: Verify Boylenet WAN Airgap & GPU Orchestrator [🔬 PIPE]",
     "meta": {
       "description": "1-Click button to check bd-airgap status, POOL_STATE.tsv, and 4-GPU Orchestrator (:4010).",
       "manifest": {
@@ -172,7 +172,7 @@
     "id": "action_render_diagram_or_chart",
     "user_id": "a12463df-370f-4948-b488-9437da254b15",
     "type": "action",
-    "name": "📐 1-Click: Render Boylenet Architecture SVG Diagram",
+    "name": "1-Click: Render Boylenet Architecture SVG Diagram [🔬 PIPE]",
     "meta": {
       "description": "1-Click button to render a crisp SVG architecture diagram for the current thread.",
       "manifest": {
@@ -193,7 +193,7 @@
     "id": "pipe_boylenet_deep_research",
     "user_id": "a12463df-370f-4948-b488-9437da254b15",
     "type": "pipe",
-    "name": "🔬 Boylenet Autonomous Deep Research Pipe (SearXNG + ArXiv + Qdrant)",
+    "name": "Deep Research Pipe (SearXNG + ArXiv + Qdrant) [🔬 PIPE]",
     "meta": {
       "description": "Autonomous multi-source research pipe combining SearXNG (:8888), ArXiv papers, and Qdrant 1024-d RAG.",
       "manifest": {
@@ -214,7 +214,7 @@
     "id": "pipe_boylenet_4model_council",
     "user_id": "a12463df-370f-4948-b488-9437da254b15",
     "type": "pipe",
-    "name": "🏛️ Boylenet Multi-Model Consensus Council Pipe (T4 + MoE Ensemble)",
+    "name": "Multi-Model Consensus Council Pipe (T4 + MoE Ensemble) [🔬 PIPE]",
     "meta": {
       "description": "Queries multiple local GPU models (hermes-ultracode + deepseek-coder-moe) in parallel and synthesizes consensus.",
       "manifest": {
@@ -235,7 +235,7 @@
     "id": "pipe_boylenet_smart_router",
     "user_id": "a12463df-370f-4948-b488-9437da254b15",
     "type": "pipe",
-    "name": "🧭 Boylenet O1740 Smart Intent Auto-Router Pipe (Code/Math/Vision/OffSec)",
+    "name": "O1740 Smart Intent Auto-Router Pipe (Code/Math/Vision/OffSec) [🔬 PIPE]",
     "meta": {
       "description": "Automatically classifies prompt intent and routes to the #1 benchmarked local GPU model.",
       "manifest": {
@@ -256,7 +256,7 @@
     "id": "boylenet_autonomous_context_and_bdkb_mod",
     "user_id": "a12463df-370f-4948-b488-9437da254b15",
     "type": "filter",
-    "name": "🧠 Boylenet Autonomous Cluster Telemetry & BD KB Ground-Truth Injector Filter",
+    "name": "Cluster Telemetry & BD KB Ground-Truth Injector Filter [🔬 PIPE]",
     "meta": {
       "description": "Autonomously queries :4079/api/tool/bd_kb_search and :4079/api/tool/airgap_and_cluster_status in inlet() whenever prompts mention Boylenet VMs (10.0.70.*), vSAN/ESXi, models, or BulkDownloader.",
       "manifest": {
@@ -269,7 +269,7 @@
     },
     "is_active": true,
     "is_global": true,
-    "updated_at": 1792369052,
+    "updated_at": 1792375173,
     "created_at": 1792366598
   },
   {
@@ -277,7 +277,7 @@
     "id": "action_commit_and_push_gitea_github",
     "user_id": "a12463df-370f-4948-b488-9437da254b15",
     "type": "action",
-    "name": "📦 1-Click: Secret-Scrub, Commit & Push to Gitea (:3000) & GitHub (mcboyle/*)",
+    "name": "1-Click: Secret-Scrub, Commit & Push to Gitea (:3000) & GitHub (mcboyle/*) [🔬 PIPE]",
     "meta": {
       "description": "1-Click button under messages in OpenWebUI to stage, secret-scrub, commit, and push generated code/docs to local Gitea (:3000) & GitHub (mcboyle/*).",
       "manifest": {
@@ -290,7 +290,7 @@
     },
     "is_active": true,
     "is_global": true,
-    "updated_at": 1792369052,
+    "updated_at": 1792375173,
     "created_at": 1792366598
   },
   {
@@ -298,7 +298,7 @@
     "id": "action_dispatch_local_coding_agent",
     "user_id": "a12463df-370f-4948-b488-9437da254b15",
     "type": "action",
-    "name": "🤖 1-Click: Dispatch to $0 Local Coding Agent + .82 Ramdisk Pytest Gate",
+    "name": "1-Click: Dispatch to $0 Local Coding Agent + .82 Ramdisk Pytest Gate [🔬 PIPE]",
     "meta": {
       "description": "1-Click button under messages in OpenWebUI to send the task to /home/mboyle/bin/bd-local-coding-agent for sandboxed edit + .82 ramdisk pytest verification.",
       "manifest": {
@@ -311,7 +311,7 @@
     },
     "is_active": true,
     "is_global": true,
-    "updated_at": 1792369052,
+    "updated_at": 1792375174,
     "created_at": 1792366598
   }
 ]
